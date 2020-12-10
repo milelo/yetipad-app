@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ReplProjectCommandManager">
+    <repl-command name="Start CLJS nREPL" executionType="EXPRESSION" commandText="(shadow.cljs.devtools.api/nrepl-select :app)" executeBefore="NONE" executionNs="REPL_CURRENT" inNamespace="" saveAll="false" />
+  </component>
+</project>

@@ -1,0 +1,49 @@
+@import "goog/dialog.css";
+/*@import "goog/button.css";
+@import "goog/custombutton.css";*/
+/*For editor*/
+@import "goog/bubble.css";
+@import "goog/colormenubutton.css";
+@import "goog/editortoolbar.css";
+@import "goog/linkdialog.css";
+@import "goog/palette.css";
+@import "goog/toolbar.css";
+@import "goog/common.css";
+@import "goog/menu.css";
+@import "goog/menuseparator.css";
+@import "goog/menuitem.css";
+@import "goog/colorpalette.css";
+/*@import "googl/.css";*/
+
+/*overide google remotes*/
+/*toolbar.css*/
+.goog-toolbar {
+  background-image: url('goog/toolbar-bg.png');
+}
+/*editortoolbar.css*/
+.tr-icon {
+  background-image: url('goog/editortoolbar.png');
+}
+/*bubble.css*/
+.tr_bubble_closebox {
+  background-image: url('goog/bubble_closebox.gif');
+}
+/*colorpalette.css*/
+.goog-palette-cell-selected .goog-palette-colorswatch {
+  background-image: url('goog/editortoolbar.png');
+}
+/*custombutton.css*/
+.goog-custom-button {
+  background-image: url('goog/button-bg.png');
+}
+/*dialog.css*/
+.modal-dialog-title-close {
+  background-image: url('goog/editortoolbar.png');
+}
+
+/*menuitem.css*/
+.goog-option-selected .goog-menuitem-checkbox,
+.goog-option-selected .goog-menuitem-icon {
+  /* Client apps may override the URL at which they serve the sprite. */
+  background: url('goog/editortoolbar.png') no-repeat -512px 0;
+}

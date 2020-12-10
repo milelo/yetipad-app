@@ -1,0 +1,25 @@
+{
+	"name": "yetipad-app",
+	"scripts": {
+		"watch": "shadow-cljs watch app;",
+		"release": "shadow-cljs release app;",
+		"release-with-docs": "shadow-cljs release docs;",
+		"server": "shadow-cljs server;"
+	},
+	"dependencies": {
+		"@material-ui/core": "^4.11.0",
+		"@material-ui/icons": "^4.9.1",
+		"@material-ui/lab": "^4.0.0-alpha.56",
+		"fontsource-roboto": "^2.2.6",
+		"highlight.js": "9.18.1",
+		"localforage": "^1.9.0",
+		"react": "16.13.0",
+		"react-device-detect": "^1.14.0",
+		"react-dom": "16.13.0",
+		"react-highlight.js": "1.0.7",
+		"workbox-build": "^6.0.2"
+	},
+	"devDependencies": {
+		"shadow-cljs": "2.9.3"
+	}
+}

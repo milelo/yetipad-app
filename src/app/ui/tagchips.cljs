@@ -1,0 +1,106 @@
+(ns app.ui.tagchips
+  (:require
+    [reagent.core :as r]
+    [re-frame.core :as re-frame]
+    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.debug :as debug :refer [we wd wee expose]]
+    [lib.utils :as u :refer-macros [for-all]]
+    [app.subs :as subs]
+    [cljs.pprint :refer [pprint]]
+    [app.events :as events]
+    ["@material-ui/core" :refer [Chip Tooltip TextField]]
+    ["@material-ui/lab" :refer [Autocomplete]]
+    ))
+
+(def log (log/logger 'app.ui.tagchips))
+
+(def rsubs (comp deref re-frame/subscribe))
+(def dispatch! re-frame/dispatch)
+
+(defn- js->cljs [js]
+  (js->clj js :keywordize-keys true))
+
+(defn- tag-chips [tag-ids* new-tags*]
+  (let [tag-data-map (rsubs [::subs/tag-data-map])]
+    [:div
+     (for-all [[id {:keys [title new-tag?]}] (merge (select-keys tag-data-map @tag-ids*) @new-tags*)]
+       ^{:key (str id :tag)} [:> Tooltip {:title "remove tag"}
+                              [:> Chip {:label    title
+                                        :size     :small
+                                        :color    (if new-tag? :secondary :primary)
+                                        :on-click #(if new-tag?
+                                                     (swap! new-tags* dissoc id)
+                                                     (swap! tag-ids* disj id))
+                                        }]]
+       )]))
+
+(defn- tagger [id tag-ids* new-tags*]
+  (let [value* (r/atom "")]
+    (fn [id]
+      (let [tag-data (rsubs [::subs/tag-data])
+            tag-data-map (rsubs [::subs/tag-data-map])
+            ]
+        (when-not @tag-ids*
+          (reset! tag-ids* (into #{} (filter tag-data-map (:tags (rsubs [::subs/doc-item id]))))))
+        [:<>
+         [tag-chips tag-ids* new-tags*]
+         [:> Autocomplete {:options          (clj->js tag-data)
+                           :free-solo        true
+                           :get-option-label #(or (:title (js->cljs %)) "")
+                           :style            {:width      300
+                                              :margin-top 10
+                                              }
+                           :size             :small
+                           :render-input     (fn [^js params]
+                                               ;; Don't call js->clj because that would recursively
+                                               ;; convert all JS objects (e.g. React ref objects)
+                                               ;; to Cljs maps, which breaks them, even when converted back to JS.
+                                               ;; Best thing is to use r/create-element and
+                                               ;; pass the JS params to it.
+                                               ;; Use JS interop to modify params.
+                                               (set! (.-variant params) "outlined")
+                                               (set! (.-label params) "Add / create tag")
+                                               (r/create-element TextField params)
+                                               )
+                           :on-input-change  (fn [_e value reason]
+                                               ;(println :on-input-change value reason)
+                                               (when (#{"input" "clear"} reason)
+                                                 (reset! value* value)
+                                                 ))
+                           :on-change        (fn [_e value reason]
+                                               ;(println :on-change (:id (js->cljs value)) reason)
+                                               (when (= reason "select-option")
+                                                 (swap! tag-ids* conj (-> value js->cljs :id))
+                                                 (reset! value* "")
+                                                 )
+                                               (when (= reason "create-option")
+                                                 (swap! new-tags* assoc value {:title value :new-tag? true})
+                                                 (reset! value* "")
+                                                 ))
+                           :input-value      @value*
+                           }]]))))
+
+(defn tag-viewer [id]
+  [:div
+   (for-all [{:keys [id title]} (rsubs [::subs/item-tag-data id])]
+     ^{:key (str id :tag)} [:> Tooltip {:title "open tag"}
+                            [:> Chip {:label    title
+                                      :size     :small
+                                      ;:color    :primary
+                                      :on-click #(dispatch! [::events/open-item id])
+                                      }]]
+     )])
+
+(defn tag-editor [id]
+  (let [tag-ids* (r/atom nil)
+        new-tags* (r/atom nil)
+        ]
+    (fn [id]
+      ;Doesn't re-render when title is edited so inner render function not required.
+      [(with-meta (fn [] [tagger id tag-ids* new-tags*])
+                  {:component-will-unmount
+                   (fn [_this]
+                     (dispatch! [::events/new-tags id @tag-ids* @new-tags*])
+                     (reset! tag-ids* nil)
+                     (reset! new-tags* nil)
+                     )})])))

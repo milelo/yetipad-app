@@ -1,0 +1,30 @@
+{:deps   {:aliases [:cljs]}
+ :nrepl  {:port 8778
+          ;:cider false ;doesn't seem to be required any more
+          },
+ :builds {:app
+          {:target           :browser,
+           :output-dir       "resources/public/js/compiled",
+           :asset-path       "/js/compiled",
+           :compiler-options {:output-feature-set :es6}
+           :modules          {:app
+                              {:init-fn  app.core/init,
+                               :preloads [devtools.preload day8.re-frame-10x.preload]
+                               }},
+           :dev              {:compiler-options
+                              {:closure-defines
+                               {re-frame.trace.trace-enabled?        true,
+                                day8.re-frame.tracing.trace-enabled? true
+                                }}},
+           :release          {:output-dir       "yetipad/js"
+                              :build-options    {:ns-aliases {day8.re-frame.tracing
+                                                              day8.re-frame.tracing-stubs
+                                                              }}
+                              :compiler-options {;:optimizations :simple
+                                                 :source-map true
+                                                 }
+                              },
+           :devtools         {:http-root "resources/public",
+                              :http-port 8281
+                              }}},
+ }
