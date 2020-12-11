@@ -34,7 +34,8 @@ maintain compatibility with saved content.
 
 Browser | Desktop issues | Mobile issues
 -|:-:|:-:
-Chrome | ok | ok Edge | ok | -
+Chrome | ok | ok 
+Edge | ok | -
 *Firefox* | ok | authentication fails
 *Safari* | authentication fails | authentication fails
 
