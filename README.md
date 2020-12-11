@@ -5,7 +5,11 @@ This project is probably suitable for evaluation but is under active development
 I'll try and maintain released features and maintain compatibility with saved content but the app isn't formally tested and the code is subject to refactoring.
 
 ## Background
-There are many notepad apps, but I haven't found one I'm really happy with. I've never had a good memory so I create lots of disorganised notes but finding them often becomes a task comparable to finding the original source information. I need a way of easily organising and searching for things after the event. I also love to design and code in a good language so its also great to have an app that can be easily enhanced with new features. Many years ago I used [Tiddlywiki] for keeping notes. For all its limitations it had some inspiring ideas, enough to enthuse me to create my own notepad app to evolve some of them. I used the desktop-browser app I created for many years, unfortunately it wasn't much good on mobile so didn't keep up with times and eventually fell into unusable disrepair, I resorted back to commercial offerings. Now in lock-down, in need of a new project and wanting to try out some new technologies, a new generation of the project is taking shape.
+There are many notepad apps, I've never found one I'm really happy with. I don't have a good memory so I create lots of disorganised notes but finding them often becomes a task comparable to finding the source information. I need a way of easily organising and searching for things after the event.
+
+I love to design and code in a good language, its great to have an app that can be easily enhanced with new features. I've followed Clojure and particularly ClojureScript since their release and seen them mature. Progressive Web Apps (PWA) also hold and appeal and should fit well with ClojureScript but for all the good bits I've always struggled with the development tool-stack and UI development experience. Two things promise to fix this: [Shadow-cljs] and [Material-UI].
+
+Many years ago I used [Tiddlywiki] for keeping notes. For all its limitations it had some inspiring ideas, enough to enthuse me to create my own notepad app to evolve some of them. I wrote a desktop-browser app with offline caching as an early form of a PWA and used it as my notepad for many years, unfortunately it wasn't much good on mobile so didn't keep up with times and eventually fell into unusable disrepair, I resorted back to commercial offerings. Now in lock-down, in need of a new project and wanting to see whats possible with material-ui, this is a new generation of the project taking shape.
 
 ## Main Features
 1. Cross platform compatibility - browser based
@@ -52,17 +56,9 @@ Chrome | ok | ok Edge | ok | -
 1. Formatted web content including images can be pasted into editors, although the current editor won't necessarily have the capability to edit it.
 1. Add hyperlinks to your content with the editor action. These will be opened in a new tab on desktop or on mobile platforms, in a browser window within the app.
 1. The app maintains the open document and viewer-state encoded into its url allowing the view to be maintained with page refreshes, bookmarks and navigation through the browser history. Open-editors, or their edited content, aren't retained.
-1. The app uses the browser local-store to sync between tabs so you can have multiple views of the same document open
-   simultaneously. Changes are automatically saved when editors are closed. The content is synchronised on window focus
-   or manually when the cloud icon is pressed. If you haven't any open editors you can also reload the app by swiping
-   down from the top without losing the app state.
-1. Document merging is supported . If there are items with conflicting changes (determined by the change date-time),
-   both the Drive and local item will be retained, the local item is allocated a new id. **Note: synch conflicts with
-   open editors aren't currently handled.** see local syncing...
-1. Multiple instances in the same browser behave differently, they shouldn't get out of sync, the local-store is always
-   available and kept in-sync however content in an open editor may be changed in another tab-instance causing a
-   conflict. **This isn't currently handled** I intend to prevent the editor close with a warning with an option to save
-   as a new item.
+1. The app uses the browser local-store to sync between tabs so you can have multiple views of the same document open simultaneously. Changes are automatically saved when editors are closed. The content is synchronised on window focus or manually when the cloud icon is pressed. If you haven't any open editors you can also reload the app by swiping down from the top without losing the app state.
+1. Document merging is supported . If there are items with conflicting changes (determined by the change date-time), both the Drive and local item will be retained, the local item is allocated a new id. **Note: synch conflicts with open editors aren't currently handled.** see local syncing...
+1. Multiple instances in the same browser behave differently, they shouldn't get out of sync, the local-store is always available and kept in-sync however content in an open editor may be changed in another tab-instance causing a conflict. **This isn't currently handled** I intend to prevent the editor close with a warning with an option to save as a new item.
 1. It may be possible to share a document with other people so they both have access to the same document in the app but I'm not sure what Drive supports with the access privileges of the app, there is a slim chance it may just work, I need to try it.
 1. The app is restricted in its interactions with google-drive user content by it's credentials. I don't want the app to require approval from google. User only approved features are sufficient to allow it to create drive files and access the drive files the app has created. To stop unauthorised use of the credentials embedded in the app, they are restricted to use from the apps url.
 
@@ -97,33 +93,24 @@ Chrome | ok | ok Edge | ok | -
 
 ## Development status
 
-I've got a long list of tasks I'm chipping away at to make the app more complete and polished from both a user and
-developer point of view including a fair number of feature enhancements.
+I've got a long list of tasks I'm chipping away at to make the app more complete and polished from both a user and developer point of view including a fair number of feature enhancements.
 
 I'll maintain the document format, but I'm constantly refining the code.
 
-Currently I embed the google closure editor, mainly because I've used it before with Reagent. I at least need to change
-its toolbar icons for material-ui icons but I also want to evaluate editor-alternatives like [Slate].
+Currently I embed the google closure editor, mainly because I've used it before with Reagent. I at least need to change its toolbar icons for material-ui icons but I also want to evaluate editor-alternatives like [Slate].
 
 ## Development Environment setup
 
 ### Tooling
 
-1. I use Cursive IDE. It requires a licence. A free non-commercial licence can be obtained by email automatically on
-   request if you qualify. The IDE has been primarily designed for Clojure however its editing and repl works well with
-   ClojureScript except for a few linting issues around javascript inter-op.
-1. VSCode is also a good development option although at the time I evaluated it, some useful features are only provided
-   by Cursive.
-1. Reframe: great to keep your app in an MVC structure. As a personal preference my code doesn't conform faithfully to
-   its prescribed event implementation. I feel the hoops it jumps through to promote functional purity makes the code
-   more difficult to follow not easier.
-1. shadow-cljs: great dependencies management, build and hot reloading. js packages don't need any special treatment to
-   support inter-op unlike other options. I use it with an external Clojure deps.edn dependencies file for compatibility
-   with Cursive IDE and Clojure best practices.
+1. I use the [Cursive] for the [IntelliJ IDEA] IDE. Cursive requires a licence. A free non-commercial licence can be obtained by email automatically on  request if you qualify. The IDE has been primarily designed for Clojure however its editing and repl works well with ClojureScript except for a few linting issues around javascript inter-op.
+1. VSCode is also a good development option although at the time I evaluated it, some useful features are only provided by Cursive.
+1. Reagent: I've used this and loved it since Dan Holmesand released it.
+1. re-frame: great to keep your app in an MVC structure. As a personal preference my code doesn't conform faithfully to its prescribed event implementation. I feel the hoops it jumps through to promote functional purity makes the code more difficult to follow not easier.
+1. shadow-cljs: great dependencies management, build and hot reloading. js packages don't need any special treatment to support inter-op unlike other options. I use it with an external Clojure deps.edn dependencies file for compatibility with Cursive IDE and Clojure best practices.
 1. venantius/accountant: for html history support.
 
-I don't have a clean machine to ensure I've considered all the dependencies in the following setup guidelines. I'll
-update this in response to feedback.
+I don't have a clean machine to ensure I've considered all the dependencies in the following setup guidelines. I'll update this in response to feedback.
 
 ### Setup the IDE and tooling
 
@@ -153,13 +140,11 @@ npm install
 npm run watch
 ~~~
 
-* This should do everything to run the development code including building the code and starting the servers. It will
-  also watch for changes to trigger and incremental build and refresh the browser.
+* This should do everything to run the development code including building the code and starting the servers. It will also watch for changes to trigger and incremental build and refresh the browser.
 * Open a Chrome browser with the url `http://localhost:8281/`
 * Open the repl. I've pre-configured this in [Cursive]: `Run... > nREPL` or select direct from the run-combo in the
   toolbar.
-* To switch to the cljs REPL select the pre-configured: `Tools > REPL > Commands > Start cljs nREPL` *Cursive Bug: the
-  command isn't being imported correctly so use...*
+* To switch to the cljs REPL select the pre-configured: `Tools > REPL > Commands > Start cljs nREPL` *Cursive Bug: the command isn't being imported correctly so use...*
 * Or evaluate in the REPL:
 
 ~~~cljs
@@ -187,10 +172,7 @@ node ./build-service-worker.js
 ~~~
 
 * Copy the folder `./yetipad/` and its files to your server.
-* To enable the App to access google Drive the server and url need to be white-listed with its google account. You could
-  generate your own app-id and google drive credentials for your domain and update the app however the app won't then
-  recognise documents created with its current app id. To support development http://localhost:8281/
-  and http://localhost:8000/ are white-listed.
+* To enable the App to access google Drive the server and url need to be white-listed with its google account. You could generate your own app-id and google drive credentials for your domain and update the app however the app won't then recognise documents created with its current app id. To support development http://localhost:8281/ and http://localhost:8000/ are white-listed.
 
 https://console.developers.google.com/apis/dashboard.
 
@@ -202,6 +184,8 @@ https://console.developers.google.com/apis/dashboard.
 [Calva plug-in]: (https://calva.io/)
 [choco]: (https://chocolatey.org/)
 [IntelliJ IDEA]: (https://www.jetbrains.com/idea/download/)
+[material-ui]: (https://material-ui.com/)
+[shadow-cljs]: (https://shadow-cljs.github.io/docs/UsersGuide.html#_introduction)
 
 
 
