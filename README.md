@@ -66,7 +66,7 @@ Chrome | ok | ok Edge | ok | -
 1. Yetipad includes a trace logger and viewer; particularly useful for debugging on mobile devices.
 1. shadow-cljs provides a built web server and hot reloading so app code changes will be rendered on saves or switching windows.
 1. shadow-cljs generates minified and munged release builds using the ClojureScript / google Closure compiler for code optimisation and dead-code elimination.
-1. shadow-cljs supports nREPL to dynamically change running code. [Cursive] IDE pligin for [IntelliJ IDEA] provides an nREPL with the features of its code editor.
+1. shadow-cljs provides an nREPL server to dynamically change running code. [Cursive] IDE pligin for [IntelliJ IDEA] provides an nREPL with the features of its code editor.
 1. If the [Cursive] isn't suitable, VS Studio with the [Calva plug-in] is a good choice. I've used this before but not recent enough to provide guidance here.
 
 ## App design features
@@ -107,7 +107,7 @@ Currently I embed the google closure editor, mainly because I've used it before 
 1. VSCode is also a good development option although at the time I evaluated it, some useful features are only provided by Cursive.
 1. Reagent: I've used this and loved it since Dan Holmesand released it.
 1. re-frame: great to keep your app in an MVC structure. As a personal preference my code doesn't conform faithfully to its prescribed event implementation. I feel the hoops it jumps through to promote functional purity makes the code more difficult to follow not easier.
-1. shadow-cljs: great dependencies management, build and hot reloading. js packages don't need any special treatment to support inter-op unlike other options. I use it with an external Clojure deps.edn dependencies file for compatibility with Cursive IDE and Clojure best practices.
+1. shadow-cljs: Easy setup, dependencies management, build and hot reloading. js packages don't need any special treatment to support inter-op unlike other options. I use it with an external Clojure deps.edn dependencies file for compatibility with Cursive IDE and Clojure best practices.
 1. venantius/accountant: for html history support.
 
 I don't have a clean machine to ensure I've considered all the dependencies in the following setup guidelines. I'll update this in response to feedback.
@@ -142,8 +142,7 @@ npm run watch
 
 * This should do everything to run the development code including building the code and starting the servers. It will also watch for changes to trigger and incremental build and refresh the browser.
 * Open a Chrome browser with the url `http://localhost:8281/`
-* Open the repl. I've pre-configured this in [Cursive]: `Run... > nREPL` or select direct from the run-combo in the
-  toolbar.
+* Open the repl. I've pre-configured this in [Cursive]: `Run... > nREPL` or select direct from the run-combo in the toolbar.
 * To switch to the cljs REPL select the pre-configured: `Tools > REPL > Commands > Start cljs nREPL` *Cursive Bug: the command isn't being imported correctly so use...*
 * Or evaluate in the REPL:
 
