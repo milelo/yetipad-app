@@ -63,11 +63,10 @@
               :title "Trash"
               }
         ]
-    [ui/viewer-pane item
-     [trash-list]
-     nil
-     {:buttons [ui/empty-trash-button ui/fullscreen-button]}
-     ]))
+    [ui/viewer-pane item {:body    [trash-list]
+                          :buttons [ui/empty-trash-button ui/fullscreen-button]
+                          }]
+    ))
 
 (reg/register {:kind  :trash
                :title "Trash"

@@ -60,10 +60,9 @@
   )
 
 (defn tag-view [{:keys [id tags] :as item}]
-  [ui/viewer-pane item
-   ^{:key :cont} [content-pane item]
-   ^{:key :tags} [tag-viewer id]
-   ])
+  [ui/viewer-pane item {:body   ^{:key :cont} [content-pane item]
+                        :footer ^{:key :tags} [tag-viewer id]
+                        }])
 
 (defn tag-pane [{:keys [item]}]
   (if (rsubs [::subs/editing? (:id item)])

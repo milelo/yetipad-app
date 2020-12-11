@@ -66,11 +66,11 @@
         editing? (rsubs [::subs/editing? :log-config])
         ]
     (if editing?
-      [ui/editor-pane item ^{:key :edit} [content editing?] {:buttons [restore-defaults-button]}]
-      [ui/viewer-pane item ^{:key :view} [content editing?] nil])))
+      [ui/editor-pane item {:body ^{:key :edit} [content editing?] :buttons [restore-defaults-button]}]
+      [ui/viewer-pane item {:body ^{:key :view} [content editing?]}])))
 
-(reg/register {:kind    :log-config
-               :title   "Log configuration"
-               :icon    debug-settings-icon
-               :pane    log-config-pane
+(reg/register {:kind  :log-config
+               :title "Log configuration"
+               :icon  debug-settings-icon
+               :pane  log-config-pane
                })

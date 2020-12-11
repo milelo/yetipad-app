@@ -66,10 +66,9 @@
               }
         ]
     [ui/viewer-pane item
-     [log-container]
-     nil
-     {:buttons [debug-settings-button read-log-button ui/fullscreen-button]}
-     ]))
+     {:body    [log-container]
+      :buttons [debug-settings-button read-log-button ui/fullscreen-button]
+      }]))
 
 (reg/register {:kind  :log
                :title "Log"

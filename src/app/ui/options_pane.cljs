@@ -113,8 +113,8 @@
         doc-options (rsubs [::subs/doc-options])
         ]
     (if editing?
-      [ui/editor-pane item ^{:key :opts-e} [content editing? doc-options]]
-      [ui/viewer-pane item ^{:key :opts-v} [content editing? doc-options] nil]
+      [ui/editor-pane item {:body ^{:key :opts-e} [content editing? doc-options]}]
+      [ui/viewer-pane item {:body ^{:key :opts-v} [content editing? doc-options]}]
       )))
 
 (reg/register {:kind  :options

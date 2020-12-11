@@ -30,16 +30,15 @@
               }
         ]
     [ui/viewer-pane item
-     (let [home "https://github.com/milelo/yetipad-app"
-           app "https://yetipad.mikelongworth.uk"
-           ]
-       [table [{:title "Home-page" :content [:a {:href home} home]}
-               {:title "App: new document" :content [:a {:href app} app]}
-               {:title "Author" :content "Mike Longworth"}
-               ]])
-     nil
-     {:buttons [read-log-button ui/fullscreen-button]}
-     ]))
+     {:body    (let [home "https://github.com/milelo/yetipad-app"
+                     app "https://yetipad.mikelongworth.uk"
+                     ]
+                 [table [{:title "Home-page" :content [:a {:href home} home]}
+                         {:title "App: new document" :content [:a {:href app} app]}
+                         {:title "Author" :content "Mike Longworth"}
+                         ]])
+      :buttons [read-log-button ui/fullscreen-button]
+      }]))
 
 (reg/register {:kind  :about
                :title "About"

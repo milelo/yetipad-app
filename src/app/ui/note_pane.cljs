@@ -28,9 +28,9 @@
 
 (defn note-viewer [{:keys [id] :as item}]
   [ui/viewer-pane item
-   ^{:key :cont} [content-pane item]
-   ^{:key :tags} [tag-viewer id]
-   ])
+   {:body   ^{:key :cont} [content-pane item]
+    :footer ^{:key :tags} [tag-viewer id]
+    }])
 
 (defn title-editor [{:keys [id title]}]
   (let [new-title* (atom title)]
@@ -52,13 +52,12 @@
                    )})]))
 
 (defn note-editor [{:keys [id] :as item}]
-  [ui/editor-pane item
-   [:<>
-    ^{:key :title-e} [title-editor item]
-    ^{:key :cont-e} [error-boundary ::note-editor
-                     [content-editor item]]
-    ^{:key :tags-e} [:div {:style {:margin-top 5}} [tag-editor id]]]
-   ])
+  [ui/editor-pane item {:body [:<>
+                               ^{:key :title-e} [title-editor item]
+                               ^{:key :cont-e} [error-boundary ::note-editor
+                                                [content-editor item]]
+                               ^{:key :tags-e} [:div {:style {:margin-top 5}} [tag-editor id]]
+                               ]}])
 
 (defn note-pane [{:keys [item]}]
   (if (rsubs [::subs/editing? (:id item)])

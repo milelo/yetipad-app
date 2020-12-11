@@ -100,7 +100,7 @@
                               }}
      (show-empty-title title)]]])
 
-(defn- viewer-fullscreen [{:keys [id] :as item} content footer]
+(defn- viewer-fullscreen [{:keys [id] :as item} body footer]
   [:> Dialog {:full-screen        true
               :open               (boolean (get-in @item-state* [id :open]))
               :on-escape-key-down (fn [e]
@@ -131,7 +131,7 @@
                    }}
      [:> Paper {:style {:padding 10}}
 
-      [error-boundary ::viewer-content content]
+      [error-boundary ::viewer-content body]
       ]]
     [:div {:style {:padding    10
                    :border-top "solid 1px LightGrey"
@@ -139,7 +139,7 @@
      [error-boundary ::viewer-footer footer]
      ]]])
 
-(defn- viewer-inline [{:keys [id] :as item} content footer buttons]
+(defn- viewer-inline [{:keys [id] :as item} body footer buttons]
   [:div (theme ::theme/pane)
    [:div (theme ::theme/pane-buttons)
     (for-all [button buttons]
@@ -148,21 +148,18 @@
    [:div
     [:> Paper {:style {:padding "0 10px 10px 10px"}}
      [title-bar item]
-     [error-boundary ::viewer-content content]
+     [error-boundary ::viewer-content body]
      (when footer [:div {:style {:margin-top 4}} footer])
      ]]])
 
 (defn viewer-pane
-  ([item content footer]
-   (viewer-pane item content footer {:buttons [edit-button
-                                               fullscreen-button
-                                               ]}))
-  ([{:keys [trashed] :as item} content footer {:keys [buttons]}]
+  ([{:keys [trashed] :as item} {:keys [body footer buttons]}]
    [:<>
-    [viewer-inline item content footer (if trashed
-                                         [delete-permanent-button restore-button inspect-button close-button close-other-button]
-                                         (conj buttons inspect-button close-button close-other-button))]
-    [viewer-fullscreen item content footer]
+    [viewer-inline item body footer (concat (if trashed
+                                              [delete-permanent-button restore-button]
+                                              (or buttons [edit-button fullscreen-button])
+                                              ) [inspect-button close-button close-other-button])]
+    [viewer-fullscreen item body footer]
     ]))
 
 (defn accept-edit-button [id]
@@ -171,7 +168,7 @@
 (defn cancel-edit-button [id]
   [item-button cancel-edit-icon "cancel edit" #(dispatch! [::events/cancel-edit id false])])
 
-(defn editor-pane [{:keys [id] :as item} content & [{:keys [buttons]}]]
+(defn editor-pane [{:keys [id] :as item} {:keys [body buttons]}]
   [:div (theme ::theme/pane)
    [:div (theme ::theme/pane-buttons)
     (for-all [button (conj (vec (concat [accept-edit-button cancel-edit-button] buttons))
@@ -180,6 +177,6 @@
     ]
    [:> Paper {:style {:padding "0 10px 10px 10px"}}
     [title-bar item]
-    [error-boundary ::editor-content content]
+    [error-boundary ::editor-content body]
     ]])
 
