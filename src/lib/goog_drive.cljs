@@ -14,21 +14,6 @@
 (def ydn-mime "application/vnd.google.drive.ext-type.ydn")
 (def text-mime "text/plain")
 
-(def yetipad-credentials
-  ;This is only valid from specified domains:
-  ;https://console.developers.google.com/apis/credentials?project=yetipad
-  {
-   :apiKey        "AIzaSyBkHq4UU3q_TBPe80MteDpD1ar28tj_Jjg"
-   :clientId      "582900055519-d660gmj115ds3se0hm8l6t773cdledr7.apps.googleusercontent.com",
-   :discoveryDocs ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"]
-   ;scope see: https://developers.google.com/drive/api/v3/about-auth
-   ;https://developers.google.com/drive/api/v3/about-auth#migrate_an_existing_app_to_a_recommended_scope
-   ;https://www.googleapis.com/auth/drive.file - can be used with google file-picker
-   ;https://developers.google.com/drive/api/v3/picker
-   ;https://developers.google.com/drive/api/v3/appdata
-   :scope         "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file"
-   })
-
 (defn read-string [s]
   (try
     (reader/read-string s)
@@ -222,13 +207,13 @@
     (when (-> auth2 .-isSignedIn .get)
       (.signOut auth2))))
 
-(defn init-client! [signed-in-listener]
+(defn init-client! [credentials signed-in-listener]
   (go
     (info log "init-client!")
     (let [status (<? (<thenable (js/gapi.client.init
                                   (clj->js (if :popup
-                                             yetipad-credentials
-                                             (merge yetipad-credentials
+                                             credentials
+                                             (merge credentials
                                                     ;redirect
                                                     {:ux_mode      "redirect"
                                                      ;https://developers.google.com/identity/protocols/oauth2/openid-connect#setredirecturi
@@ -255,6 +240,6 @@
       )
     nil))
 
-(defn load-client! [signed-in-listener]
-  (js/gapi.load "client:auth2:picker" #(init-client! signed-in-listener)) ;':' separator
+(defn load-client! [credentials signed-in-listener]
+  (js/gapi.load "client:auth2:picker" #(init-client! credentials signed-in-listener)) ;':' separator
   )

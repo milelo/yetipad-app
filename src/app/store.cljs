@@ -11,6 +11,7 @@
     [clojure.data :refer [diff]]
     [app.ui.utils :as ui-utils]
     [clojure.string :as str]
+    [app.credentials]
     ))
 
 (def log (log/logger 'app.store))
@@ -523,7 +524,8 @@
 (defn load-client [signed-in-listener]
   (reset! signed-in?* false)
   (signed-in-listener false)
-  (drive/load-client! (fn [signed-in?]
+  (drive/load-client! app.credentials/yetipad-credentials
+                      (fn [signed-in?]
                         (reset! signed-in?* signed-in?)
                         (info log :signed-in? signed-in?)
                         (go
