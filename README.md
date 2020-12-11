@@ -32,7 +32,8 @@ pop-ups** to see the google-drive authentication window.
 Note, this is the current release build of the project that is in active development without any formal testing. I will
 maintain compatibility with saved content.
 
-Browser | Desktop issues | Mobile issues -|:-:|:-:
+Browser | Desktop issues | Mobile issues
+-|:-:|:-:
 Chrome | ok | ok Edge | ok | -
 *Firefox* | ok | authentication fails
 *Safari* | authentication fails | authentication fails
@@ -174,15 +175,15 @@ node ./build-service-worker.js
 * To enable the App to access google Drive the server and url need to be white-listed with its google account. You could generate your own app-id and google drive credentials for your domain and update the app however the app won't then recognise documents created with its current app id. To support development http://localhost:8281/ and http://localhost:8000/ are white-listed. https://console.developers.google.com/apis/dashboard.
 
 [Homebrew package manager]: https://brew.sh/
-[Slate]: (https://docs.slatejs.org/)
-[Tiddlywiki]: (https://tiddlywiki.com/)
-[deps.edn]: (https://clojure.org/reference/deps_and_cli)
-[Cursive]: (https://cursive-ide.com/)
-[Calva plug-in]: (https://calva.io/)
-[choco]: (https://chocolatey.org/)
-[IntelliJ IDEA]: (https://www.jetbrains.com/idea/download/)
-[material-ui]: (https://material-ui.com/)
-[shadow-cljs]: (https://shadow-cljs.github.io/docs/UsersGuide.html#_introduction)
+[Slate]: https://docs.slatejs.org/
+[Tiddlywiki]: https://tiddlywiki.com/
+[deps.edn]: https://clojure.org/reference/deps_and_cli
+[Cursive]: https://cursive-ide.com/
+[Calva plug-in]: https://calva.io/
+[choco]: https://chocolatey.org/
+[IntelliJ IDEA]: https://www.jetbrains.com/idea/download/
+[material-ui]: https://material-ui.com/
+[shadow-cljs]: https://shadow-cljs.github.io/docs/UsersGuide.html#_introduction
 
 
 
