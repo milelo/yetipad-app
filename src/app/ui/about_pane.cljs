@@ -20,7 +20,8 @@
         )]]]])
 
 
-(defn read-log-button []
+(defn update-app-button []
+  ;todo this doesn't work on mobile
   [ui/item-button update-icon "update-app" #(js/window.location.reload true)])
 
 (defn about-pane [_context]
@@ -37,7 +38,7 @@
                          {:title "App: new document" :content [:a {:href app} app]}
                          {:title "Author" :content "Mike Longworth"}
                          ]])
-      :buttons [read-log-button ui/fullscreen-button]
+      :buttons [update-app-button ui/fullscreen-button]
       }]))
 
 (reg/register {:kind  :about

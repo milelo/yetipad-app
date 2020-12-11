@@ -171,9 +171,7 @@ node ./build-service-worker.js
 ~~~
 
 * Copy the folder `./yetipad/` and its files to your server.
-* To enable the App to access google Drive the server and url need to be white-listed with its google account. You could generate your own app-id and google drive credentials for your domain and update the app however the app won't then recognise documents created with its current app id. To support development http://localhost:8281/ and http://localhost:8000/ are white-listed.
-
-https://console.developers.google.com/apis/dashboard.
+* To enable the App to access google Drive the server and url need to be white-listed with its google account. You could generate your own app-id and google drive credentials for your domain and update the app however the app won't then recognise documents created with its current app id. To support development http://localhost:8281/ and http://localhost:8000/ are white-listed. https://console.developers.google.com/apis/dashboard.
 
 [Homebrew package manager]: https://brew.sh/
 [Slate]: (https://docs.slatejs.org/)
