@@ -146,7 +146,7 @@
     ))
 
 (defn <trash-file [file-id]
-  (trace :<trash-file file-id)
+  (trace log :<trash-file file-id)
   ;https://developers.google.com/drive/api/v3/reference/files/update
   ;https://developers.google.com/drive/api/v3/reference/files#resource-representations
   (let [params {:fileId  file-id
@@ -161,7 +161,7 @@
   modifiedTime is updated.
   "
   [file-id property-map]
-  (trace :<add-properties file-id property-map)
+  (trace log :<add-properties file-id property-map)
   ;https://developers.google.com/drive/api/v3/properties
   (let [params {:fileId        file-id
                 :appProperties property-map
