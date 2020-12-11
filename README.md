@@ -19,7 +19,7 @@ Many years ago I used [Tiddlywiki] for keeping notes. For all its limitations it
 1. A dynamically constructed hierarchical-menu for the content items (like notes) constructed from content tags. An item
    can have multiple parents.
 1. A ClojureScript software and tooling stack. - my favourite language.
-1. Easy to add specialised viewers, editors and features.
+1. Fairly easy to add specialised viewers, editors and features.
 
 ## Usage
 
@@ -158,12 +158,6 @@ npm run watch
 
 ~~~
 npm run release
-~~~
-
-* Generate the service-worker to cache offline files:
-
-~~~
-node .\build-service-worker.js
 ~~~
 
 * Build the service-worker to cache dependencies for off-line use:
