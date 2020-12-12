@@ -273,8 +273,9 @@
    (fn [path]
      ;true stops page reload
      ;we want the page to reload if the back button hits an external page
-     (info log :path-exists? path)
-     true
+     (let [exists (not= path "/")]
+       (info log 'path-exists? path exists)
+       exists)
      )})
 
 ;only run on initial load.
@@ -330,7 +331,6 @@
 (reg-event-db
   ::sync-drive-file
   (fn-traced [{doc :doc :as db} [_ updated-doc]]
-    (trace log "sync-drive-file:")
     (dispatch! [::online-status :online])
     (if (store/signed-in?)
       (store/sync-drive-file! updated-doc
@@ -378,7 +378,6 @@
 (reg-event-db
   ::sync-doc-index
   (fn-traced [db _]
-    (trace log ::sync-doc-index)
     (store/doc-status-index! {:on-result (fn [status-index]
                                            (dispatch! [::set-doc-status-index- status-index])
                                            )})
@@ -405,7 +404,6 @@
 (reg-event-db
   ::signed-in
   (fn-traced [{doc :doc :as db} [_ signed-in?]]
-    (trace log ::signed-in signed-in?)
     (when signed-in?
       (store/trash-files-pending! {:on-complete #(dispatch! [::sync-drive-file doc])})
       )
