@@ -482,7 +482,7 @@
   (fn-traced [{:keys [doc open-items] :as db} [_ updated-doc old-doc status-message]]
     (let [doc-change-during-sync? (and old-doc (not (identical? doc old-doc)))]
       (when doc-change-during-sync?
-        (js/console.error "Doc changed during file-synch")
+        (warn log "Doc changed during file-synch")
         (dispatch! [::set-app-status status-message :error])
         )
       (when (and status-message (not doc-change-during-sync?))
