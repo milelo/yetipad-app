@@ -3,6 +3,7 @@
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.utils :as utils :refer [js->cljs]]
     [cljs.reader :as reader]
+    [lib.debug :as debug :refer [we wd wee expose]]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go go-loop]]
     [lib.asyncutils :refer [put-last!] :refer-macros [<? go?]]
     [cljs.pprint :refer [pprint]]
@@ -24,11 +25,11 @@
       )))
 
 (defn <thenable [thenable return-type & [{:keys [default] :as opt}]]
-  (when opt (trace log :thenable-opt opt))
+  (when opt (trace log 'thenable-opt opt))
   (let [c (chan)]
     (.then thenable
            (fn [response]
-             (trace log :thenable-response return-type)
+             (trace log 'thenable-response return-type)
              ;(js/console.log response)
              (let [response (case return-type
                               :body-edn (-> response .-body read-string)
@@ -40,12 +41,12 @@
                (put-last! c (or response default false)))
              )
            (fn [error-response]
-             (trace log :thenable-error return-type)
+             (trace log 'thenable-error return-type)
              (let [error (some-> error-response .-result .-error js->cljs)
                    ; error (some-> error-response .-result .-error .-errors (aget 0) js->cljs)
                    error (or error (js->cljs error-response))
                    ]
-               (warn log :error-response \newline (with-out-str (pprint error)))
+               (warn log 'error-response \newline (with-out-str (pprint error)))
                ;don't use ExceptionInfo! re-frame doesn't recognise it
                (let [e (js/Error (pr-str error))]
                  (set! (.-data e) error)
@@ -54,7 +55,7 @@
     c))
 
 (defn <create-file [{:keys [file-name mime-type parents app-data? properties]}]
-  (trace log :<create-file file-name)
+  (trace log '<create-file file-name)
   (let [metadata {
                   :name          file-name                  ;"yetipad.ydn"
                   :mimeType      (or mime-type text-mime)   ;ydn-mime
@@ -69,7 +70,7 @@
     ))
 
 (defn <list-app-data-files [{:keys [query]}]
-  (trace log :<list-app-data-files query)
+  (trace log '<list-app-data-files query)
   ;https://developers.google.com/drive/api/v3/appdata
   (let [params {:spaces "appDataFolder"
                 :fields "files(id, name, modifiedTime, appProperties)"
@@ -80,7 +81,7 @@
     ))
 
 (defn <list-app-files [{:keys [query fields]}]
-  (trace log :<list-app-data-files query)
+  (trace log '<list-app-data-files query)
   ;https://developers.google.com/drive/api/v3/appdata
   (let [params {
                 ;https://developers.google.com/drive/api/v3/reference/files
@@ -95,7 +96,7 @@
 (defn <write-file-content
   "Write or overwrite the content of an existing file."
   [file-id content & [{:keys [mime-type content-type]}]]
-  (trace log :<write-file-content file-id)
+  (trace log '<write-file-content file-id)
   (assert file-id)
   (let [body (case content-type
                :edn (pr-str content)
@@ -114,7 +115,7 @@
     ))
 
 (defn <get-file-content [file-id & [options]]
-  (trace log :<get-file-content file-id)
+  (trace log '<get-file-content file-id)
   (assert file-id)
   ;https://developers.google.com/drive/api/v3/manage-downloads
   (let [params {:fileId file-id
@@ -126,7 +127,7 @@
 (defn <get-file-meta
   ;warning: on error, doesn't respond
   [file-id & [{:keys [fields]}]]
-  (trace log :<get-file-meta file-id)
+  (trace log '<get-file-meta file-id)
   (assert file-id)
   (let [params {:fileId file-id
                 :fields (or (and (vector? fields) (str/join \, (map name fields)))
@@ -146,7 +147,7 @@
     ))
 
 (defn <trash-file [file-id]
-  (trace log :<trash-file file-id)
+  (trace log '<trash-file file-id)
   ;https://developers.google.com/drive/api/v3/reference/files/update
   ;https://developers.google.com/drive/api/v3/reference/files#resource-representations
   (let [params {:fileId  file-id
@@ -161,7 +162,7 @@
   modifiedTime is updated.
   "
   [file-id property-map]
-  (trace log :<add-properties file-id property-map)
+  (trace log '<add-properties file-id property-map)
   ;https://developers.google.com/drive/api/v3/properties
   (let [params {:fileId        file-id
                 :appProperties property-map
@@ -207,9 +208,14 @@
     (when (-> auth2 .-isSignedIn .get)
       (.signOut auth2))))
 
+(defn basic-user-profile []
+  (let [google-auth (js/gapi.auth2.getAuthInstance)]
+    (-> google-auth .-currentUser .get .getBasicProfile)))
+
 (defn init-client! [credentials signed-in-listener]
   (go
-    (info log "init-client!")
+    (info log 'init-client!)
+    ;https://github.com/google/google-api-javascript-client/blob/master/docs/reference.md
     (let [status (<? (<thenable (js/gapi.client.init
                                   (clj->js (if :popup
                                              credentials
@@ -224,19 +230,26 @@
           ]
       (if status
         (info log 'init-client! \newline (with-out-str (pprint status)))
-        (info log 'init-client! :ok))
+        (info log 'init-client! 'ok))
       (if (:error status)
         (signed-in-listener false)
-        (let [auth2 (js/gapi.auth2.getAuthInstance)
-              signed-in? (-> auth2 .-isSignedIn .get)
+        (let [google-auth (js/gapi.auth2.getAuthInstance)
+              signed-in? (-> google-auth .-isSignedIn .get)
+              auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
               ]
-          (-> auth2 .-isSignedIn (.listen signed-in-listener))
+          ;(debug log 'users-name (.getName (basic-user-profile)))
+          (-> google-auth .-isSignedIn (.listen signed-in-listener))
           (signed-in-listener signed-in?)
           ;(.signOut auth2)
           (when-not signed-in?
-            (trace log :init-client! :sign-in)
-            (.signIn auth2)
-            )))
+            (trace log 'init-client! 'sign-in)
+            (.signIn google-auth)
+            )
+          (info log 'access-token-expiry (-> auth-resp :expires_at utils/format-ms))
+          ;re-initialise before access token expiry (+1h)
+          (let [refresh-in (* (:expires_in auth-resp) 800)]
+            (info log 'refresh-access-token-at= (utils/format-ms (+ (utils/time-now-ms) refresh-in)))
+            (js/setTimeout #(init-client! credentials signed-in-listener) refresh-in))))
       )
     nil))
 

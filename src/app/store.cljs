@@ -207,7 +207,7 @@
                                           (assoc doc-changes id {:source-change change}))
                                         ) doc-changes changes)))
            ]
-    (trace log :add-doc-changes! (get-in index [doc-id :doc-changes]))
+    (trace log 'add-doc-changes! (get-in index [doc-id :doc-changes]))
     (<? (<write-local-index index))
     ) nil)
 
@@ -285,7 +285,7 @@
   ;root-change is a local copy of the file change time created when the local change-time is updated.
   ;Assume file change doesn't match doc root-change ie file has been changed and requires synch.
   [doc-changes {file-change :change :as drive-doc} {:keys [change] :as app-doc}]
-  (trace log :sync-doc-content)
+  (trace log 'sync-doc-content)
   ;(prn-diff :drive-doc-only drive-doc :app-doc-only app-doc)
   (assert (not= file-change change))
   (let [ks (distinct (concat (keys drive-doc) (keys app-doc)))
@@ -305,7 +305,7 @@
                                              ;(entry-change-status file-change change root-change)
                                              (doc-item-change-status file-change change source-change)
                                              )
-                                    _ (when-not (= status :in-sync) (trace log :change-status= status k))
+                                    _ (when-not (= status :in-sync) (trace log 'change-status= status k))
                                     ]
                               e (case status
                                   :in-sync [entry]
@@ -527,7 +527,7 @@
   (drive/load-client! app.credentials/yetipad-credentials
                       (fn [signed-in?]
                         (reset! signed-in?* signed-in?)
-                        (info log :signed-in? signed-in?)
+                        (info log 'signed-in? signed-in?)
                         (go
                           (when (and signed-in? (not @drive-file-id*))
                             ;Drive app data file not currently used
