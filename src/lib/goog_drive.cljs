@@ -215,7 +215,7 @@
 (defn start-token-refresher []
   (let [google-auth (js/gapi.auth2.getAuthInstance)
         auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
-        user-id (-> google-auth .-currentUser .get .getId)
+        access-token (:access_token auth-resp)
         refresh-in (* (:expires_in auth-resp) 800)
         ;refresh-in 60000
         ]
@@ -223,9 +223,9 @@
     (info log 'refresh-access-token-at (utils/format-ms (+ (utils/time-now-ms) refresh-in)))
     (js/setTimeout (fn []
                      (let [signed-in? (-> google-auth .-isSignedIn .get)
-                           current-user-id (-> google-auth .-currentUser .get .getId)
+                           current-access-token (-> google-auth .-currentUser .get .getAuthResponse .-access_token)
                            ]
-                       (when (and signed-in? (= user-id current-user-id))
+                       (when (and signed-in? (= access-token current-access-token))
                          (-> google-auth .-currentUser .get .reloadAuthResponse)
                          (start-token-refresher)
                          ))) refresh-in)
