@@ -212,6 +212,26 @@
   (let [google-auth (js/gapi.auth2.getAuthInstance)]
     (-> google-auth .-currentUser .get .getBasicProfile)))
 
+(defn start-token-refresher []
+  (let [google-auth (js/gapi.auth2.getAuthInstance)
+        auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
+        user-id (-> google-auth .-currentUser .get .getId)
+        refresh-in (* (:expires_in auth-resp) 800)
+        ;refresh-in 60000
+        ]
+    (info log 'access-token-expiry (-> auth-resp :expires_at utils/format-ms))
+    (info log 'refresh-access-token-at (utils/format-ms (+ (utils/time-now-ms) refresh-in)))
+    (js/setTimeout (fn []
+                     (let [signed-in? (-> google-auth .-isSignedIn .get)
+                           current-user-id (-> google-auth .-currentUser .get .getId)
+                           ]
+                       (when (and signed-in? (= user-id current-user-id))
+                         (-> google-auth .-currentUser .get .reloadAuthResponse)
+                         (start-token-refresher)
+                         ))) refresh-in)
+    ))
+
+
 (defn init-client! [credentials signed-in-listener]
   (go
     (info log 'init-client!)
@@ -235,7 +255,9 @@
         (signed-in-listener false)
         (let [google-auth (js/gapi.auth2.getAuthInstance)
               signed-in? (-> google-auth .-isSignedIn .get)
-              auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
+              signed-in-listener (fn [signed-in?]
+                                   (when signed-in? (start-token-refresher))
+                                   (signed-in-listener signed-in?))
               ]
           ;(debug log 'users-name (.getName (basic-user-profile)))
           (-> google-auth .-isSignedIn (.listen signed-in-listener))
@@ -245,13 +267,7 @@
             (trace log 'init-client! 'sign-in)
             (.signIn google-auth)
             )
-          (info log 'access-token-expiry (-> auth-resp :expires_at utils/format-ms))
-          ;re-initialise before access token expiry (+1h)
-          (let [refresh-in (* (:expires_in auth-resp) 800)]
-            (info log 'refresh-access-token-at= (utils/format-ms (+ (utils/time-now-ms) refresh-in)))
-            (js/setTimeout #(init-client! credentials signed-in-listener) refresh-in))))
-      )
-    nil))
+          )))) nil)
 
 (defn load-client! [credentials signed-in-listener]
   (js/gapi.load "client:auth2:picker" #(init-client! credentials signed-in-listener)) ;':' separator
