@@ -14,7 +14,7 @@
                })
 
 (defn register [{:keys [kind id] :as data}]
-  (assert (or id kind))
+  (assert (and (or id kind) (not (and id kind))))
   (swap! registry* assoc (or id kind) data))
 
 (defn rget
