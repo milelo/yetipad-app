@@ -55,7 +55,11 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
     (set! (.-data e) error)
     e))
 
-(defn <ensure-authorised [error]
+(defn <ensure-authorised
+  "Ensure the access-token hasn't expired, if it has refresh it and re-issue the request.
+  This is necessary for mobile platforms that appear to put the app to sleep so it can't do a periodic
+  token refresh."
+  [error]
   (let [<c (chan)]
     (cond
       (= (:code error) 401) (let [_ (trace log '<ensure-authorised 'check-token)
@@ -306,7 +310,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                                 (fn [response]
                                   (let [auth-resp (js->cljs response)]
                                     ;(debug log 'refresh-auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
-                                    (info log 'start-token-refresh 'refresh-token-expiry (-> auth-resp :expires_at utils/format-ms))
+                                    (info log 'start-token-refresh 'refreshed-token-expiry (-> auth-resp :expires_at utils/format-ms))
                                     ))
                                 (fn [error-response]
                                   (let [error (js->cljs error-response)]
