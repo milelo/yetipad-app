@@ -64,13 +64,12 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                                   now (utils/time-now-ms)
                                   token-expired? (> now (:expires_at auth-resp))
                                   ]
-                              (debug log 'auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
-                              (debug log 'access-token-expired token-expired?
+                              #_(debug log 'auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
+                              #_(debug log 'access-token-expired token-expired?
                                      (some-> auth-resp :expires_at utils/format-ms)
                                      'now now (-> now utils/format-ms))
                               (if token-expired?
                                 (go
-                                  ;once expired refreshing doesn't give a response.
                                   (trace log '<ensure-authorised 'reload-auth-response)
                                   (.then (.reloadAuthResponse google-user)
                                          (fn [response]
