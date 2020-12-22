@@ -52,7 +52,7 @@
       (.call method js/console "cause: " cause))
     ))
 
-(defonce <logger (chan (async/sliding-buffer 20)))
+(defonce <logger (chan (async/sliding-buffer 30)))
 
 (defn- trace-to-channel! [level package time args]
   (put! <logger {:package package

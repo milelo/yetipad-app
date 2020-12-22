@@ -117,7 +117,7 @@
       [ui/viewer-pane item {:body ^{:key :opts-v} [content editing? doc-options]}]
       )))
 
-(reg/register {:kind  :options
+(reg/register {:id    :options
                :title "Settings"
                :icon  options-icon
                :pane  options-pane

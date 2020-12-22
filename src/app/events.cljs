@@ -8,7 +8,7 @@
     [day8.re-frame.tracing :refer-macros [fn-traced defn-traced]]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd]]
-    [lib.utils :as utils :refer [iso-time->date-time find-next-item-num find-next-item-id]]
+    [lib.utils :as utils :refer [time-now-ms iso-time->date-time find-next-item-num find-next-item-id]]
     [lib.goog-drive :as drive]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
     ;exceptions are reported by handlers
@@ -208,6 +208,18 @@
     db))
 
 (reg-event-db
+  ::debug-file-content
+  (fn-traced [db _]
+    (go
+      (let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
+            file-id "1ZYqrs1QLvoB5P4GhV8Q9Hz0FsyDDPSIR"     ;"kgrsc300.ydn"
+            response (<? (drive/<get-file-content file-id))
+            ]
+        (debug log ::debug-file-content response)
+        ))
+    db))
+
+(reg-event-db
   ::debug-add-properties
   (fn-traced [db _]
     (go
@@ -225,9 +237,6 @@
 ;=============================================================================
 ;----------app-status----------------
 
-(defn current-time-ms []
-  (-> (utils/time-now) utils/date-time->ms))
-
 (def min-status-display-time-ms 5000)
 
 (rc/clear-global-interceptor)                               ;seems to be required. Re-reg bug?
@@ -235,11 +244,11 @@
   (rc/->interceptor
     :id ::clear-app-status-on-event
     :before (fn [context]
-              (trace log :before (get-in context [:coeffects :event 0]))
+              (trace log 'before (get-in context [:coeffects :event 0]))
               context)
     :after (fn [{{{{ms :time-ms} :status} :db} :coeffects :as context}]
-             (trace log :after (get-in context [:coeffects :event 0]))
-             (when (and ms (> (current-time-ms) (+ ms min-status-display-time-ms)))
+             (trace log 'after (get-in context [:coeffects :event 0]))
+             (when (and ms (> (time-now-ms) (+ ms min-status-display-time-ms)))
                (dispatch! [::clear-app-status]))
              context)))
 
@@ -251,7 +260,7 @@
       (assoc db :status (assoc (if (map? status)
                                  (let [{:keys [type]} status] (assoc status :type (or type default-type)))
                                  {:text (str status) :type (or type default-type)})
-                          :time-ms (current-time-ms))))))
+                          :time-ms (time-now-ms))))))
 
 (reg-event-db
   ::clear-app-status
@@ -420,8 +429,10 @@
   "return only item (ids) that are present in the document"
   [doc items]
   (if (not-empty items)
-    (let [valid-set (into #{} (keys doc))]
-      (filter #(or (keyword? %) (valid-set %)) items))
+    (let [valid-ids (set (keys doc))
+          valid-keywords (set (reg/singleton-ids))
+          ]
+      (filter #(or (valid-keywords %) (valid-ids %)) items))
     ()))
 
 (defn-traced read-doc-by-id [{{old-doc-id :doc-id :as doc} :doc :as db} [_ doc-id {:keys [open-items] :as app-state}]]

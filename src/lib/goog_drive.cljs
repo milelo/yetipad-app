@@ -5,12 +5,15 @@
     [cljs.reader :as reader]
     [lib.debug :as debug :refer [we wd wee expose]]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go go-loop]]
-    [lib.asyncutils :refer [put-last!] :refer-macros [<? go?]]
+    [lib.asyncutils :refer [put-last!] :refer-macros [<? go? go-let go-try]]
     [cljs.pprint :refer [pprint]]
     [clojure.string :as str]
     ))
 
 (def log (log/logger 'app.goog-drive))
+
+(defn pprints [o]
+  (str \newline (with-out-str (pprint o))))
 
 (def ydn-mime "application/vnd.google.drive.ext-type.ydn")
 (def text-mime "text/plain")
@@ -24,10 +27,74 @@
       e
       )))
 
+(defn simulate-error [type]
+  ;server errors to support testing.
+  (get {:safari-auth-fail {:errors  [{:domain       "usageLimits",
+                                      :reason       "ipRefererBlocked",
+                                      :message      "The referrer https://mikelongworth.co.uk does not match the referrer restrictions configured on your API key. Please use the API Console to update your key restrictions.",
+                                      :extendedHelp "https://console.developers.google.com/apis/credentials?project=582900055519"}],
+                           :code    403,
+                           :message "The referrer https://mikelongworth.co.uk does not match the referrer restrictions configured on your API key. Please use the API Console to update your key restrictions."
+                           }
+        :token-expired    {:errors  [{:domain       "global",
+                                      :reason       "authError",
+                                      :message      "Invalid Credentials",
+                                      :locationType "header",
+                                      :location     "Authorization"}],
+                           :code    401,
+                           :message "Invalid Credentials"
+                           }
+        } type))
+#_"
+o User can sign-out any time
+o Token sometimes fails to refresh on mobile (because app is suspended?)
+"
+
+(defn js-error [error]
+  (let [e (js/Error (pr-str error))]
+    (set! (.-data e) error)
+    e))
+
+(defn <ensure-authorised [error]
+  (let [<c (chan)]
+    (cond
+      (= (:code error) 401) (let [_ (trace log '<ensure-authorised 'check-token)
+                                  google-user (-> (js/gapi.auth2.getAuthInstance) .-currentUser .get)
+                                  auth-resp (-> google-user .getAuthResponse js->cljs)
+                                  now (utils/time-now-ms)
+                                  token-expired? (> now (:expires_at auth-resp))
+                                  ]
+                              (debug log 'auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
+                              (debug log 'access-token-expired token-expired?
+                                     (some-> auth-resp :expires_at utils/format-ms)
+                                     'now now (-> now utils/format-ms))
+                              (if token-expired?
+                                (go
+                                  ;once expired refreshing doesn't give a response.
+                                  (trace log '<ensure-authorised 'reload-auth-response)
+                                  (.then (.reloadAuthResponse google-user)
+                                         (fn [response]
+                                           (trace log '<ensure-authorised 'response)
+                                           (let [auth-resp (js->cljs response)]
+                                             ;(debug log 'refresh-auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
+                                             (info log 'refresh-token-expiry (-> auth-resp :expires_at utils/format-ms))
+                                             (put-last! <c true)))
+                                         (fn [error-response]
+                                           (trace log '<ensure-authorised 'error-response)
+                                           (let [error (js->cljs error-response)]
+                                             (warn log 'refresh-error-response (pprints error))
+                                             (put-last! <c (js-error error))
+                                             ))))
+                                (put-last! <c false)
+                                ))
+      :else (put-last! <c false)
+      ) <c))
+
 (defn <thenable [thenable return-type & [{:keys [default] :as opt}]]
+  (assert (fn? thenable))
   (when opt (trace log 'thenable-opt opt))
-  (let [c (chan)]
-    (.then thenable
+  (let [<c (chan)]
+    (.then (thenable)
            (fn [response]
              (trace log 'thenable-response return-type)
              ;(js/console.log response)
@@ -38,21 +105,28 @@
                               :raw response
                               )
                    ]
-               (put-last! c (or response default false)))
+               (put-last! <c (or response default false)))
              )
            (fn [error-response]
-             (trace log 'thenable-error return-type)
-             (let [error (some-> error-response .-result .-error js->cljs)
-                   ; error (some-> error-response .-result .-error .-errors (aget 0) js->cljs)
-                   error (or error (js->cljs error-response))
-                   ]
-               (warn log 'error-response \newline (with-out-str (pprint error)))
-               ;don't use ExceptionInfo! re-frame doesn't recognise it
-               (let [e (js/Error (pr-str error))]
-                 (set! (.-data e) error)
-                 (put-last! c e))
-               )))
-    c))
+             (go-try
+               (trace log 'thenable-error return-type)
+               (let [error (some-> error-response .-result .-error js->cljs)
+                     error (or error (js->cljs error-response))
+                     ]
+                 (warn log 'error-response (pprints error))
+                 ;don't use ExceptionInfo! re-frame doesn't recognise it
+                 (if (<? (<ensure-authorised error))
+                   (let [_ (trace log '<thenable 'authorised)
+                         response (<! (<thenable thenable return-type opt))
+                         ]
+                     (trace log '<thenable 'retry #(pprints response))
+                     (put-last! <c response))
+                   (do
+                     (trace log '<thenable 'unauthorized-error)
+                     (put-last! <c (js-error error)))
+                   ))
+               (catch :default e (put-last! <c e)))))
+    <c))
 
 (defn <create-file [{:keys [file-name mime-type parents app-data? properties]}]
   (trace log '<create-file file-name)
@@ -66,7 +140,7 @@
                                    app-data? ["appDataFolder"]
                                    )
                   }]
-    (<thenable (js/gapi.client.drive.files.create (clj->js metadata)) :result)
+    (<thenable #(js/gapi.client.drive.files.create (clj->js metadata)) :result)
     ))
 
 (defn <list-app-data-files [{:keys [query]}]
@@ -77,11 +151,11 @@
                 :q      query
                 }]
     ;https://developers.google.com/drive/api/v3/reference/files/list
-    (<thenable (js/gapi.client.drive.files.list (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.list (clj->js params)) :result)
     ))
 
 (defn <list-app-files [{:keys [query fields]}]
-  (trace log '<list-app-data-files query)
+  (trace log '<list-app-files query)
   ;https://developers.google.com/drive/api/v3/appdata
   (let [params {
                 ;https://developers.google.com/drive/api/v3/reference/files
@@ -90,7 +164,7 @@
                 :q      query
                 }]
     ;https://developers.google.com/drive/api/v3/reference/files/list
-    (<thenable (js/gapi.client.drive.files.list (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.list (clj->js params)) :result)
     ))
 
 (defn <write-file-content
@@ -111,7 +185,7 @@
                     :body   body                            ;string | object	The HTTP request body (applies to PUT or POST).
                     }]
     ;https://github.com/google/google-api-javascript-client/blob/master/docs/reference.md
-    (<thenable (js/gapi.client.request (clj->js req-params)) :result)
+    (<thenable #(js/gapi.client.request (clj->js req-params)) :result)
     ))
 
 (defn <get-file-content [file-id & [options]]
@@ -121,7 +195,7 @@
   (let [params {:fileId file-id
                 :alt    "media"
                 }]
-    (<thenable (js/gapi.client.drive.files.get (clj->js params)) :body-edn options)
+    (<thenable #(js/gapi.client.drive.files.get (clj->js params)) :body-edn options)
     ))
 
 (defn <get-file-meta
@@ -134,7 +208,7 @@
                             fields)
                 }]
     ;https://developers.google.com/drive/api/v3/fields-parameter
-    (<thenable (js/gapi.client.drive.files.get (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.get (clj->js params)) :result)
     ))
 
 (defn delete-file
@@ -143,7 +217,7 @@
   [file-id]
   ;https://developers.google.com/drive/api/v3/reference/files/delete
   (let [params {:fileId file-id}]
-    (<thenable (js/gapi.client.drive.files.delete (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.delete (clj->js params)) :result)
     ))
 
 (defn <trash-file [file-id]
@@ -153,7 +227,7 @@
   (let [params {:fileId  file-id
                 :trashed true
                 }]
-    (<thenable (js/gapi.client.drive.files.update (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.update (clj->js params)) :result)
     ))
 
 (defn <add-properties
@@ -168,7 +242,7 @@
                 :appProperties property-map
                 :fields        "appProperties, id, name"
                 }]
-    (<thenable (js/gapi.client.drive.files.update (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.update (clj->js params)) :result)
     ))
 
 (defn <rename-file2 [file-id title]
@@ -177,7 +251,7 @@
   (let [params {:fileId   file-id
                 :resource {:title title}
                 }]
-    (<thenable (js/gapi.client.drive.files.update (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.update (clj->js params)) :result)
     ))
 
 (defn <rename-file [file-id name]
@@ -187,14 +261,14 @@
   (let [params {:fileId file-id
                 :name   name
                 }]
-    (<thenable (js/gapi.client.drive.files.update (clj->js params)) :result)
+    (<thenable #(js/gapi.client.drive.files.update (clj->js params)) :result)
     ))
 
 #_(defn- <watch-file [file-id]
     ;https://developers.google.com/drive/api/v3/push
     ;needs to respond to a url
     (let [params {:fileId file-id}]
-      (<thenable (js/gapi.client.drive.files.watch (clj->js params)))
+      (<thenable #(js/gapi.client.drive.files.watch (clj->js params)))
       ))
 
 (defn sign-in! []
@@ -212,51 +286,64 @@
   (let [google-auth (js/gapi.auth2.getAuthInstance)]
     (-> google-auth .-currentUser .get .getBasicProfile)))
 
-(defn start-token-refresher []
+(defn start-token-refresh []
   (let [google-auth (js/gapi.auth2.getAuthInstance)
         auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
         access-token (:access_token auth-resp)
         refresh-in (* (:expires_in auth-resp) 800)
         ;refresh-in 60000
         ]
-    (info log 'access-token-expiry (-> auth-resp :expires_at utils/format-ms))
-    (info log 'refresh-access-token-at (utils/format-ms (+ (utils/time-now-ms) refresh-in)))
+    (info log 'start-token-refresh 'access-token-expiry (-> auth-resp :expires_at utils/format-ms))
+    (info log 'start-token-refresh 'refresh-access-token-at (utils/format-ms (+ (utils/time-now-ms) refresh-in)))
+    ;(take! (<ensure-authorised (simulate-error :token-expired)) #(debug log 'sim-token-refresh %))
     (js/setTimeout (fn []
+                     (trace log 'start-token-refresh 'refreshing)
                      (let [signed-in? (-> google-auth .-isSignedIn .get)
                            current-access-token (-> google-auth .-currentUser .get .getAuthResponse .-access_token)
                            ]
                        (when (and signed-in? (= access-token current-access-token))
-                         (-> google-auth .-currentUser .get .reloadAuthResponse)
-                         (start-token-refresher)
+                         ;Issue https://github.com/google/google-api-javascript-client/issues/232
+                         (.then (-> google-auth .-currentUser .get .reloadAuthResponse)
+                                (fn [response]
+                                  (let [auth-resp (js->cljs response)]
+                                    ;(debug log 'refresh-auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
+                                    (info log 'start-token-refresh 'refresh-token-expiry (-> auth-resp :expires_at utils/format-ms))
+                                    ))
+                                (fn [error-response]
+                                  (let [error (js->cljs error-response)]
+                                    (warn log 'start-token-refresh 'refresh-error-response (pprints error))
+                                    )))
+                         (start-token-refresh)
                          ))) refresh-in)
     ))
-
 
 (defn init-client! [credentials signed-in-listener]
   (go
     (info log 'init-client!)
     ;https://github.com/google/google-api-javascript-client/blob/master/docs/reference.md
-    (let [status (<? (<thenable (js/gapi.client.init
-                                  (clj->js (if :popup
-                                             credentials
-                                             (merge credentials
-                                                    ;redirect
-                                                    {:ux_mode      "redirect"
-                                                     ;https://developers.google.com/identity/protocols/oauth2/openid-connect#setredirecturi
-                                                     :redirect_uri js/window.location.href
-                                                     }
-                                                    )))) :response)
+    (let [status (<? (<thenable #(js/gapi.client.init
+                                   (clj->js (if :popup
+                                              credentials
+                                              (let [redirect_uri js/window.location.href]
+                                                (debug log 'redirect_uri redirect_uri)
+                                                (merge credentials
+                                                       ;redirect
+                                                       {:ux_mode      "redirect"
+                                                        ;https://developers.google.com/identity/protocols/oauth2/openid-connect#setredirecturi
+                                                        :redirect_uri redirect_uri
+                                                        }
+                                                       ))))) :response)
                      (fn [e] (.-data e)))
           ]
       (if status
-        (info log 'init-client! \newline (with-out-str (pprint status)))
+        (info log 'init-client! (pprints status))
         (info log 'init-client! 'ok))
       (if (:error status)
         (signed-in-listener false)
         (let [google-auth (js/gapi.auth2.getAuthInstance)
               signed-in? (-> google-auth .-isSignedIn .get)
               signed-in-listener (fn [signed-in?]
-                                   (when signed-in? (start-token-refresher))
+                                   (when signed-in? (start-token-refresh))
                                    (signed-in-listener signed-in?))
               ]
           ;(debug log 'users-name (.getName (basic-user-profile)))

@@ -2,8 +2,11 @@
   <dictionary name="mail">
     <words>
       <w>chan</w>
+      <w>cljs</w>
       <w>localstore</w>
+      <w>pprints</w>
       <w>rsubs</w>
+      <w>spprint</w>
       <w>synch</w>
       <w>synched</w>
       <w>thenable</w>

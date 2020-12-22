@@ -68,7 +68,7 @@
                           }]
     ))
 
-(reg/register {:kind  :trash
+(reg/register {:id    :trash
                :title "Trash"
                :icon  trash-icon
                :pane  trash-pane

@@ -70,7 +70,7 @@
 
 (def log (log/logger 'app.ui.views))
 
-(def app-version "v 0.0.10")
+(def app-version "v 0.0.20")
 (info log app-version)
 
 (def rsubs (comp deref re-frame/subscribe))
@@ -111,7 +111,6 @@
 
 ;(def theme dark-theme)
 
-(println "===============")
 ;(pprint (-> theme (js->clj :keywordize-keys true) :palette))
 
 (defn index-list-item [icon title on-click]
@@ -333,6 +332,7 @@
          [menu-list-item nil "List app drive files" #(dispatch! [::events/debug-list-app-drive-files])]
          [menu-list-item nil "find-file" #(dispatch! [::events/debug-find-file])]
          [menu-list-item nil "Trash file" #(dispatch! [::events/debug-trash-file])]
+         [menu-list-item nil "FIle content" #(dispatch! [::events/debug-file-content])]
          [menu-list-item nil "Add property" #(dispatch! [::events/debug-add-properties])]
          [menu-list-item nil "Update doc index pane" #(dispatch! [::events/sync-doc-index])]
          [menu-list-item nil "Dump index" #(dispatch! [::events/dump-index])]

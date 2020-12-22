@@ -70,7 +70,7 @@
       :buttons [debug-settings-button read-log-button ui/fullscreen-button]
       }]))
 
-(reg/register {:kind  :log
+(reg/register {:id    :log
                :title "Log"
                :icon  log-icon
                :pane  log-pane

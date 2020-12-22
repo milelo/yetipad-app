@@ -69,7 +69,7 @@
       [ui/editor-pane item {:body ^{:key :edit} [content editing?] :buttons [restore-defaults-button]}]
       [ui/viewer-pane item {:body ^{:key :view} [content editing?]}])))
 
-(reg/register {:kind  :log-config
+(reg/register {:id    :log-config
                :title "Log configuration"
                :icon  debug-settings-icon
                :pane  log-config-pane

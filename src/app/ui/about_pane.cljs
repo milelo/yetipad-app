@@ -41,7 +41,7 @@
       :buttons [update-app-button ui/fullscreen-button]
       }]))
 
-(reg/register {:kind  :about
+(reg/register {:id    :about
                :title "About"
                :icon  about-icon
                :pane  about-pane
