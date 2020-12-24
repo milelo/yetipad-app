@@ -1,12 +1,11 @@
 (ns app.ui.views
   ;See https://github.com/reagent-project/reagent/blob/master/doc/InteropWithReact.md
   (:require
+    [cljs.reader :refer [read-string]]
     [clojure.string :as str]
     [app.config :as config]
     [reagent.core :as r :refer [create-class as-element]]
     [reagent.dom :as reagent-dom :refer [dom-node]]
-    ;[reagent-catch.core :as rc]
-    ;[dommy.core :as dom]
     [goog.dom :refer [appendChild]]
     [re-frame.core :as re-frame]
     [breaking-point.core :as bp]
@@ -17,7 +16,7 @@
     [cljs.pprint :refer [pprint]]
     [app.subs :as subs]
     [app.events :as events]
-    [cljs.reader :refer [read-string]]
+    [app.version :refer [app-version]]
     [app.ui.registry :as reg]
     [app.ui.tagmenu :refer [tag-menu]]
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
@@ -56,6 +55,7 @@
     ["@material-ui/icons/CloudUploadOutlined" :default uploading-icon]
     ["@material-ui/icons/CloudDownloadOutlined" :default downloading-icon]
     ["@material-ui/icons/SyncAltOutlined" :default syncing-icon]
+    ["@material-ui/icons/ErrorOutlineOutlined" :default online-error-icon]
     ;---------------main-menu--------------------------
     ["@material-ui/icons/SettingsOutlined" :default preferences-icon]
     ["@material-ui/icons/CloseOutlined" :default close-all-icon]
@@ -70,7 +70,6 @@
 
 (def log (log/logger 'app.ui.views))
 
-(def app-version "v 0.0.20")
 (info log app-version)
 
 (def rsubs (comp deref re-frame/subscribe))
@@ -431,6 +430,7 @@
                               :downloading [:> downloading-icon]
                               :synced [:> synced-icon]
                               :online [:> signed-in-icon]
+                              :error [:> online-error-icon]
                               false [:> signed-out-icon]    ;offline
                               (warn log ::online-status-unknown online-status)
                               )
