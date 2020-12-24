@@ -2,6 +2,7 @@
   (:require
     [cljs.core.async :as async :refer [put! chan]]
     [cljs.reader :refer [read-string]]
+    [cljs.pprint :refer [pprint]]
     ["localforage" :as local-forage]
     ))
 
@@ -29,6 +30,11 @@
                                                    (when err
                                                      (js/console.error err))
                                                    )))))
+
+(defn pprintl
+  "pprint for use as log argument"
+  [o]
+  #(str \newline (with-out-str (pprint o))))
 
 (defn- error? [x]
   ;ExceptionInfo is also an error!
