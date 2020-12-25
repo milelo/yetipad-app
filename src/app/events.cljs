@@ -362,6 +362,9 @@
                                                          (dispatch! [::set-app-status "Drive updated" :info]))
                                :on-conflicts-resolved  (fn [synched-doc]
                                                          (dispatch! [::update-doc- synched-doc doc "Synched with Drive"]))
+                               :on-error               (fn [error]
+                                                         (warn log ::sync-drive-file 'sync error)
+                                                         (dispatch! [::online-status :error]))
                                })
       (dispatch! [::sync-doc-index]))
     db))
@@ -407,7 +410,7 @@
 (reg-event-db
   ::online-status
   (fn-traced [{:keys [online-status] :as db} [_ status]]
-    (assert (#{:online :syncing :synced :uploading :downloading} status)) ;false = offline
+    (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
     (assoc db :online-status (and online-status status))))
 
 (reg-event-db

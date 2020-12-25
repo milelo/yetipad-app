@@ -1,6 +1,6 @@
 (ns app.store
   (:require
-    [lib.log :as log :refer [trace debug info warn fatal error]]
+    [lib.log :as log :refer [trace debug info warn fatal error pprintl]]
     [lib.debug :as debug :refer [we wd]]
     [lib.local-db :as ldb :refer []]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
@@ -390,7 +390,7 @@
           ]
       id)))
 
-(defn- sync-drive-file!-
+(defn- <sync-drive-file!-
   "Sync doc with its drive file and updates localstore and drive accordingly."
   [local-entry file-data {:keys [doc-id title subtitle] :as doc} {:keys [on-sync-status
                                                                          on-in-synch
@@ -399,7 +399,7 @@
                                                                          on-conflicts-resolved
                                                                          on-complete
                                                                          ]}]
-  (go
+  (go?
     (let [{:keys [file-id]} file-data
           [status] (drive-change-status file-data local-entry)
           ]
@@ -458,16 +458,20 @@
 
 (defn sync-drive-file!
   "Sync doc with its Drive file."
-  [{:keys [doc-id] :as doc} listeners]
-  (go
-    (let [{:keys [file-id] :as local-entry} (get (<? (<read-local-index)) doc-id)
-          file-data (or (and file-id (<? (<file-data file-id)))
-                        (and doc-id (<? (<find-file-data doc-id)))
-                        nil)
-          ]
-      (sync-drive-file!- local-entry file-data doc listeners)
-      ))
-  nil)
+  [{:keys [doc-id] :as doc} {:keys [on-error] :as listeners}]
+  (take! (go?
+           (let [{:keys [file-id] :as local-entry} (get (<? (<read-local-index)) doc-id)
+                 file-data (or (and file-id (<? (<file-data file-id)))
+                               (and doc-id (<? (<find-file-data doc-id)))
+                               nil)
+                 ]
+             (<! (<sync-drive-file!- local-entry file-data doc listeners))
+             ))
+         (fn [e] (when (utils/error? e)
+                   (if on-error
+                     (on-error e)
+                     (warn log 'sync-drive-file! e)
+                     )))))
 
 (defn sync-drive-docs!
   ;todo complete implementation - not currently used
@@ -485,7 +489,7 @@
                                  file-data (get files-data doc-id)
                                  local-doc (<? (ldb/<get-data doc-id {:format :object :default {:doc-id doc-id}}))
                                  ]
-                          (sync-drive-file!- local-entry file-data local-doc nil))
+                          (<sync-drive-file!- local-entry file-data local-doc nil))
                         ))))
       (and on-synched (on-synched))
       )) nil)

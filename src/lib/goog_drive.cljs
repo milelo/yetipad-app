@@ -1,19 +1,15 @@
 (ns lib.goog-drive
   (:require
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer [trace debug info warn fatal pprintl]]
     [lib.utils :as utils :refer [js->cljs]]
     [cljs.reader :as reader]
     [lib.debug :as debug :refer [we wd wee expose]]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go go-loop]]
     [lib.asyncutils :refer [put-last!] :refer-macros [<? go? go-let go-try]]
-    [cljs.pprint :refer [pprint]]
     [clojure.string :as str]
     ))
 
 (def log (log/logger 'app.goog-drive))
-
-(defn pprints [o]
-  (str \newline (with-out-str (pprint o))))
 
 (def ydn-mime "application/vnd.google.drive.ext-type.ydn")
 (def text-mime "text/plain")
@@ -68,10 +64,10 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                                   now (utils/time-now-ms)
                                   token-expired? (> now (:expires_at auth-resp))
                                   ]
-                              #_(debug log 'auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
+                              #_(debug log 'auth-resp (pprintl (select-keys auth-resp [:expires_at :expires_in :access_token])))
                               #_(debug log 'access-token-expired token-expired?
-                                     (some-> auth-resp :expires_at utils/format-ms)
-                                     'now now (-> now utils/format-ms))
+                                       (some-> auth-resp :expires_at utils/format-ms)
+                                       'now now (-> now utils/format-ms))
                               (if token-expired?
                                 (go
                                   (trace log '<ensure-authorised 'reload-auth-response)
@@ -85,7 +81,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                                          (fn [error-response]
                                            (trace log '<ensure-authorised 'error-response)
                                            (let [error (js->cljs error-response)]
-                                             (warn log 'refresh-error-response (pprints error))
+                                             (warn log 'refresh-error-response (pprintl error))
                                              (put-last! <c (js-error error))
                                              ))))
                                 (put-last! <c false)
@@ -96,7 +92,17 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
 (defn <thenable [thenable return-type & [{:keys [default] :as opt}]]
   (assert (fn? thenable))
   (when opt (trace log 'thenable-opt opt))
-  (let [<c (chan)]
+  (let [<c (chan)
+        get-auth-response #(-> (js/gapi.auth2.getAuthInstance) .-currentUser .get .getAuthResponse js->cljs)
+        ]
+    (js/setTimeout (fn []
+                     (put! <c (js/Error "Response timeout")
+                           (fn [put?]
+                             (when put?
+                               (warn log '<thenable 'response-timeout (pprintl (get-auth-response))))
+                             ))
+                     (close! <c)
+                     ) 3000)
     (.then (thenable)
            (fn [response]
              (trace log 'thenable-response return-type)
@@ -116,19 +122,19 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                (let [error (some-> error-response .-result .-error js->cljs)
                      error (or error (js->cljs error-response))
                      ]
-                 (warn log 'error-response (pprints error))
+                 (warn log 'error-response (pprintl error))
                  ;don't use ExceptionInfo! re-frame doesn't recognise it
                  (if (<? (<ensure-authorised error))
                    (let [_ (trace log '<thenable 'authorised)
                          response (<! (<thenable thenable return-type opt))
                          ]
-                     (trace log '<thenable 'retry #(pprints response))
+                     (trace log '<thenable 'retry-response)
                      (put-last! <c response))
                    (do
-                     (trace log '<thenable 'unauthorized-error)
+                     (trace log '<thenable 'authorised-error)
                      (put-last! <c (js-error error)))
                    ))
-               (catch :default e (put-last! <c e)))))
+               (catch :default e (do (trace log '<thenable 'caught (pprintl e)) (put-last! <c e))))))
     <c))
 
 (defn <create-file [{:keys [file-name mime-type parents app-data? properties]}]
@@ -314,7 +320,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                                     ))
                                 (fn [error-response]
                                   (let [error (js->cljs error-response)]
-                                    (warn log 'start-token-refresh 'refresh-error-response (pprints error))
+                                    (warn log 'start-token-refresh 'refresh-error-response (pprintl error))
                                     )))
                          (start-token-refresh)
                          ))) refresh-in)
@@ -339,7 +345,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                      (fn [e] (.-data e)))
           ]
       (if status
-        (info log 'init-client! (pprints status))
+        (info log 'init-client! (pprintl status))
         (info log 'init-client! 'ok))
       (if (:error status)
         (signed-in-listener false)
