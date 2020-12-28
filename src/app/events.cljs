@@ -635,6 +635,7 @@
               doc (assoc doc :change iso-date-time)
               ]
           (info log ::saving)
+          (when (not= item-id o-item-id) (dispatch! [::open-item item-id]))
           (-> db
               (assoc :doc doc)
               (assoc-in [:persist-doc :editing o-item-id] item-id)
