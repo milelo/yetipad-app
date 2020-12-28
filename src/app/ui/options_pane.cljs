@@ -109,12 +109,11 @@
               :kind  :options
               :title "Settings"
               }
-        editing? (rsubs [::subs/editing? :options])
         doc-options (rsubs [::subs/doc-options])
         ]
-    (if editing?
-      [ui/editor-pane item {:body ^{:key :opts-e} [content editing? doc-options]}]
-      [ui/viewer-pane item {:body ^{:key :opts-v} [content editing? doc-options]}]
+    (if (rsubs [::subs/edit-item :options])
+      [ui/editor-pane item {:body ^{:key :opts-e} [content true doc-options]}]
+      [ui/viewer-pane item {:body ^{:key :opts-v} [content false doc-options]}]
       )))
 
 (reg/register {:id    :options

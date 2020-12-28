@@ -36,7 +36,7 @@
                                )
      :component-will-unmount (fn [_this]
                                (trace log :changes #(with-out-str (pprint @values*)))
-                               (when (rsubs [::subs/accept-edit? :log-config])
+                               (when (rsubs [::subs/edit-item :log-config])
                                  (trace log :accept-edit)
                                  (log/set-config! @values*)
                                  ))
@@ -63,11 +63,10 @@
               :kind  :log-config
               :title "Log config"
               }
-        editing? (rsubs [::subs/editing? :log-config])
         ]
-    (if editing?
-      [ui/editor-pane item {:body ^{:key :edit} [content editing?] :buttons [restore-defaults-button]}]
-      [ui/viewer-pane item {:body ^{:key :view} [content editing?]}])))
+    (if (rsubs [::subs/edit-item :log-config])
+      [ui/editor-pane item {:body ^{:key :edit} [content true] :buttons [restore-defaults-button]}]
+      [ui/viewer-pane item {:body ^{:key :view} [content false]}])))
 
 (reg/register {:id    :log-config
                :title "Log configuration"

@@ -53,12 +53,13 @@
   ::initialize-db
   (fn-traced [db _]
     (assoc db
+      :persist-doc {:editing {}}
+      :persist-device {}
       :tag-drawer-open? false
       :index-drawer-open? false
       :index-view :index-history
       :doc {}
       :open-items ()
-      :editing {}
       :save-pending? false
       :doc-file-index {}
       :status {}
@@ -556,8 +557,8 @@
   [update-nav-bar]
   ;Add or move new item to head.
   ;Remove head item on reselection.
-  (fn-traced [{:keys [open-items editing] :as db} [_ item-id {:keys [disable-toggle]}]]
-    (assoc db :open-items (if (and (= (first open-items) item-id) (not= true (get editing item-id)))
+  (fn-traced [{:keys [open-items] :as db} [_ item-id {:keys [disable-toggle]}]]
+    (assoc db :open-items (if (and (= (first open-items) item-id) (not (get-in db [:persist-doc :editing item-id])))
                             (if disable-toggle open-items (drop 1 open-items))
                             (conj (filter #(not= item-id %) open-items) item-id)))))
 
@@ -567,21 +568,21 @@
   ::close-item
   [update-nav-bar]
   (fn-traced [{:keys [open-items editing] :as db} [_ item-id]]
-    (assoc db :open-items (filter #(or (not= item-id %) (true? (get editing %)))
+    (assoc db :open-items (filter #(or (not= item-id %) (get-in db [:persist-doc :editing %]))
                                   open-items))))
 
 (reg-event-db
   ::close-other-items
   [update-nav-bar]
-  (fn-traced [{:keys [open-items editing] :as db} [_ item-id]]
-    (assoc db :open-items (filter #(or (= item-id %) (true? (get editing %)))
+  (fn-traced [{:keys [open-items] :as db} [_ item-id]]
+    (assoc db :open-items (filter #(or (= item-id %) (get-in db [:persist-doc :editing %]))
                                   open-items))))
 
 (reg-event-db
   ::close-all-items
   [update-nav-bar]
-  (fn-traced [{:keys [open-items editing] :as db} _]
-    (assoc db :open-items (filter #(true? (get editing %))
+  (fn-traced [{:keys [open-items] :as db} _]
+    (assoc db :open-items (filter #(get-in db [:persist-doc :editing %])
                                   open-items))))
 
 ;---------------------edit-item---------
@@ -589,7 +590,7 @@
 (reg-event-db
   ::start-edit
   (fn-traced [db [_ item-id]]
-    (assoc-in db [:editing item-id] true)))
+    (assoc-in db [:persist-doc :editing item-id] (or (get-in db [:doc item-id]) {}))))
 
 (reg-event-fx
   ::start-edit-new-
@@ -617,8 +618,18 @@
   (fn-traced [{{:keys [doc-id] :as doc} :doc :as db} [_ item-id]]
     ;initiates a save:
     ; set editing to ::accept-edit > close-editor > editor sends event like ::new-content > save new content to doc
-    (if (get doc item-id)                                   ;must not 'create' entries! eg :log-config
-      (let [iso-date-time (utils/date-time->iso-time (utils/time-now))]
+    (if-let [{:keys [create change]} (get doc item-id)]     ;must not 'create' entries! eg :log-config
+      (let [{icreate :create ichange :change :as base-item} (get-in db [:persist-doc :editing item-id])
+            iso-date-time (utils/date-time->iso-time (utils/time-now))
+            external-change? (and (string? item-id) (not= (or change create) (or ichange icreate)))
+            [item-id o-item-id doc] (if external-change?
+                                      ;give changes to new item id
+                                      (let [nid (find-next-item-id doc)
+                                            doc (assoc doc nid (assoc base-item :id nid :conflict-id item-id))
+                                            ]
+                                        [nid item-id doc])
+                                      [item-id item-id doc])
+            ]
         (store/add-doc-change! doc-id item-id (get-in doc [item-id :change]))
         (let [doc (assoc-in doc [item-id :change] iso-date-time)
               doc (assoc doc :change iso-date-time)
@@ -626,16 +637,16 @@
           (info log ::saving)
           (-> db
               (assoc :doc doc)
-              (assoc-in [:editing item-id] :accept-edit)
+              (assoc-in [:persist-doc :editing o-item-id] item-id)
               (assoc :saving? true)
               ))
         )
-      (assoc-in db [:editing item-id] :accept-edit))))
+      (assoc-in db [:persist-doc :editing item-id] item-id))))
 
 (reg-event-db
   ::cancel-edit
   (fn-traced [db [_ item-id]]
-    (assoc-in db [:editing item-id] false)))
+    (update-in db [:persist-doc :editing] dissoc item-id)))
 
 ;--------------------------update-doc--------------------------
 
@@ -716,7 +727,8 @@
   ::new-content
   [save-on-doc-change]
   (fn-traced [db [_ item-id content]]
-    (if (= (get-in db [:editing item-id]) :accept-edit)
+    ;potentially saves to new-id if original has external change.
+    (if-let [item-id (get-in db [:persist-doc :editing item-id])]
       (assoc-in db [:doc item-id :content] (not-empty content))
       db)))
 
@@ -725,7 +737,8 @@
   ::new-title
   [save-on-doc-change]
   (fn-traced [db [_ item-id title]]
-    (if (= (get-in db [:editing item-id]) :accept-edit)
+    ;potentially saves to new-id if original has external change.
+    (if-let [item-id (get-in db [:persist-doc :editing item-id])]
       (assoc-in db [:doc item-id :title] (not-empty title))
       db)))
 
@@ -734,7 +747,7 @@
   ::options
   [save-on-doc-change]
   (fn-traced [db [_ options]]
-    (if (and (= (get-in db [:editing :options]) :accept-edit) (not-empty options))
+    (if (and (get-in db [:persist-doc :editing :options]) (not-empty options))
       ;the initial save will just have the :change entry so need to add the id.
       (update-in db [:doc :options] merge {:id :options} options)
       db)))
@@ -744,7 +757,7 @@
   ::new-tags
   [save-on-doc-change]
   (fn-traced [{doc :doc :as db} [_ item-id tag-ids new-tags]]
-    (if (= (get-in db [:editing item-id]) :accept-edit)
+    (if (get-in db [:persist-doc :editing item-id])
       (let [iso-date-time (utils/date-time->iso-time (utils/time-now))
             new-tags (when (not-empty new-tags)
                        (let [next-item-num (find-next-item-num doc)

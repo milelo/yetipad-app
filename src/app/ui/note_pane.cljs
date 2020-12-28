@@ -60,8 +60,8 @@
                                ]}])
 
 (defn note-pane [{:keys [item]}]
-  (if (rsubs [::subs/editing? (:id item)])
-    [note-editor item]
+  (if-let [edit-item (rsubs [::subs/edit-item (:id item)])]
+    [note-editor edit-item]
     [note-viewer item]
     ))
 

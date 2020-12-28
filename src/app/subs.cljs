@@ -3,7 +3,7 @@
     [re-frame.core :as re-frame :refer [reg-sub subscribe]]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
-    [lib.utils :as utils :refer [iso-time->date-time]]
+    [lib.utils :as utils :refer [iso-time->date-time only]]
     [cljs.pprint :refer [pprint]]
     [clojure.string :as str]
     [app.ui.utils :as ui-utils]
@@ -27,9 +27,18 @@
     ))
 
 (reg-sub
-  ::editing
+  ::persist-doc
   (fn [db _]
-    (:editing db)
+    (:persist-doc db)
+    ))
+
+
+(reg-sub
+  ::editing
+  (fn []
+    (subscribe [::persist-doc]))
+  (fn [persist-doc _]
+    (:editing persist-doc)
     ))
 
 (reg-sub
@@ -45,22 +54,12 @@
     ))
 
 (reg-sub
-  ::editing?
+  ::edit-item
   (fn []
     (subscribe [::editing]))
   (fn [editing [_ item-id]]
-    ;retrieve true or state key
-    (= (get editing item-id) true)
-    ))
-
-(reg-sub
-  ::accept-edit?
-  (fn []
-    (subscribe [::editing]))
-  (fn [editing [_ item-id]]
-    (assert item-id)
-    ;retrieve true or state key
-    (= (get editing item-id) :accept-edit)
+    ;a copy of the original item being edited
+    (only map? (get editing item-id))
     ))
 
 (reg-sub
@@ -129,8 +128,7 @@
   ::items-by-history-filtered
   ;list of matching items the first matching item of each day has the key :head__ set true.
   (fn []
-    (subscribe [::items-by-history])
-    )
+    (subscribe [::items-by-history]))
   (fn [items-by-history [_ search-str]]
     (for [day-group items-by-history
           :let [day-group (not-empty (if (empty? search-str)
