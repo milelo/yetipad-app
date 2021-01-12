@@ -78,17 +78,26 @@
 (defn- <read-localstore [k]
   (ldb/<get-data k {:format :object}))
 
+(defn- ldb-doc-data-key [doc-id]
+  (str doc-id \*))
+
 (defn <write-persist-doc [doc-id data]
   (trace log '<write-persist-doc)
-  (<write-localstore (str doc-id \*) data))
+  (if (empty? data)
+    (ldb/<remove-item (ldb-doc-data-key doc-id))
+    (<write-localstore (ldb-doc-data-key doc-id) data)))
 
 (defn <read-persist-doc [doc-id]
   (trace log '<read-persist-doc)
-  (<read-localstore (str doc-id \*)))
+  (<read-localstore (ldb-doc-data-key doc-id)))
+
+(def ldb-device-key \*)
 
 (defn <write-persist-device [data]
   (trace log '<write-persist-device)
-  (<write-localstore \* data))
+  (if (empty? data)
+    (ldb/<remove-item ldb-device-key)
+    (<write-localstore ldb-device-key data)))
 
 (defn <read-persist-device []
   (trace log '<read-persist-device)

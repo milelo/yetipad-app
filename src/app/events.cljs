@@ -114,8 +114,7 @@
                                    :let [{:keys [id]} (and (map? item) item)]
                                    :when (not= k id)
                                    ]
-                               e
-                               ))
+                               e))
           fix-style #(into {} (for [[k v :as e] doc #_(select-keys doc ["nusb" "nv1z" "nuru"])]
                                 (if (#{:note :tag} (:kind v))
                                   (let [{:keys [content]} v
