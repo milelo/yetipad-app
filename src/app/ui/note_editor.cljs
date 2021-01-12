@@ -50,15 +50,15 @@
      [:div {:id toolbar-id}]
      [(with-meta (fn [] ^{:key :content} [:div {:id editor-id :style {:min-height "6em"}} content])
                  {:component-did-mount
-                  (fn [this]
+                  (fn [_this]
                     (let [editor (create-editor toolbar-id editor-id editor-buttons-standard)]
                       (reset! editor* editor)
                       ;(.focus (rdom/dom-node this))
                       ))
                   :component-will-unmount
                   (fn [_this]
-                    (let [{:keys [dispose editor reposition float-enable]} @editor*
-                          content (parse-content editor)
+                    (let [{:keys [dispose field reposition float-enable]} @editor*
+                          content (parse-content field)
                           ]
                       ;(debug log "writing content: ")
                       ;(pprint content)

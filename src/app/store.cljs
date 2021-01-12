@@ -72,6 +72,28 @@
   (assert doc)
   (ldb/<put-data (:doc-id doc) doc {:format :object}))
 
+(defn- <write-localstore [k v]
+  (ldb/<put-data k v {:format :object}))
+
+(defn- <read-localstore [k]
+  (ldb/<get-data k {:format :object}))
+
+(defn <write-persist-doc [doc-id data]
+  (trace log '<write-persist-doc)
+  (<write-localstore (str doc-id \*) data))
+
+(defn <read-persist-doc [doc-id]
+  (trace log '<read-persist-doc)
+  (<read-localstore (str doc-id \*)))
+
+(defn <write-persist-device [data]
+  (trace log '<write-persist-device)
+  (<write-localstore \* data))
+
+(defn <read-persist-device []
+  (trace log '<read-persist-device)
+  (<read-localstore \*))
+
 (defn- <into
   "Same as async/into except if any of the values are Errors then
   the first Error is returned instead."

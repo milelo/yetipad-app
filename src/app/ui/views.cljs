@@ -75,6 +75,15 @@
 (def rsubs (comp deref re-frame/subscribe))
 (def dispatch! re-frame/dispatch)
 
+(defn on-before-unload [e]
+  (when-not (rsubs [::subs/can-reload?])
+    ;modern browsers ignore message
+    (let [m "Allow reload? Changes will be lost."]
+      (set! (.-returnValue e) m)
+      m)))
+
+(defonce _runonce (js/window.addEventListener js/goog.events.EventType.BEFOREUNLOAD on-before-unload))
+
 (def file-reader (js/FileReader.))
 
 (defn got-file [e]
@@ -338,6 +347,7 @@
          [menu-list-item nil "Dump document meta" #(dispatch! [::events/dump-doc])]
          [menu-list-item nil "Dump file meta" #(dispatch! [::events/dump-file-meta])]
          [:> Divider]
+         ;[:> ListItem [:> ListItemText {:primary (str "can reload?: " (rsubs [::subs/can-reload?]))}]]
          [:> ListItem [:> ListItemText {:primary (str "screen-width: " (rsubs [::bp/screen-width]))}]]
          [:> ListItem [:> ListItemText {:primary (str "screen: " (rsubs [::bp/screen]))}]]])
       ]]))

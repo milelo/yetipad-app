@@ -35,10 +35,8 @@
 
 (reg-sub
   ::editing
-  (fn []
-    (subscribe [::persist-doc]))
-  (fn [persist-doc _]
-    (:editing persist-doc)
+  (fn [db _]
+    (:editing db)
     ))
 
 (reg-sub
@@ -59,7 +57,16 @@
     (subscribe [::editing]))
   (fn [editing [_ item-id]]
     ;a copy of the original item being edited
-    (only map? (get editing item-id))
+    (let [entry (get editing item-id)]
+      (and (not (:accept-as entry)) (:source entry)))
+    ))
+
+(reg-sub
+  ::can-reload?
+  (fn []
+    (subscribe [::editing]))
+  (fn [editing _]
+    (not (some #(and (not (:accept-as %)) (:source %)) (vals editing)))
     ))
 
 (reg-sub

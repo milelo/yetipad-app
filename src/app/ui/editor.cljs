@@ -70,24 +70,26 @@
                  (LinkBubble.)
                  ]
         scroll-floater (ScrollFloater.)
-        editor (SeamlessField. editor-id)                   ;create the editor
+        field (SeamlessField. editor-id)                   ;create the editor
         toolbar-div (goog.dom.getElement toolbar-id)
         toolbar (DefaultToolbar.makeToolbar (clj->js buttons) toolbar-div)
 
-        controller (ToolbarController. editor, toolbar)
+        controller (ToolbarController. field, toolbar)
         ;         controller (MyToolbarController. editor, toolbar)
-        dispose (fn [] (wd :dispose [toolbar-id editor-id]) (doseq [d [scroll-floater editor toolbar controller]] (.dispose d)))
+        dispose (fn [] (wd :dispose [toolbar-id editor-id]) (doseq [d [scroll-floater field toolbar controller]] (.dispose d)))
         reposition (fn [] (.update scroll-floater))
         ;reposition (fn [] (.handleResize_ scroll-floater))
         float-enable (fn [enabled?] (.setScrollingEnabled scroll-floater enabled?))
         ]
     (.showOpenLinkInNewWindow link-plugin true)
     (doseq [plugin plugins]
-      (.registerPlugin editor plugin))
-    (.makeEditable editor)
+      (.registerPlugin field plugin))
+    (.makeEditable field)
+    ;(.listen field js/goog.editor.Field.EventType.CHANGE (fn [e] (debug log 'editor-event e)))
+    ;(.startChangeEvents field)
     (.setViewportTopOffset scroll-floater 64)
     (.decorate scroll-floater toolbar-div)
     ;      (-> scroll-floater (.getHandler) (.listen js/window goog.events.EventTypeRESIZE reposition))
-    {:dispose dispose :editor editor :reposition reposition :float-enable float-enable}
+    {:dispose dispose :field field :reposition reposition :float-enable float-enable}
     ))
 
