@@ -655,6 +655,7 @@
                                       (let [nid (find-next-item-id doc)
                                             doc (assoc doc nid (assoc base-item :id nid :conflict-id item-id))
                                             ]
+                                        (dispatch! [::set-app-status "Edit conflict: item branched" :warn])
                                         [nid item-id doc])
                                       [item-id item-id doc])
             ]
