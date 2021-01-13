@@ -1,5 +1,6 @@
 {:deps   {:aliases [:cljs]}
  :nrepl  {:port 8778
+          ;:port 8779
           ;:cider false ;doesn't seem to be required any more
           },
  :builds {:app
@@ -26,5 +27,6 @@
                               },
            :devtools         {:http-root "resources/public",
                               :http-port 8281
+                              ;:http-port 8282
                               }}},
  }
