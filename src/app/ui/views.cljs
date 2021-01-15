@@ -388,6 +388,7 @@
   (let [
         page-item false
         doc-title (rsubs [::subs/doc-title])
+        doc-subtitle (rsubs [::subs/doc-subtitle])
         app-status (rsubs [::subs/app-status])
         online-status (rsubs [::subs/online-status])
         ]
@@ -422,14 +423,15 @@
                             :on-click #(dispatch! [::events/open-tag-drawer true])
                             } [:> tree-menu-icon]
              ])
-          [:> Typography {:variant :h6
-                          :color   :inherit
-                          :style   {:flex        1
-                                    :line-height :normal
-                                    ;;:font-weight :bold
-                                    }
-                          } doc-title
-           ]
+          [:> Tooltip {:title (or doc-subtitle "")}
+           [:> Typography {:variant :h6
+                           :color   :inherit
+                           :style   {:flex        1
+                                     :line-height :normal
+                                     ;;:font-weight :bold
+                                     }
+                           } doc-title
+            ]]
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}

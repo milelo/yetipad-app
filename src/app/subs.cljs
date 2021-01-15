@@ -70,12 +70,6 @@
     ))
 
 (reg-sub
-  ::doc-title
-  (fn [{{:keys [doc-id] {:keys [doc-title doc-subtitle]} :options} :doc} _]
-    (or doc-title doc-subtitle doc-id "YetiPad")
-    ))
-
-(reg-sub
   ::index-view
   (fn [db]
     (:index-view db)
@@ -95,6 +89,30 @@
     (into {} (filter (fn [[_k v]]
                        (if (map? v) (not= (:trashed v) true) true)
                        ) doc))
+    ))
+
+(reg-sub
+  ::doc-options
+  (fn []
+    (subscribe [::doc]))
+  (fn [doc]
+    (:options doc)
+    ))
+
+(reg-sub
+  ::doc-title
+  (fn []
+    (subscribe [::doc-options]))
+  (fn [options _]
+    (or (:doc-title options) "YetiPad")
+    ))
+
+(reg-sub
+  ::doc-subtitle
+  (fn []
+    (subscribe [::doc-options]))
+  (fn [options _]
+    (:doc-subtitle options)
     ))
 
 (reg-sub

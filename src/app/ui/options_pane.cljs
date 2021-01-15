@@ -88,32 +88,38 @@
                                  (dispatch! [::events/options @values*]))
        })))
 
-(defn content [editing? doc-options]
-  [:<>
-   ;[options-table "Device options" [] editing?]
-   [options-table "Document options" [{:id     :doc-title
-                                       :name   "Document title"
-                                       :value  (:doc-title doc-options)
-                                       :editor string-editor
-                                       }
-                                      {:id     :doc-subtitle
-                                       :name   "Document subtitle"
-                                       :value  (:doc-subtitle doc-options)
-                                       :editor string-editor
-                                       }
-                                      ] editing?
-    ]])
+(defn content [editing?]
+  (let [doc-options (rsubs [::subs/doc-options])
+        doc-id (rsubs [::subs/doc-id])
+        ]
+    [:<>
+     ;[options-table "Device options" [] editing?]
+     [options-table "Document options" [{:id    :doc-id
+                                         :name  "Document ID"
+                                         :value doc-id
+                                         }
+                                        {:id     :doc-title
+                                         :name   "Document title"
+                                         :value  (:doc-title doc-options)
+                                         :editor string-editor
+                                         }
+                                        {:id     :doc-subtitle
+                                         :name   "Document subtitle"
+                                         :value  (:doc-subtitle doc-options)
+                                         :editor string-editor
+                                         }
+                                        ] editing?
+      ]]))
 
 (defn options-pane [_context]
   (let [item {:id    :options
               :kind  :options
               :title "Settings"
               }
-        doc-options (rsubs [::subs/doc-options])
         ]
     (if (rsubs [::subs/edit-item :options])
-      [ui/editor-pane item {:body ^{:key :opts-e} [content true doc-options]}]
-      [ui/viewer-pane item {:body ^{:key :opts-v} [content false doc-options]}]
+      [ui/editor-pane item {:body ^{:key :opts-e} [content true]}]
+      [ui/viewer-pane item {:body ^{:key :opts-v} [content false]}]
       )))
 
 (reg/register {:id    :options
