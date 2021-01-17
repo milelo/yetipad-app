@@ -32,7 +32,6 @@
     (:persist-doc db)
     ))
 
-
 (reg-sub
   ::editing
   (fn [db _]
@@ -43,6 +42,12 @@
   ::logger-config
   (fn [db _]
     (:logger-config db)
+    ))
+
+(reg-sub
+  ::moving-items
+  (fn [db _]
+    (:moving-items db)
     ))
 
 (reg-sub
@@ -244,6 +249,30 @@
   (fn [[tag-data-map doc-item]]
     (sort-by :title (keep tag-data-map (:tags doc-item)))))
 
+(defn- tag-path [doc tag-id]
+  (loop [path () tag (get doc tag-id)]
+    (if-let [parent-tag (first (sort-by :title (keep doc (:tags tag))))]
+      (recur (cons tag path) parent-tag)
+      (cons tag path))))
+
+(defn- tag-path-str [tag-path]
+  (str/join "/" (map :title tag-path)))
+
+(reg-sub
+  ::tag-path
+  ;vector of tags from root to and including tag-id
+  (fn []
+    (subscribe [::doc]))
+  (fn [doc [_ tag-id]]
+    (tag-path doc tag-id)))
+
+(reg-sub
+  ::tag-path-str
+  (fn [[_ tag-id]]
+    (subscribe [::tag-path tag-id]))
+  (fn [tag-path]
+    (tag-path-str tag-path)))
+
 (reg-sub
   ::tag-data-map
   ;map of [tag-id {:keys [title id]}] for all doc tags
@@ -253,7 +282,7 @@
     (into {} (for [[id {:keys [kind title]}] doc
                    :when (and (= kind :tag) title)
                    ]
-               [id {:title title :id id}]
+               [id {:title title :path-str (tag-path-str (tag-path doc id)) :id id}]
                ))))
 
 (reg-sub

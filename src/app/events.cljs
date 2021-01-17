@@ -8,7 +8,7 @@
     [day8.re-frame.tracing :refer-macros [fn-traced defn-traced]]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd]]
-    [lib.utils :as utils :refer [time-now-ms iso-time->date-time find-next-item-num find-next-item-id]]
+    [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
     [lib.goog-drive :as drive]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
     ;exceptions are reported by handlers
@@ -614,15 +614,15 @@
   ::start-edit
   (fn-traced [db [_ item-id]]
     (update-in db [:editing] (fn [editing]
-                                            ;remove completed edits and add new
-                                            (assoc (into {} (filter #(-> % second :accept-as not) editing))
-                                              item-id {:source (or (get-in db [:doc item-id]) {})}
-                                              )))))
+                               ;remove completed edits and add new
+                               (assoc (into {} (filter #(-> % second :accept-as not) editing))
+                                 item-id {:source (or (get-in db [:doc item-id]) {})}
+                                 )))))
 
 (reg-event-fx
   ::start-edit-new-
   (fn-traced [{{doc :doc :as db} :db} [_ kind]]
-    (let [item-id (find-next-item-id doc)
+    (let [item-id (new-item-id doc)
           iso-date-time (utils/date-time->iso-time (utils/time-now))
           ]
       {:db         (assoc-in db [:doc item-id] {:id     item-id
@@ -652,7 +652,7 @@
             external-change? (and (string? item-id) (not= (or change create) (or ichange icreate)))
             [item-id o-item-id doc] (if external-change?
                                       ;give changes to new item id
-                                      (let [nid (find-next-item-id doc)
+                                      (let [nid (new-item-id doc)
                                             doc (assoc doc nid (assoc base-item :id nid :conflict-id item-id))
                                             ]
                                         (dispatch! [::set-app-status "Edit conflict: item branched" :warn])
@@ -790,16 +790,14 @@
     (if (get-in db [:editing item-id])
       (let [iso-date-time (utils/date-time->iso-time (utils/time-now))
             new-tags (when (not-empty new-tags)
-                       (let [next-item-num (find-next-item-num doc)
-                             new-ids (map utils/to-str-36
-                                          (range next-item-num (+ next-item-num (count new-tags))))
-                             ]
-                         (into {} (for [[id {:keys [title]}] (map vector new-ids (vals new-tags))]
-                                    [id {:title  title
-                                         :id     id
-                                         :kind   :tag
-                                         :create iso-date-time
-                                         }]))))
+                       (into {} (for [[id {:keys [title]}] (map vector
+                                                                (utils/new-item-ids doc)
+                                                                (vals new-tags))]
+                                  [id {:title  title
+                                       :id     id
+                                       :kind   :tag
+                                       :create iso-date-time
+                                       }])))
             doc (merge doc new-tags)
             tags (not-empty (concat tag-ids (keys new-tags)))
             doc (if tags (assoc-in doc [item-id :tags] tags)
@@ -822,6 +820,21 @@
   (fn-traced [db [_ logger-config]]
     (assoc db :logger-config logger-config)))
 
+;-------------------------------------------------------
 
+(reg-event-db
+  ::toggle-start-move-items
+  (fn-traced [db _]
+    (update db :moving-items not)))
+
+(reg-event-db
+  ::move-items
+  (fn-traced [db [_ doc-id]]
+    (assert (:moving-items db))
+    (debug log ::move-items doc-id)
+    (let []
+      (-> db
+          (assoc :moving-items false)
+          ))))
 
 

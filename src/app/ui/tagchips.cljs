@@ -2,6 +2,7 @@
   (:require
     [reagent.core :as r]
     [re-frame.core :as re-frame]
+    [clojure.string :as str]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
@@ -20,18 +21,21 @@
 (defn- js->cljs [js]
   (js->clj js :keywordize-keys true))
 
+(defn tag-chip-edit [tag-ids* new-tags* id {:keys [title new-tag?]}]
+  [:> Tooltip {:title "remove tag"}
+   [:> Chip {:label    (if new-tag? title (rsubs [::subs/tag-path-str id]))
+             :size     :small
+             :color    (if new-tag? :secondary :primary)
+             :on-click #(if new-tag?
+                          (swap! new-tags* dissoc id)
+                          (swap! tag-ids* disj id))
+             }]])
+
 (defn- tag-chips [tag-ids* new-tags*]
   (let [tag-data-map (rsubs [::subs/tag-data-map])]
     [:div
-     (for-all [[id {:keys [title new-tag?]}] (merge (select-keys tag-data-map @tag-ids*) @new-tags*)]
-       ^{:key (str id :tag)} [:> Tooltip {:title "remove tag"}
-                              [:> Chip {:label    title
-                                        :size     :small
-                                        :color    (if new-tag? :secondary :primary)
-                                        :on-click #(if new-tag?
-                                                     (swap! new-tags* dissoc id)
-                                                     (swap! tag-ids* disj id))
-                                        }]]
+     (for-all [[id tag] (merge (select-keys tag-data-map @tag-ids*) @new-tags*)]
+       ^{:key (str id :tag)} [tag-chip-edit tag-ids* new-tags* id tag]
        )]))
 
 (defn- tagger [id tag-ids* new-tags*]
@@ -46,7 +50,7 @@
          [tag-chips tag-ids* new-tags*]
          [:> Autocomplete {:options          (clj->js tag-data)
                            :free-solo        true
-                           :get-option-label #(or (:title (js->cljs %)) "")
+                           :get-option-label #(or (:path-str (js->cljs %)) "")
                            :style            {:width      300
                                               :margin-top 10
                                               }
@@ -80,15 +84,18 @@
                            :input-value      @value*
                            }]]))))
 
+(defn tag-chip [id]
+  [:> Tooltip {:title "open tag"}
+   [:> Chip {:label    (rsubs [::subs/tag-path-str id])
+             :size     :small
+             ;:color    :primary
+             :on-click #(dispatch! [::events/open-item id])
+             }]])
+
 (defn tag-viewer [id]
   [:div
-   (for-all [{:keys [id title]} (rsubs [::subs/item-tag-data id])]
-     ^{:key (str id :tag)} [:> Tooltip {:title "open tag"}
-                            [:> Chip {:label    title
-                                      :size     :small
-                                      ;:color    :primary
-                                      :on-click #(dispatch! [::events/open-item id])
-                                      }]]
+   (for-all [{:keys [id]} (rsubs [::subs/item-tag-data id])]
+     ^{:key id} [tag-chip id]
      )])
 
 (defn tag-editor [id]

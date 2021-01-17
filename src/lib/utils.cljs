@@ -137,18 +137,24 @@
         (reset! allocated id)
         (to-str-36 id)))))
 
-(defn find-next-item-num [doc]
+(defn- new-item-num [docs]
   ;tags may contain a deleted item id that can't be reused.
-  (inc (reduce-kv (fn [i id {:keys [tags]}]
-                    (if (string? id)
-                      (reduce (fn [i id]
-                                (max i (parse-36 id))
-                                ) i (cons id tags))
-                      i)
-                    ) 0 doc)))
+  (let [new-item-num (fn [doc]
+                       (inc (reduce-kv (fn [i id {:keys [tags]}]
+                                         (if (string? id)
+                                           (reduce (fn [i id]
+                                                     (max i (parse-36 id))
+                                                     ) i (cons id tags))
+                                           i)
+                                         ) 0 doc)))
+        ]
+    (reduce (fn [m doc] (max m (new-item-num doc))) 0 docs)))
 
-(defn find-next-item-id [doc]
-  (to-str-36 (find-next-item-num doc)))
+(defn new-item-ids [& docs]
+  (map to-str-36 (iterate inc (new-item-num docs))))
+
+(defn new-item-id [& docs]
+  (to-str-36 (new-item-num docs)))
 
 (defn flatten
   "As core flatten but flatten? selects subject"
