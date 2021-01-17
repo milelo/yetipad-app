@@ -256,7 +256,7 @@
       (cons tag path))))
 
 (defn- tag-path-str [tag-path]
-  (str/join "/" (map :title tag-path)))
+  (str/join " / " (map :title tag-path)))
 
 (reg-sub
   ::tag-path

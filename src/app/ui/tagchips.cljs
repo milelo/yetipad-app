@@ -68,7 +68,7 @@
                                                )
                            :on-input-change  (fn [_e value reason]
                                                ;(println :on-input-change value reason)
-                                               (when (#{"input" "clear"} reason)
+                                               (when (and (#{"input" "clear"} reason) (-> value (str/includes? \/) not))
                                                  (reset! value* value)
                                                  ))
                            :on-change        (fn [_e value reason]
