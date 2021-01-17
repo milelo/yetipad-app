@@ -251,7 +251,7 @@
 
 (defn- tag-path [doc tag-id]
   (loop [path () tag (get doc tag-id)]
-    (if-let [parent-tag (first (sort-by :title (keep doc (:tags tag))))]
+    (if-let [parent-tag (first (keep doc (:tags tag)))]
       (recur (cons tag path) parent-tag)
       (cons tag path))))
 
