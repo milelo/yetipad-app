@@ -6,7 +6,7 @@
      ]
     ;[cljs-uuid-utils.core :as uuid]
     [day8.re-frame.tracing :refer-macros [fn-traced defn-traced]]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer [trace debug info warn fatal pprintl]]
     [lib.debug :as debug :refer [we wd]]
     [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
     [lib.goog-drive :as drive]
@@ -176,7 +176,7 @@
       (println "\nlocal index entry:")
       (pprint (<? (store/<read-local-index)))
       (println "\nfiles data:")
-      (pprint (<? (store/<read-files-data)))
+      (pprint (<? (store/<read-file-data-list)))
       (println "this doc-id: " doc-id)
       (println)
       )
@@ -368,7 +368,7 @@
                                                          (dispatch! [::sync-doc-index])
                                                          (dispatch! [::online-status :synced])
                                                          )
-                               ;:on-in-synch              #()
+                               ;:on-in-sync             #()
                                :on-overwrite-from-file (fn [drive-doc]
                                                          (dispatch! [::update-doc- drive-doc doc "Updated from Drive"]))
                                :on-overwrite-file      (fn []
@@ -623,7 +623,7 @@
   ::start-edit-new-
   (fn-traced [{{doc :doc :as db} :db} [_ kind]]
     (let [item-id (new-item-id doc)
-          iso-date-time (utils/date-time->iso-time (utils/time-now))
+          iso-date-time (utils/iso-time-now)
           ]
       {:db         (assoc-in db [:doc item-id] {:id     item-id
                                                 :kind   kind
@@ -825,16 +825,57 @@
 (reg-event-db
   ::toggle-start-move-items
   (fn-traced [db _]
-    (update db :moving-items not)))
+    (update db :moving-items (fn [moving?] (and (not moving?)
+                                                (some (complement keyword?) (:open-items db))
+                                                )))))
+
+(reg-event-db
+  ::finish-move-items-
+  [save-on-doc-change]
+  (fn-traced [db [_ target-doc move-items]]
+    (when (store/signed-in?)
+      (store/sync-drive-file! target-doc
+                              {:on-sync-status #(info log ::finish-move-items- 'target-sync-status %)
+                               :on-complete    #(dispatch! [::sync-doc-index])
+                               }))
+    (-> db
+        (update :open-items #(filter keyword? %))
+        (update :doc (fn [doc]
+                       (reduce (fn [doc id]
+                                 (assoc-in doc [id :trashed] :moved)
+                                 ) doc move-items)))
+        )))
 
 (reg-event-db
   ::move-items
-  (fn-traced [db [_ doc-id]]
-    (assert (:moving-items db))
-    (debug log ::move-items doc-id)
-    (let []
-      (-> db
-          (assoc :moving-items false)
-          ))))
+  (fn-traced [{:keys [moving-items open-items] source-doc :doc :as db} [_ target-doc-id]]
+    (assert (and moving-items (not= (:doc-id source-doc) target-doc-id)))
+    ;first sync target doc
+    (when-let [move-items (not-empty (filter (complement keyword?) open-items))]
+      (if (store/signed-in?)
+        (store/sync-drive-file!
+          target-doc-id
+          {:on-sync-status #(info log ::move-items 'target-sync-status %)
+           :on-complete    #(dispatch! [::sync-doc-index])
+           :on-synced-file (fn [target-doc]
+                             (store/copy-items! source-doc target-doc move-items
+                                                {:on-complete #(dispatch! [::finish-move-items- % move-items])
+                                                 :on-error    (fn [error]
+                                                                (warn log ::move-items 'copy error)
+                                                                (dispatch! [::set-app-status "Copy failed" :warn])
+                                                                )
+                                                 }))
+           })
+        (store/copy-items!
+          source-doc target-doc-id move-items
+          {:on-complete #(dispatch! [::finish-move-items- % move-items])
+           :on-error    (fn [error]
+                          (warn log ::move-items 'copy-offline error)
+                          (dispatch! [::set-app-status "Copy failed" :warn])
+                          )
+           })))
+    (-> db
+        (assoc :moving-items false)
+        )))
 
 

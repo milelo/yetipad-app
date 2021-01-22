@@ -188,7 +188,7 @@
         (file-meta>data (first (sort-by :modifiedTime files-data)))
         ))))
 
-(defn <read-files-data
+(defn <read-file-data-list
   "Get app-file metadata by doc-id.
   Files that aren't in the local index are allocated a new doc-id."
   []
@@ -270,10 +270,8 @@
         (<? (ldb/<remove-item doc-id))
         (if (signed-in?)
           (let [file-id (get-in local-index [doc-id :file-id])]
-            (<? (<trash-file file-id))
-            )
-          (<? (<put-trashed (conj (<? (<get-trashed)) doc-id)))
-          )
+            (<? (<trash-file file-id)))
+          (<? (<put-trashed (conj (<? (<get-trashed)) doc-id))))
         (and on-deleted (on-deleted)))
       )))
 
@@ -311,6 +309,97 @@
     (and (not root-change) (> change file-change)) :resolve-conflicts
     ))
 
+(defn- copy-items
+  "copy items with item-ids from source-doc to target-doc. The item ids are remapped to new ids.
+  References between items in item-ids like included tags are maintained.
+  References to tags not include in item-ids are added as a child of the tag named 'imported' retaining only their name,
+  where the tag name already exists as a child of the 'imported' tag, this will be reused as the reference target.
+  "
+  ;source tags that already have a corresponding import tag-name don't need a new id.
+  [source-doc target-doc item-ids]
+  (let [imported-title "imported"
+        iso-time-now (utils/iso-time-now)
+        ;the id of the target-doc import tag if it exists
+        imported-tag-id (some (fn [{:keys [kind id title trashed]}]
+                                (and (= kind :tag) (= title imported-title) (not trashed) id)
+                                ) (vals target-doc))
+        ;existing 'imported' tags in target document that can be matched up by name with source tags
+        import-id-for-tag-name (if imported-tag-id
+                                 (into {} (keep (fn [{:keys [id kind tags title trashed]}]
+                                                  (when (and (= kind :tag)
+                                                             (not trashed)
+                                                             (some (partial = imported-tag-id) tags))
+                                                    [title id]
+                                                    )) (vals target-doc)))
+                                 {})
+        source-items (select-keys source-doc item-ids)
+        src-tag-ids (reduce (fn [tags item] (into tags (:tags item))) #{} (vals source-items))
+        ;create map from old id to new id and add existing import-tag ids from target doc with matching tags from source
+        id-map (into {} (keep (fn [src-tag-id]
+                                (when-let [tag-id (import-id-for-tag-name (get-in source-doc [src-tag-id :title]))]
+                                  [src-tag-id tag-id])
+                                ) src-tag-ids))
+        ;tags from source that don't have a matching tag in target 'imported' tags
+        orphan-tag-ids (filter (complement id-map) src-tag-ids)
+        ;add new target ids for unmatched source ids
+        id-map (into id-map (map vector
+                                 (concat
+                                   orphan-tag-ids
+                                   (keys source-items)
+                                   (when (not imported-tag-id) [:imported]))
+                                 (utils/new-item-ids target-doc)
+                                 ))
+        ;add an 'imported' tag to target doc if it doesn't exist.
+        [target-doc imported-tag-id] (if imported-tag-id
+                                       [target-doc imported-tag-id]
+                                       (let [id (:imported id-map)]
+                                         [(assoc target-doc id {:id     id
+                                                                :title  imported-title
+                                                                :kind   :tag
+                                                                :create iso-time-now
+                                                                }) id]))
+        ;add tags to target doc for orphan tag ids
+        target-doc (into target-doc (map (fn [src-id] (let [id (id-map src-id)]
+                                                        [id {:id     id
+                                                             :kind   :tag
+                                                             :title  (get-in source-doc [src-id :title])
+                                                             :tags   (list imported-tag-id)
+                                                             :create iso-time-now
+                                                             }]
+                                                        )) orphan-tag-ids))
+        ;give source items new ids and add to the target.
+        target-doc (into target-doc (map (fn [[id item]] (let [id (id-map id)]
+                                                           [id (assoc (dissoc item :conflict-id)
+                                                                 :id id
+                                                                 :tags (or
+                                                                         (not-empty (map id-map (:tags item)))
+                                                                         (list imported-tag-id))
+                                                                 )])
+                                           ) source-items))
+        target-doc (assoc target-doc :change iso-time-now)
+        ]
+    target-doc))
+
+(defn copy-items! [source-doc target-doc-or-id item-ids {:keys [on-error on-complete]}]
+  (take! (go?
+           (let [local-index (<? (<read-local-index))
+                 [target-doc target-doc-id] (if (map? target-doc-or-id)
+                                              [target-doc-or-id (:doc-id target-doc-or-id)]
+                                              [(<? (<read-local-doc target-doc-or-id)) target-doc-or-id])
+                 _ (assert (and (map? target-doc) target-doc-id))
+                 target-doc (copy-items source-doc target-doc item-ids)
+                 file-id (get-in local-index [target-doc-id :file-id])
+                 {:keys [modifiedTime]} (<? (<write-file-content file-id target-doc))
+                 ]
+             (<? (<write-local-doc target-doc))
+             (<? (<write-local-index (index-merge local-index target-doc {:file-change modifiedTime})))
+             (when on-complete (on-complete target-doc))
+             )) (fn [e] (when (utils/error? e)
+                          (if on-error
+                            (on-error e)
+                            (warn log 'copy-items! e)
+                            )))))
+
 (defn- sync-doc-content
   "Merge drive doc-file and app doc changes."
   ;root-change is a local copy of the file change time created when the local change-time is updated.
@@ -320,9 +409,7 @@
   ;(prn-diff :drive-doc-only drive-doc :app-doc-only app-doc)
   (assert (not= file-change change))
   (let [ks (distinct (concat (keys drive-doc) (keys app-doc)))
-        item-num* (atom (dec (max (utils/find-next-item-num drive-doc)
-                                  (utils/find-next-item-num app-doc)
-                                  )))
+        item-num* (atom (dec (utils/new-item-num [drive-doc app-doc])))
         merged (into {} (for [k ks
                               :let [
                                     ;root-change (get-in app-doc [:changes k :root-change])
@@ -352,7 +439,7 @@
                               ]
                           [(get e :id k) e]
                           ))
-        merged (assoc merged :change (max file-change change))
+        merged (assoc merged :change (utils/iso-time-now))
         ]
     ;(prn-diff :drive-doc-only drive-doc :merged-doc-only merged)
     merged))
@@ -385,8 +472,9 @@
     (go
       (if (signed-in?)
         (let [local-index (<? (<read-local-index))
-              files-data (<? (<read-files-data))
+              files-data (<? (<read-file-data-list))
               ]
+          ;(debug log 'doc-status-index! 'files-data (pprintl files-data))
           (into {} (for [doc-id (distinct (concat (keys local-index) (keys files-data)))]
                      ;:synched is the file changed date when the file was synched
                      ;for a particular doc-id there could be a missing file or localstore entry
@@ -424,23 +512,25 @@
 (defn- <sync-drive-file!-
   "Sync doc with its drive file and updates localstore and drive accordingly."
   [local-entry file-data {:keys [doc-id title subtitle] :as doc} {:keys [on-sync-status
-                                                                         on-in-synch
+                                                                         on-in-sync
                                                                          on-overwrite-from-file
                                                                          on-overwrite-file
                                                                          on-conflicts-resolved
                                                                          on-complete
+                                                                         on-synced-file
                                                                          ]}]
   (go?
     (let [{:keys [file-id]} file-data
-          [status] (drive-change-status file-data local-entry)
+          [status :as change-status] (drive-change-status file-data local-entry)
           ]
-      (info log "sync-drive-status:" doc-id status)
+      (info log '<sync-drive-file!- 'sync-status doc-id change-status)
       (and on-sync-status (on-sync-status status))
       (case status
         :in-sync
         (do
-          (js/setTimeout on-in-synch)
-          (js/setTimeout on-complete)
+          (and on-in-sync (js/setTimeout on-in-sync))
+          (and on-synced-file (js/setTimeout #(on-synced-file doc)))
+          (and on-complete (js/setTimeout on-complete))
           false)
         :overwrite-from-file
         (let [drive-doc (<? (drive/<get-file-content file-id {:default {}}))
@@ -449,6 +539,7 @@
                    (<index-merge drive-doc file-data)
                    )
               ]
+          (and on-synced-file (js/setTimeout #(on-synced-file drive-doc)))
           (take! <c on-complete)
           (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
           drive-doc)
@@ -464,6 +555,7 @@
                                             })
                          )))
               ]
+          (and on-synced-file (js/setTimeout #(on-synced-file doc)))
           (take! <c on-complete)
           (and on-overwrite-file (on-overwrite-file))
           false)
@@ -482,21 +574,29 @@
                                                                              }))
                    )
               ]
+          (and on-synced-file (js/setTimeout #(on-synced-file synched-doc)))
           (take! <c on-complete)
           (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
           synched-doc)
         ))))
 
 (defn sync-drive-file!
-  "Sync doc with its Drive file."
-  [{:keys [doc-id] :as doc} {:keys [on-error] :as listeners}]
+  "Sync local-doc with its Drive file.
+  If local-doc is nil then it is read from localstore
+  "
+  [local-doc-or-id {:keys [on-error] :as listeners}]
   (take! (go?
-           (let [{:keys [file-id] :as local-entry} (get (<? (<read-local-index)) doc-id)
+           (let [[local-doc doc-id] (if (map? local-doc-or-id)
+                                      [local-doc-or-id (:doc-id local-doc-or-id)]
+                                      [(<? (<read-local-doc local-doc-or-id)) local-doc-or-id])
+                 _ (assert (and (map? local-doc) doc-id))
+                 {:keys [file-id] :as local-entry} (get (<? (<read-local-index)) doc-id)
                  file-data (or (and file-id (<? (<file-data file-id)))
                                (and doc-id (<? (<find-file-data doc-id)))
                                nil)
                  ]
-             (<! (<sync-drive-file!- local-entry file-data doc listeners))
+             ;(debug log 'sync-drive-file! 'file-data (pprintl file-data))
+             (<! (<sync-drive-file!- local-entry file-data local-doc listeners))
              ))
          (fn [e] (when (utils/error? e)
                    (if on-error
@@ -510,14 +610,14 @@
   (assert false "fix implementation")
   (go
     (let [local-index (<? (<read-local-index))
-          files-data (<? (<read-files-data))
+          file-data-list (<? (<read-file-data-list))
           exclude (complement (into #{} exclude-docs))
           ]
       (<? (<into [] (async/merge
-                      (for [doc-id (filter exclude (distinct (concat priority-docs (keys local-index) (keys files-data))))]
+                      (for [doc-id (filter exclude (distinct (concat priority-docs (keys local-index) (keys file-data-list))))]
                         ;for body behaves as a fn so go-block needed.
                         (go-let [local-entry (get local-index doc-id)
-                                 file-data (get files-data doc-id)
+                                 file-data (get file-data-list doc-id)
                                  local-doc (<? (ldb/<get-data doc-id {:format :object :default {:doc-id doc-id}}))
                                  ]
                           (<sync-drive-file!- local-entry file-data local-doc nil))

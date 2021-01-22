@@ -62,6 +62,7 @@
     ["@material-ui/icons/AddOutlined" :default new-note-icon]
     ["@material-ui/icons/FolderOpenOutlined" :default open-file-icon]
     ["@material-ui/icons/DeleteOutlineOutlined" :default delete-document-icon]
+    ["@material-ui/icons/ArchiveOutlined" :default move-items-icon]
     ;-------------
     )
   (:import
@@ -178,6 +179,7 @@
 (defn doc-list-pane []
   (let [docs (rsubs [::subs/doc-list])
         selected-doc-id (rsubs [::subs/doc-id])
+        moving-items? (rsubs [::subs/moving-items])
         ]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [doc-id title subtitle status]} docs]
@@ -185,16 +187,22 @@
                                     :button   true
                                     :selected (= selected-doc-id doc-id)
                                     :on-click (fn []
-                                                (dispatch! [::events/read-doc-by-id- doc-id])
-                                                (dispatch! [::events/select-index-view :index-history])
+                                                (if moving-items?
+                                                  ;source and target must be different
+                                                  (when (not= selected-doc-id doc-id)
+                                                    (dispatch! [::events/move-items doc-id]))
+                                                  (do
+                                                    (dispatch! [::events/read-doc-by-id- doc-id])
+                                                    (dispatch! [::events/select-index-view :index-history])))
                                                 )
                                     }
                        [:> ListItemText {:primary (str (or title subtitle doc-id) " (" (name status) \))}]]
        )]))
 
-(defn doc-index-tool [icon title action]
+(defn doc-index-tool [icon title action & [{:keys [selected]}]]
   [:> IconButton {:title    title
                   :on-click action
+                  :color    (if selected :secondary :inherit)
                   }
    [:> icon (theme ::theme/small-icon)]])
 
@@ -211,6 +219,9 @@
             :on-change got-file
             }]
    [doc-index-tool open-file-icon "Open file" #(-> (js-this) .-upload .click)]
+   [doc-index-tool move-items-icon "start move open items..."
+    #(dispatch! [::events/toggle-start-move-items])
+    {:selected (rsubs [::subs/moving-items])}]
    ])
 
 (defn doc-index-pane []

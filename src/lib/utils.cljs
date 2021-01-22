@@ -59,11 +59,9 @@
   (Date. (.getYear time) (.getMonth time) (.getDate time)))
 
 (def time-now-ms js/Date.now)
+
 ;;(def time-now DateTime.);;runtime cljs bug ??
 (defn time-now []
-  (DateTime.))
-
-(defn date-time []
   (DateTime.))
 
 (defn current-time []
@@ -83,6 +81,9 @@
   ;https://google.github.io/closure-library/api/goog.date.DateTime.html
   [^js/goog.date.DateTime date-time]
   (.toUTCIsoString date-time false true))
+
+(defn iso-time-now []
+  (date-time->iso-time (time-now)))
 
 (defn date-time->ms [^js/goog.date.DateTime date-time]
   (.valueOf date-time))
