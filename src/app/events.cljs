@@ -24,7 +24,6 @@
     [clojure.string :as str]
     [clojure.walk :as walk]
     [app.ui.registry :as reg]
-    [app.store-test :as st]
     ["react-device-detect" :refer [browserName browserVersion fullBrowserVersion osVersion
                                    deviceType engineName deviceDetect osName getUA
                                    mobileVendor mobileModel engineVersion
@@ -879,13 +878,6 @@
                                  (assoc-in doc [id :trashed] :moved)
                                  ) doc move-items)))
         )))
-
-#_(reg-event-db
-    ::move-items
-    (fn-traced [{:keys [moving-items open-items] source-doc :doc :as db} [_ target-doc-id]]
-      (assert (and moving-items (not= (:doc-id source-doc) target-doc-id)))
-      (st/test-move-items db)
-      db))
 
 (reg-event-db
   ::move-items
