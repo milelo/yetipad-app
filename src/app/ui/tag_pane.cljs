@@ -71,7 +71,7 @@
 (defn tag-pane [{:keys [item]}]
   (if-let [edit-item (rsubs [::subs/edit-item (:id item)])]
     [note-editor edit-item]
-    [tag-view item {:buttons [open-all-button ui/edit-button ui/fullscreen-button]}]
+    [tag-view item {:buttons (cons open-all-button ui/standard-viewer-buttons)}]
     ))
 
 (reg/register {:kind             :tag

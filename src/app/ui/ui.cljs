@@ -152,12 +152,14 @@
      (when footer [:div {:style {:margin-top 4}} footer])
      ]]])
 
+(def standard-viewer-buttons [edit-button fullscreen-button])
+
 (defn viewer-pane
   ([{:keys [trashed] :as item} {:keys [body footer buttons]}]
    [:<>
     [viewer-inline item body footer (concat (if trashed
                                               [delete-permanent-button restore-button]
-                                              (or buttons [edit-button fullscreen-button])
+                                              (or buttons standard-viewer-buttons)
                                               ) [inspect-button close-button close-other-button])]
     [viewer-fullscreen item body footer]
     ]))
