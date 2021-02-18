@@ -51,13 +51,14 @@
                    (dispatch! [::events/new-title id @new-title*])
                    )})]))
 
-(defn note-editor [{:keys [id] :as item}]
-  [ui/editor-pane item {:body [:<>
-                               ^{:key :title-e} [title-editor item]
-                               ^{:key :cont-e} [error-boundary ::note-editor
-                                                [content-editor item]]
-                               ^{:key :tags-e} [:div {:style {:margin-top 5}} [tag-editor id]]
-                               ]}])
+(defn note-editor [{:keys [id] :as item} & [options]]
+  [ui/editor-pane item (merge {:body [:<>
+                                      ^{:key :title-e} [title-editor item]
+                                      ^{:key :cont-e} [error-boundary ::note-editor
+                                                       [content-editor item]]
+                                      ^{:key :tags-e} [:div {:style {:margin-top 5}} [tag-editor id]]
+                                      ]
+                               } options)])
 
 (defn note-pane [{:keys [item]}]
   (if-let [edit-item (rsubs [::subs/edit-item (:id item)])]

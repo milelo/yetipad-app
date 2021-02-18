@@ -309,46 +309,101 @@
     (and (not root-change) (> change file-change)) :resolve-conflicts
     ))
 
+
+(defn- deep-tag-ids [doc tag-ids]
+  (distinct ((fn deep-tag-ids [doc tag-ids]
+               (reduce (fn [tids tid]
+                         (concat tids (deep-tag-ids doc (get-in doc [tid :tags])))
+                         ) tag-ids tag-ids)) doc tag-ids)))
+
+(defn- map-path
+  "Creates a map of tag-paths for tag-id where a path takes the form of [<tag-title> (<parent tag-paths>)].
+  The structures can be compared for equality (=).
+  "
+  [doc src-tag-ids]
+  (let [to-path (fn to-path [tag-id]
+                  (let [{:keys [title tags]} (get doc tag-id)]
+                    [(not-empty (sort (map to-path tags))) title]))]
+    (into {} (for [tag-id src-tag-ids]
+               [tag-id (to-path tag-id)]))))
+
+(def imported-title "imported")
+
+(defn- map-import-child-path
+  "Same as map-path except only includes paths under the 'imports' tag.
+  The 'imports' tag isn't included.
+  "
+  [doc src-tag-ids]
+  (let [imported? (partial = [nil imported-title])
+        to-path (fn to-path [tag-id]
+                  (let [{:keys [title tags]} (get doc tag-id)
+                        paths (not-empty (keep to-path tags))
+                        ]
+                    (when (or paths (= title imported-title))
+                      [(not-empty (sort (remove imported? paths))) title]
+                      )))
+        ]
+    (into (array-map) (for [tag-id src-tag-ids]
+                        (let [path (to-path tag-id)]
+                          (when (and path (-> path imported? not))
+                            [path tag-id]))))))
+
 (defn- copy-items
   "copy items with item-ids from source-doc to target-doc. The item ids are remapped to new ids.
   References between items in item-ids like included tags are maintained.
   References to tags not include in item-ids are added as a child of the tag named 'imported' retaining only their name,
   where the tag name already exists as a child of the 'imported' tag, this will be reused as the reference target.
   "
+  ;1) find all tag and tags-of-tag ids for items being copied
+  ;2) get all tag-paths for 1).
+  ;3) use these tag-paths to tie up with target tag-paths to get source id to target id map.
+  ;4) for source tag-paths without corresponding target tags-paths, copy over the source tags and remap their ids
   ;source tags that already have a corresponding import tag-name don't need a new id.
+  ;source tag paths need to be matched with target-imported tag paths.
   [source-doc target-doc item-ids]
-  (let [imported-title "imported"
+  (let [;remove trashed entries from target-doc
+        target-doc (reduce-kv (fn [target-doc k v] (if (:trashed v)
+                                                     (dissoc target-doc k)
+                                                     target-doc)
+                                ) target-doc target-doc)
+        ;remove any static items (with keyword ids)
+        ;remove tags. Maybe the should be an option; moved-item tags are copied by default
+        item-ids (filter #(and (string? %)
+                               (-> % source-doc :kind (not= :tag))
+                               ) item-ids)
         iso-time-now (utils/iso-time-now)
-        ;the id of the target-doc import tag if it exists
-        imported-tag-id (some (fn [{:keys [kind id title trashed]}]
-                                (and (= kind :tag) (= title imported-title) (not trashed) id)
+        ;the id of the target-doc 'import' tag if it exists
+        imported-tag-id (some (fn [{:keys [kind id title]}]
+                                (and (= kind :tag) (= title imported-title) id)
                                 ) (vals target-doc))
-        ;existing 'imported' tags in target document that can be matched up by name with source tags
-        import-id-for-tag-name (if imported-tag-id
-                                 (into {} (keep (fn [{:keys [id kind tags title trashed]}]
-                                                  (when (and (= kind :tag)
-                                                             (not trashed)
-                                                             (some (partial = imported-tag-id) tags))
-                                                    [title id]
-                                                    )) (vals target-doc)))
-                                 {})
-        source-items (select-keys source-doc item-ids)
-        src-tag-ids (reduce (fn [tags item] (into tags (:tags item))) #{} (vals source-items))
-        ;create map from old id to new id and add existing import-tag ids from target doc with matching tags from source
-        id-map (into {} (keep (fn [src-tag-id]
-                                (when-let [tag-id (import-id-for-tag-name (get-in source-doc [src-tag-id :title]))]
-                                  [src-tag-id tag-id])
-                                ) src-tag-ids))
-        ;tags from source that don't have a matching tag in target 'imported' tags
-        orphan-tag-ids (filter (complement id-map) src-tag-ids)
-        ;add new target ids for unmatched source ids
+
+        target-tag-ids (map :id (filter #(= (:kind %) :tag) (vals target-doc)))
+        ;get the tag-ids and tag-ids of tags for the selected items
+        deep-src-tag-ids (deep-tag-ids source-doc (reduce (fn [tags id] (concat tags (get-in source-doc [id :tags])))
+                                                          () item-ids))
+        ;_ (debug log 'deep-src-tag-ids deep-src-tag-ids)
+        ;The tag paths for the items being copied,
+        ; these will be matched with existing target imports or recreated under imports
+        source-tag-path-for-id (map-path source-doc deep-src-tag-ids)
+        ;_ (debug log 'source-tag-path-for-id (pprintl source-tag-path-for-id))
+        ;The existing target import paths for their id
+        import-target-id-for-child-path (map-import-child-path target-doc target-tag-ids)
+        ;_ (debug log 'import-target-id-for-child-path (pprintl import-target-id-for-child-path))
+        ;create map of source tags to existing import tags where they exist:
+        id-map (into {} (for [[source-tag-id path] source-tag-path-for-id
+                              :let [target-id (get import-target-id-for-child-path path)]
+                              :when target-id
+                              ]
+                          [source-tag-id target-id]))
+        ;_ (debug log 'id-map 'matched (pprintl id-map))
+        ;create new ids for unmatched tags and items being copied:
+        copy-ids (distinct (concat
+                             (remove id-map (keys source-tag-path-for-id))
+                             item-ids
+                             (when (not imported-tag-id) [:imported])
+                             ))
         id-map (into id-map (map vector
-                                 (concat
-                                   orphan-tag-ids
-                                   (keys source-items)
-                                   (when (not imported-tag-id) [:imported]))
-                                 (utils/new-item-ids target-doc)
-                                 ))
+                                 copy-ids (utils/new-item-ids target-doc)))
         ;add an 'imported' tag to target doc if it doesn't exist.
         [target-doc imported-tag-id] (if imported-tag-id
                                        [target-doc imported-tag-id]
@@ -358,24 +413,17 @@
                                                                 :kind   :tag
                                                                 :create iso-time-now
                                                                 }) id]))
-        ;add tags to target doc for orphan tag ids
-        target-doc (into target-doc (map (fn [src-id] (let [id (id-map src-id)]
-                                                        [id {:id     id
-                                                             :kind   :tag
-                                                             :title  (get-in source-doc [src-id :title])
-                                                             :tags   (list imported-tag-id)
-                                                             :create iso-time-now
-                                                             }]
-                                                        )) orphan-tag-ids))
-        ;give source items new ids and add to the target.
-        target-doc (into target-doc (map (fn [[id item]] (let [id (id-map id)]
-                                                           [id (assoc (dissoc item :conflict-id)
-                                                                 :id id
-                                                                 :tags (or
-                                                                         (not-empty (map id-map (:tags item)))
-                                                                         (list imported-tag-id))
-                                                                 )])
-                                           ) source-items))
+        ;_ (debug log 'id-map 'create (pprintl id-map))
+        ;add the unmatched source tags to the target and remap their ids:
+        target-doc (into target-doc (for [{:keys [tags] :as src-tag} (map source-doc copy-ids)]
+                                      (let [id (id-map (:id src-tag))
+                                            tag (assoc src-tag
+                                                  :id id
+                                                  :tags (if (empty? tags)
+                                                          (list imported-tag-id)
+                                                          (keep id-map tags))
+                                                  )]
+                                        [id tag])))
         target-doc (assoc target-doc :change iso-time-now)
         ]
     target-doc))

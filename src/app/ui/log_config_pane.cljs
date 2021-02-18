@@ -72,4 +72,5 @@
                :title "Log configuration"
                :icon  debug-settings-icon
                :pane  log-config-pane
+               :suppress-doc-entry true
                })

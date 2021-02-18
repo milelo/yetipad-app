@@ -24,6 +24,7 @@
     [clojure.string :as str]
     [clojure.walk :as walk]
     [app.ui.registry :as reg]
+    [app.store-test :as st]
     ["react-device-detect" :refer [browserName browserVersion fullBrowserVersion osVersion
                                    deviceType engineName deviceDetect osName getUA
                                    mobileVendor mobileModel engineVersion
@@ -79,8 +80,6 @@
     (let [doc-meta (select-keys doc (filter keyword? (keys doc)))]
       (println "Doc keyword entries:")
       (pprint doc-meta)
-      ;(println :has-ids (contains? (get doc (first (filter string? (keys doc)))) :id))
-      (println :has-ids (contains? (first (filter map? (vals doc))) :id))
       )
     db))
 
@@ -585,6 +584,20 @@
                             (if disable-toggle open-items (drop 1 open-items))
                             (conj (filter #(not= item-id %) open-items) item-id)))))
 
+(reg-event-db
+  ::open-tag-children
+  [update-nav-bar]
+  ;Add or move new item to head.
+  ;Remove head item on reselection.
+  (fn-traced [{:keys [doc open-items] :as db} [_ tag-id]]
+    (assoc db :open-items (distinct (concat
+                                      open-items
+                                      (keep (fn [[k v]]
+                                              (when (some (partial = tag-id) (:tags v))
+                                                k)
+                                              ) doc)
+                                      )))))
+
 ;---------------close-item------------
 
 (reg-event-db
@@ -646,8 +659,10 @@
     ;initiates a save:
     ; set editing to ::accept-edit > close-editor > editor sends event like ::new-content > save new content to doc
     (debug log ::accept-edit 'editing (get-in db [:editing]))
-    (if-let [{:keys [create change]} (get doc item-id)]     ;must not 'create' entries! eg :log-config
-      (let [{icreate :create ichange :change :as base-item} (get-in db [:editing item-id :source])
+    (if (reg/rget item-id :suppress-doc-entry)
+      (assoc-in db [:editing item-id :accept-as] item-id)
+      (let [{:keys [create change]} (get doc item-id)
+            {icreate :create ichange :change :as base-item} (get-in db [:editing item-id :source])
             iso-date-time (utils/date-time->iso-time (utils/time-now))
             external-change? (and (string? item-id) (not= (or change create) (or ichange icreate)))
             [item-id o-item-id doc] (if external-change?
@@ -671,7 +686,7 @@
               (assoc :saving? true)
               ))
         )
-      (assoc-in db [:editing item-id :accept-as] item-id))))
+      )))
 
 (reg-event-db
   ::cancel-edit
@@ -744,13 +759,32 @@
   ::restore-item
   [save-on-doc-change]
   (fn-traced [{{:keys [doc-id] :as doc} :doc :as db} [_ item-id]]
-    (let [iso-date-time (utils/date-time->iso-time (utils/time-now))]
+    (let [iso-date-time (utils/iso-time-now)]
       (store/add-doc-change! doc-id item-id (get-in doc [item-id :change]))
       (let [doc (assoc doc :change iso-date-time)
             doc (update doc item-id dissoc :trashed)
             ]
         (assoc db :doc doc))
       )))
+
+(reg-event-db
+  ::restore-all-trashed
+  [save-on-doc-change]
+  (fn-traced [db _]
+    (update db :doc (fn [doc]
+                      (let [iso-date-time (utils/iso-time-now)
+                            trashed-ids (map :id (filter :trashed (vals doc)))
+                            doc (reduce-kv (fn [m k v]
+                                             (if (:trashed v)
+                                               (update m k #(-> %
+                                                                (dissoc :trashed)
+                                                                (assoc :change iso-date-time)
+                                                                ))
+                                               m)) doc doc)
+                            doc (assoc doc :change iso-date-time)
+                            ]
+                        (store/add-doc-changes! (:doc-id doc) (map doc trashed-ids))
+                        doc)))))
 
 (reg-event-db
   ;write content only after accept-edit
@@ -846,12 +880,23 @@
                                  ) doc move-items)))
         )))
 
+#_(reg-event-db
+    ::move-items
+    (fn-traced [{:keys [moving-items open-items] source-doc :doc :as db} [_ target-doc-id]]
+      (assert (and moving-items (not= (:doc-id source-doc) target-doc-id)))
+      (st/test-move-items db)
+      db))
+
 (reg-event-db
   ::move-items
   (fn-traced [{:keys [moving-items open-items] source-doc :doc :as db} [_ target-doc-id]]
     (assert (and moving-items (not= (:doc-id source-doc) target-doc-id)))
     ;first sync target doc
-    (when-let [move-items (not-empty (filter (complement keyword?) open-items))]
+
+    (when-let [;remove tags. Maybe the should be an option; moved-item tags are copied by default
+               move-items (not-empty (filter #(and (string? %)
+                                                   (-> % source-doc :kind (not= :tag))
+                                                   ) open-items))]
       (if (store/signed-in?)
         (store/sync-drive-file!
           target-doc-id

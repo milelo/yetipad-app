@@ -16,6 +16,7 @@
     [app.ui.note-pane :refer [note-editor]]
     ["@material-ui/core" :refer [TextField List ListItem ListItemText ListItemIcon]]
     ["@material-ui/icons/LabelTwoTone" :default tag-icon]
+    ["@material-ui/icons/OpenInNewTwoTone" :default open-all-icon]
     ))
 
 (def log (log/logger 'app.ui.tag-pane))
@@ -59,15 +60,18 @@
    [:div {:style {:margin "1em 1em"}} [tag-list id]]]
   )
 
-(defn tag-view [{:keys [id tags] :as item}]
-  [ui/viewer-pane item {:body   ^{:key :cont} [content-pane item]
-                        :footer ^{:key :tags} [tag-viewer id]
-                        }])
+(defn tag-view [{:keys [id tags] :as item} & [options]]
+  [ui/viewer-pane item (merge {:body   ^{:key :cont} [content-pane item]
+                               :footer ^{:key :tags} [tag-viewer id]
+                               } options)])
+
+(defn open-all-button [id]
+  [ui/item-button open-all-icon "open all children" #(dispatch! [::events/open-tag-children id])])
 
 (defn tag-pane [{:keys [item]}]
   (if-let [edit-item (rsubs [::subs/edit-item (:id item)])]
     [note-editor edit-item]
-    [tag-view item]
+    [tag-view item {:buttons [open-all-button]}]
     ))
 
 (reg/register {:kind             :tag

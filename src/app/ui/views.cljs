@@ -347,6 +347,7 @@
         [:<>
          [:> Divider]
          [menu-list-item nil "fix-doc" #(dispatch! [::events/fix-doc])]
+         [menu-list-item nil "restore-all-trashed" #(dispatch! [::events/restore-all-trashed])]
          [menu-list-item nil "Dump tag-map" #(pprint (rsubs [::subs/tag-map]))]
          [menu-list-item nil "List app drive files" #(dispatch! [::events/debug-list-app-drive-files])]
          [menu-list-item nil "find-file" #(dispatch! [::events/debug-find-file])]

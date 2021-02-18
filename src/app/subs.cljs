@@ -92,7 +92,7 @@
     (subscribe [::doc-with-trash]))
   (fn [doc]
     (into {} (filter (fn [[_k v]]
-                       (if (map? v) (not= (:trashed v) true) true)
+                       (if (map? v) (-> v :trashed not) true)
                        ) doc))
     ))
 
@@ -297,7 +297,7 @@
   ;returns a map of tag-id vs its child-ids as [tag-ids other-ids] where child-ids are items tagged with tag-id.
   ::tag-map
   (fn []
-    (subscribe [::doc-with-trash]))
+    (subscribe [::doc]))
   (fn [doc]
     (reduce
       (fn [m {:keys [kind tags id]}]
@@ -339,7 +339,7 @@
   (fn []
     [(subscribe [::tag-map]) (subscribe [::doc])])
   (fn [[tag-map doc]]
-    (not-empty (sort-by :title (filter #(-> % :tags empty?) (keep doc (keys tag-map)))))
+    (not-empty (sort-by :title (remove #(->> % :tags (some doc)) (keep doc (keys tag-map)))))
     ))
 
 (reg-sub
