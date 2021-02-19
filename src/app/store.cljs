@@ -234,7 +234,7 @@
                             (fn [doc-changes]
                               (reduce (fn [doc-changes {:keys [id change]}]
                                         (if (get doc-changes id)
-                                          doc-changes
+                                          doc-changes       ;only initial timestamp is wanted
                                           (assoc doc-changes id {:source-change change}))
                                         ) doc-changes changes)))
            ]
@@ -245,6 +245,8 @@
 (defn add-doc-change!
   "Registers a document item change in the index to support file syncing.
   the registered changes are cleared after the synched document is written to Drive.
+  source-change-time is the change-time of the item before it was first edited which corresponds to
+  the change time on the item in the documents drive file unless it is edited from another device.
   "
   [doc-id item-id source-change-time]
   (add-doc-changes! doc-id [{:id item-id :change source-change-time}])
@@ -384,21 +386,21 @@
         ;_ (debug log 'deep-src-tag-ids deep-src-tag-ids)
         ;The tag paths for the items being copied,
         ; these will be matched with existing target imports or recreated under imports
-        source-tag-path-for-id (map-path source-doc deep-src-tag-ids)
+        src-tag-path-for-id (map-path source-doc deep-src-tag-ids)
         ;_ (debug log 'source-tag-path-for-id (pprintl source-tag-path-for-id))
         ;The existing target import paths for their id
         import-target-id-for-child-path (map-import-child-path target-doc target-tag-ids)
         ;_ (debug log 'import-target-id-for-child-path (pprintl import-target-id-for-child-path))
         ;create map of source tags to existing import tags where they exist:
-        id-map (into {} (for [[source-tag-id path] source-tag-path-for-id
-                              :let [target-id (get import-target-id-for-child-path path)]
+        id-map (into {} (for [[src-tag-id src-path] src-tag-path-for-id
+                              :let [target-id (get import-target-id-for-child-path src-path)]
                               :when target-id
                               ]
-                          [source-tag-id target-id]))
+                          [src-tag-id target-id]))
         ;_ (debug log 'id-map 'matched (pprintl id-map))
         ;create new ids for unmatched tags and items being copied:
         copy-ids (distinct (concat
-                             (remove id-map (keys source-tag-path-for-id))
+                             (remove id-map (keys src-tag-path-for-id))
                              item-ids
                              (when (not imported-tag-id) [:imported])
                              ))

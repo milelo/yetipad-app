@@ -620,6 +620,12 @@
     (assoc db :open-items (filter #(editing? db %)
                                   open-items))))
 
+(reg-event-db
+  ::close-trashed
+  [update-nav-bar]
+  (fn-traced [{:keys [open-items doc] :as db} _]
+    (assoc db :open-items (remove #(-> % doc :trashed) open-items))))
+
 ;---------------------edit-item---------
 
 (reg-event-db
@@ -662,7 +668,7 @@
       (assoc-in db [:editing item-id :accept-as] item-id)
       (let [{:keys [create change]} (get doc item-id)
             {icreate :create ichange :change :as base-item} (get-in db [:editing item-id :source])
-            iso-date-time (utils/date-time->iso-time (utils/time-now))
+            iso-date-time (utils/iso-time-now)
             external-change? (and (string? item-id) (not= (or change create) (or ichange icreate)))
             [item-id o-item-id doc] (if external-change?
                                       ;give changes to new item id
@@ -713,7 +719,7 @@
   [save-on-doc-change]
   (fn-traced [{:keys [doc open-items] :as db} [_ item-id]]
     (store/add-doc-change! (:doc-id doc) item-id (get-in doc [item-id :change]))
-    (let [iso-date-time (utils/date-time->iso-time (utils/time-now))
+    (let [iso-date-time (utils/iso-time-now)
           doc (assoc doc :change iso-date-time)
           doc (dissoc doc item-id)
           ]
@@ -728,7 +734,7 @@
   [save-on-doc-change]
   (fn-traced [{:keys [doc open-items] :as db} _]
     (if-let [trashed (not-empty (filter :trashed (vals doc)))]
-      (let [iso-date-time (utils/date-time->iso-time (utils/time-now))
+      (let [iso-date-time (utils/iso-time-now)
             doc (assoc doc :change iso-date-time)
             doc (apply dissoc doc (map :id trashed))
             ]
@@ -743,10 +749,10 @@
   [save-on-doc-change]
   (fn-traced [{{:keys [doc-id] :as doc} :doc :as db} [_ item-id]]
     (if (string? item-id)
-      (let [iso-date-time (utils/date-time->iso-time (utils/time-now))]
+      (let [iso-date-time (utils/iso-time-now)]
         (store/add-doc-change! doc-id item-id (get-in doc [item-id :change]))
         (let [doc (assoc doc :change iso-date-time)
-              doc (assoc-in doc [item-id :trashed] true)
+              doc (update doc item-id assoc :trashed true :mchange iso-date-time)
               ]
           (dispatch! [::cancel-edit item-id])
           (dispatch! [::close-item item-id])
@@ -821,7 +827,7 @@
   [save-on-doc-change]
   (fn-traced [{doc :doc :as db} [_ item-id tag-ids new-tags]]
     (if (get-in db [:editing item-id])
-      (let [iso-date-time (utils/date-time->iso-time (utils/time-now))
+      (let [iso-date-time (utils/iso-time-now)
             new-tags (when (not-empty new-tags)
                        (into {} (for [[id {:keys [title]}] (map vector
                                                                 (utils/new-item-ids doc)
@@ -871,13 +877,13 @@
                               {:on-sync-status #(info log ::finish-move-items- 'target-sync-status %)
                                :on-complete    #(dispatch! [::sync-doc-index])
                                }))
-    (-> db
-        (update :open-items #(filter keyword? %))
-        (update :doc (fn [doc]
-                       (reduce (fn [doc id]
-                                 (assoc-in doc [id :trashed] :moved)
-                                 ) doc move-items)))
-        )))
+    (dispatch! [::close-trashed])
+    (update db :doc (fn [doc]
+                      (let [doc (reduce (fn [doc id]
+                                          (assoc-in doc [id :trashed] :moved)
+                                          ) doc move-items)
+                            ]
+                        doc)))))
 
 (reg-event-db
   ::move-items

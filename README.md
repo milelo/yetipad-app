@@ -49,7 +49,7 @@ Edge | ok | -
 * The app doesn't have an explicit new-document function at the moment, navigate to the base url to create one, use the link on the 'about-app' page, or create your own note with a link to https://yetipad.mikelongworth.uk.
 * All documents created with the app can be viewed and selected in the document index tab in the index drawer (right hand side drawer).
 * Deleting documents doesn't request confirmation at the moment. To un-delete a document restore it from the trash in the google drive app. Google drive also keeps revisions, I've not evaluated this with the app yet to figure out the best way of utilising the feature.
-* Deleting items moves them to in-apps trash. The empty trash button doesn't currently ask for confirmation.
+* Deleting items moves them to the in-app trash. The empty trash button doesn't currently ask for confirmation.
 * When editing items there is a tag editor underneath the main content area. Enter the text of a new tag and then enter to create a new tag or select an existing tag from the list. Tags appear as items like notes and potentially other content type. Tags can be added to other tags like they can be added to notes. Tags appear as entries to a hierarchical menu in the left drawer with untagged-tags (without parents) as the root entries.
 * Alpha-numeric sorting is case sensitive so capital letters have higher priority. Good to start tags with a capital letter unless you want it low-order.
 
