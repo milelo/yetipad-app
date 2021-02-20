@@ -225,32 +225,40 @@
   [file-id & [fields]]
   (drive/<get-file-meta file-id {:fields fields}))
 
-(defn add-doc-changes!
+(defn update-timestamps!
   "Registers a document item change in the index to support file syncing.
+  The change must be registered before the timestamp is updated.
   the registered changes are cleared after the synched document is written to Drive.
+  'changes' is a list of maps of the form: {:keys [id change]}
+  :mchange must always be updated if the item map is changed.
+  For back compatibility :mchange may not exist so use :change
+  :change is used for sorting and display purposes it won't be updated if just metadata is changed
   "
-  [doc-id changes]
-  (go-let [index (update-in (<? (<read-local-index)) [doc-id :doc-changes]
-                            (fn [doc-changes]
-                              (reduce (fn [doc-changes {:keys [id change]}]
-                                        (if (get doc-changes id)
-                                          doc-changes       ;only initial timestamp is wanted
-                                          (assoc doc-changes id {:source-change change}))
-                                        ) doc-changes changes)))
-           ]
-    (trace log 'add-doc-changes! (get-in index [doc-id :doc-changes]))
-    (<? (<write-local-index index))
-    ) nil)
-
-(defn add-doc-change!
-  "Registers a document item change in the index to support file syncing.
-  the registered changes are cleared after the synched document is written to Drive.
-  source-change-time is the change-time of the item before it was first edited which corresponds to
-  the change time on the item in the documents drive file unless it is edited from another device.
-  "
-  [doc-id item-id source-change-time]
-  (add-doc-changes! doc-id [{:id item-id :change source-change-time}])
-  )
+  [{:keys [doc-id] :as doc} id-or-ids & [{:keys [add-create]}]]
+  (let [ids (if (sequential? id-or-ids) id-or-ids [id-or-ids])]
+    (go-let [index (<? (<read-local-index))
+             doc-changes (get-in index [doc-id :doc-changes])
+             doc-changes (reduce (fn [doc-changes id]
+                                   (if (get doc-changes id)
+                                     doc-changes
+                                     (assoc doc-changes id {:source-change (let [item (get doc id)]
+                                                                             (or (:mchange item) (:change item)))
+                                                            }))
+                                   ) doc-changes ids)
+             ]
+      (<? (<write-local-index (assoc-in index [doc-id :doc-changes] doc-changes)))
+      (trace log 'update-timestamps! doc-changes))
+    (let [iso-date-time (utils/iso-time-now)
+          doc (reduce (fn [doc id]
+                        (assoc-in doc [id :mchange] iso-date-time)
+                        (update doc id (fn [item]
+                                         (into item [[:mchange iso-date-time]
+                                                     (when add-create [:create iso-date-time])
+                                                     ])))
+                        ) doc ids)
+          doc (assoc doc :change iso-date-time)
+          ]
+      doc)))
 
 (def <trash-file drive/<trash-file)
 
@@ -466,8 +474,12 @@
                                     source-change (get-in doc-changes [k :source-change])
                                     file-entry (get drive-doc k)
                                     entry (get app-doc k)
-                                    file-change (when (map? file-entry) (or (:change file-entry) (:create file-entry)))
-                                    change (when (map? entry) (or (:change entry) (:create entry)))
+                                    file-change (when (map? file-entry) (or (:mchange file-entry)
+                                                                            (:change file-entry)
+                                                                            (:create file-entry)))
+                                    change (when (map? entry) (or (:mchange entry)
+                                                                  (:change entry)
+                                                                  (:create entry)))
                                     status (if (keyword? k)
                                              :in-sync       ;keep local settings
                                              ;(entry-change-status file-change change root-change)
@@ -489,7 +501,7 @@
                               ]
                           [(get e :id k) e]
                           ))
-        merged (assoc merged :change (utils/iso-time-now))
+        merged (assoc merged :mchange (utils/iso-time-now))
         ]
     ;(prn-diff :drive-doc-only drive-doc :merged-doc-only merged)
     merged))

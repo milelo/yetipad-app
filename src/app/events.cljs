@@ -125,10 +125,19 @@
                                       (dispatch! [::open-item k]))
                                     [k v])
                                   e)))
+          fix-map #(reduce-kv (fn [doc k v]
+                                (if (or (keyword? k) (map? v))
+                                  doc
+                                  (do
+                                    (println 'removed-item [k v])
+                                    (dissoc doc k))
+                                  )) doc doc)
+
           ]
       ;(pprint (fix-style))
-      ;(assoc db :doc doc)
-      (assoc db :doc (merge doc (fix-style)))
+      (assoc db :doc (fix-map))
+      ;(assoc db :doc (merge doc (fix-style)))
+      db
       )))
 
 (reg-event-db
@@ -660,7 +669,7 @@
 
 (reg-event-db
   ::accept-edit
-  (fn-traced [{{:keys [doc-id] :as doc} :doc :as db} [_ item-id]]
+  (fn-traced [{doc :doc :as db} [_ item-id]]
     ;initiates a save:
     ; set editing to ::accept-edit > close-editor > editor sends event like ::new-content > save new content to doc
     (debug log ::accept-edit 'editing (get-in db [:editing]))
@@ -668,7 +677,6 @@
       (assoc-in db [:editing item-id :accept-as] item-id)
       (let [{:keys [create change]} (get doc item-id)
             {icreate :create ichange :change :as base-item} (get-in db [:editing item-id :source])
-            iso-date-time (utils/iso-time-now)
             external-change? (and (string? item-id) (not= (or change create) (or ichange icreate)))
             [item-id o-item-id doc] (if external-change?
                                       ;give changes to new item id
@@ -679,19 +687,13 @@
                                         [nid item-id doc])
                                       [item-id item-id doc])
             ]
-        (store/add-doc-change! doc-id item-id (get-in doc [item-id :change]))
-        (let [doc (assoc-in doc [item-id :change] iso-date-time)
-              doc (assoc doc :change iso-date-time)
-              ]
-          (info log ::saving)
-          (when (not= item-id o-item-id) (dispatch! [::open-item item-id]))
-          (-> db
-              (assoc :doc doc)
-              (assoc-in [:editing o-item-id :accept-as] item-id)
-              (assoc :saving? true)
-              ))
-        )
-      )))
+        (info log ::saving)
+        (when (not= item-id o-item-id) (dispatch! [::open-item item-id]))
+        (-> db
+            (assoc :doc (store/update-timestamps! doc item-id))
+            (assoc-in [:editing o-item-id :accept-as] item-id)
+            (assoc :saving? true)
+            )))))
 
 (reg-event-db
   ::cancel-edit
@@ -717,28 +719,22 @@
 (reg-event-db
   ::delete-item-permanent
   [save-on-doc-change]
-  (fn-traced [{:keys [doc open-items] :as db} [_ item-id]]
-    (store/add-doc-change! (:doc-id doc) item-id (get-in doc [item-id :change]))
-    (let [iso-date-time (utils/iso-time-now)
-          doc (assoc doc :change iso-date-time)
-          doc (dissoc doc item-id)
+  (fn-traced [{:keys [doc] :as db} [_ item-id]]
+    (let [doc (dissoc doc item-id)
+          doc (store/update-timestamps! doc item-id)
           ]
       ;(dispatch! [::cancel-edit item-id])
       (dispatch! [::close-item item-id])
-      (assoc db :doc doc
-                :open-items (verified-open-items doc open-items)
-                ))))
+      (assoc db :doc doc))))
 
 (reg-event-db
   ::empty-trash
   [save-on-doc-change]
   (fn-traced [{:keys [doc open-items] :as db} _]
-    (if-let [trashed (not-empty (filter :trashed (vals doc)))]
-      (let [iso-date-time (utils/iso-time-now)
-            doc (assoc doc :change iso-date-time)
-            doc (apply dissoc doc (map :id trashed))
+    (if-let [trashed-ids (not-empty (keep #(when (:trashed %) (:id %)) (vals doc)))]
+      (let [doc (store/update-timestamps! doc trashed-ids)
+            doc (apply dissoc doc trashed-ids)
             ]
-        (store/add-doc-changes! (:doc-id doc) trashed)
         (assoc db :doc doc
                   :open-items (verified-open-items doc open-items)
                   ))
@@ -747,49 +743,37 @@
 (reg-event-db
   ::trash-item
   [save-on-doc-change]
-  (fn-traced [{{:keys [doc-id] :as doc} :doc :as db} [_ item-id]]
+  (fn-traced [{doc :doc :as db} [_ item-id]]
     (if (string? item-id)
-      (let [iso-date-time (utils/iso-time-now)]
-        (store/add-doc-change! doc-id item-id (get-in doc [item-id :change]))
-        (let [doc (assoc doc :change iso-date-time)
-              doc (update doc item-id assoc :trashed true :mchange iso-date-time)
-              ]
-          (dispatch! [::cancel-edit item-id])
-          (dispatch! [::close-item item-id])
-          (assoc db :doc doc))
-        )
+      (let [doc (update doc item-id assoc :trashed true)
+            doc (store/update-timestamps! doc item-id)
+            ]
+        (dispatch! [::cancel-edit item-id])
+        (dispatch! [::close-item item-id])
+        (assoc db :doc doc))
       db)))
 
 (reg-event-db
   ::restore-item
   [save-on-doc-change]
-  (fn-traced [{{:keys [doc-id] :as doc} :doc :as db} [_ item-id]]
-    (let [iso-date-time (utils/iso-time-now)]
-      (store/add-doc-change! doc-id item-id (get-in doc [item-id :change]))
-      (let [doc (assoc doc :change iso-date-time)
-            doc (update doc item-id dissoc :trashed)
-            ]
-        (assoc db :doc doc))
-      )))
+  (fn-traced [{doc :doc :as db} [_ item-id]]
+    (let [doc (update doc item-id dissoc :trashed)
+          doc (store/update-timestamps! doc item-id)
+          ]
+      (assoc db :doc doc))))
 
 (reg-event-db
   ::restore-all-trashed
   [save-on-doc-change]
   (fn-traced [db _]
     (update db :doc (fn [doc]
-                      (let [iso-date-time (utils/iso-time-now)
-                            trashed-ids (map :id (filter :trashed (vals doc)))
-                            doc (reduce-kv (fn [m k v]
-                                             (if (:trashed v)
-                                               (update m k #(-> %
-                                                                (dissoc :trashed)
-                                                                (assoc :change iso-date-time)
-                                                                ))
-                                               m)) doc doc)
-                            doc (assoc doc :change iso-date-time)
+                      (let [trashed-ids (map :id (filter :trashed (vals doc)))
+                            doc (reduce (fn [m id]
+                                          (update m id dissoc :trashed)
+                                          ) doc trashed-ids)
                             ]
-                        (store/add-doc-changes! (:doc-id doc) (map doc trashed-ids))
-                        doc)))))
+                        (store/update-timestamps! doc trashed-ids)
+                        )))))
 
 (reg-event-db
   ;write content only after accept-edit
@@ -798,7 +782,13 @@
   (fn-traced [db [_ item-id content]]
     ;potentially saves to new-id if original has external change.
     (if-let [item-id (get-in db [:editing item-id :accept-as])]
-      (assoc-in db [:doc item-id :content] (not-empty content))
+      (update-in db [:doc item-id] (fn [{:keys [mchange] old-content :content :as item}]
+                                     (let [content (not-empty content)]
+                                       (if (= old-content content)
+                                         item
+                                         (assoc item :change mchange
+                                                     :content content
+                                                     )))))
       db)))
 
 (reg-event-db
@@ -808,7 +798,13 @@
   (fn-traced [db [_ item-id title]]
     ;potentially saves to new-id if original has external change.
     (if-let [item-id (get-in db [:editing item-id :accept-as])]
-      (assoc-in db [:doc item-id :title] (not-empty title))
+      (update-in db [:doc item-id] (fn [{:keys [mchange] old-title :title :as item}]
+                                     (let [title (not-empty title)]
+                                       (if (= old-title title)
+                                         item
+                                         (assoc item :change mchange
+                                                     :title title
+                                                     )))))
       db)))
 
 (reg-event-db
@@ -827,20 +823,19 @@
   [save-on-doc-change]
   (fn-traced [{doc :doc :as db} [_ item-id tag-ids new-tags]]
     (if (get-in db [:editing item-id])
-      (let [iso-date-time (utils/iso-time-now)
-            new-tags (when (not-empty new-tags)
+      (let [new-tags (when (not-empty new-tags)
                        (into {} (for [[id {:keys [title]}] (map vector
                                                                 (utils/new-item-ids doc)
                                                                 (vals new-tags))]
                                   [id {:title  title
                                        :id     id
                                        :kind   :tag
-                                       :create iso-date-time
                                        }])))
             doc (merge doc new-tags)
             tags (not-empty (concat tag-ids (keys new-tags)))
             doc (if tags (assoc-in doc [item-id :tags] tags)
                          (update doc item-id dissoc :tags))
+            doc (store/update-timestamps! doc (keys new-tags) #{:add-create})
             ]
         (assoc db :doc doc))
       db)))
@@ -882,6 +877,7 @@
                       (let [doc (reduce (fn [doc id]
                                           (assoc-in doc [id :trashed] :moved)
                                           ) doc move-items)
+                            doc (store/update-timestamps! doc move-items)
                             ]
                         doc)))))
 
