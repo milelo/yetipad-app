@@ -250,10 +250,10 @@
       (trace log 'update-timestamps! doc-changes))
     (let [iso-date-time (utils/iso-time-now)
           doc (reduce (fn [doc id]
-                        (update doc id (fn [item]
-                                         (into item [[:mchange iso-date-time]
-                                                     (when add-create [:create iso-date-time])
-                                                     ])))
+                        (update doc id into [[:mchange iso-date-time]
+                                             (when add-create
+                                               [:create iso-date-time])
+                                             ])
                         ) doc ids)
           doc (assoc doc :change iso-date-time)
           ]
