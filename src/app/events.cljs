@@ -103,6 +103,25 @@
               ))
     content))
 
+
+(reg-event-db
+  ::check-doc
+  (fn-traced [{doc :doc :as db} _]
+    (println "==== check-doc ====")
+    ;(dispatch! [::close-all-items])
+    (let [t1 #(doseq [[k v] doc]
+                (when (and (string? k) (-> v :kind not))
+                  (println ::doc-issue [k v])
+                  ))
+          t2 #(doseq [[k v] doc]
+                (when-not (or (string? k) (keyword? k))
+                  (println ::doc-issue [k v])
+                  ))
+          ]
+      (t1)
+      (t2)
+      db)))
+
 (reg-event-db
   ::fix-doc
   (fn-traced [{doc :doc :as db} _]
@@ -132,12 +151,31 @@
                                     (println 'removed-item [k v])
                                     (dissoc doc k))
                                   )) doc doc)
-
+          fix-ids #(reduce-kv (fn [doc k _v]
+                                (if (or (string? k) (keyword? k))
+                                  doc
+                                  (dissoc doc k))
+                                ) doc doc)
+          fix-kind #(reduce-kv (fn [doc k v]
+                                (if (and (string? k) (-> v :kind not))
+                                  (dissoc doc k)
+                                  doc)
+                                ) doc doc)
+          t1 #(doseq [[k v] doc]
+                (when (and (string? k) (-> v :kind not))
+                  (println ::fixdoc-issue [k v])
+                  ))
+          t2 #(doseq [[k v] doc]
+                (when-not (or (string? k) (keyword? k))
+                  (println ::fixdoc-issue [k v])
+                  ))
           ]
       ;(pprint (fix-style))
-      (assoc db :doc (fix-map))
-      ;(assoc db :doc (merge doc (fix-style)))
       db
+      ;(assoc db :doc (fix-kind))
+      ;(assoc db :doc (fix-ids))
+      ;(assoc db :doc (fix-map))
+      ;(assoc db :doc (merge doc (fix-style)))
       )))
 
 (reg-event-db
@@ -690,7 +728,7 @@
         (info log ::saving)
         (when (not= item-id o-item-id) (dispatch! [::open-item item-id]))
         (-> db
-            (assoc :doc (store/update-timestamps! doc item-id))
+            (assoc :doc (store/update-timestamp! doc item-id))
             (assoc-in [:editing o-item-id :accept-as] item-id)
             (assoc :saving? true)
             )))))
@@ -721,7 +759,7 @@
   [save-on-doc-change]
   (fn-traced [{:keys [doc] :as db} [_ item-id]]
     (let [doc (dissoc doc item-id)
-          doc (store/update-timestamps! doc item-id)
+          doc (store/update-timestamp! doc item-id)
           ]
       ;(dispatch! [::cancel-edit item-id])
       (dispatch! [::close-item item-id])
@@ -746,7 +784,7 @@
   (fn-traced [{doc :doc :as db} [_ item-id]]
     (if (string? item-id)
       (let [doc (update doc item-id assoc :trashed true)
-            doc (store/update-timestamps! doc item-id)
+            doc (store/update-timestamp! doc item-id)
             ]
         (dispatch! [::cancel-edit item-id])
         (dispatch! [::close-item item-id])
@@ -758,7 +796,7 @@
   [save-on-doc-change]
   (fn-traced [{doc :doc :as db} [_ item-id]]
     (let [doc (update doc item-id dissoc :trashed)
-          doc (store/update-timestamps! doc item-id)
+          doc (store/update-timestamp! doc item-id)
           ]
       (assoc db :doc doc))))
 
@@ -817,6 +855,19 @@
       (update-in db [:doc :options] merge {:id :options} options)
       db)))
 
+
+(reg-event-db
+  ;write options only after accept-edit
+  ::set-log-config
+  [save-on-doc-change]
+  (fn-traced [db [_ log-config]]
+    (if (get-in db [:editing :log-config])
+      (do
+        (trace log ::set-log-config log-config)
+        (log/set-config! log-config))
+      db)))
+
+
 (reg-event-db
   ;write content only after accept-edit
   ::new-tags
@@ -827,15 +878,13 @@
                        (into {} (for [[id {:keys [title]}] (map vector
                                                                 (utils/new-item-ids doc)
                                                                 (vals new-tags))]
-                                  [id {:title  title
-                                       :id     id
-                                       :kind   :tag
-                                       }])))
+                                  [id {:title title, :id id, :kind :tag}]
+                                  )))
             doc (merge doc new-tags)
             tags (not-empty (concat tag-ids (keys new-tags)))
             doc (if tags (assoc-in doc [item-id :tags] tags)
                          (update doc item-id dissoc :tags))
-            doc (store/update-timestamps! doc (keys new-tags) #{:add-create})
+            doc (store/update-timestamps! doc (keys new-tags) #{:add-create?})
             ]
         (assoc db :doc doc))
       db)))

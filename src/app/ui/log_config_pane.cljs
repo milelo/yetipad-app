@@ -35,11 +35,7 @@
                                [op/table title options editing? values*]
                                )
      :component-will-unmount (fn [_this]
-                               (trace log :changes #(with-out-str (pprint @values*)))
-                               (when (rsubs [::subs/edit-item :log-config])
-                                 (trace log :accept-edit)
-                                 (log/set-config! @values*)
-                                 ))
+                               (dispatch! [::events/set-log-config @values*]))
      }))
 
 (defn content [editing?]

@@ -346,6 +346,7 @@
       (when config/debug?
         [:<>
          [:> Divider]
+         [menu-list-item nil "check-doc" #(dispatch! [::events/check-doc])]
          [menu-list-item nil "fix-doc" #(dispatch! [::events/fix-doc])]
          [menu-list-item nil "restore-all-trashed" #(dispatch! [::events/restore-all-trashed])]
          [menu-list-item nil "Dump tag-map" #(pprint (rsubs [::subs/tag-map]))]

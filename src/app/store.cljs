@@ -234,30 +234,36 @@
   For back compatibility :mchange may not exist so use :change
   :change is used for sorting and display purposes it won't be updated if just metadata is changed
   "
-  [{:keys [doc-id] :as doc} id-or-ids & [{:keys [add-create]}]]
-  (let [ids (if (sequential? id-or-ids) id-or-ids [id-or-ids])]
-    (go-let [index (<? (<read-local-index))
-             doc-changes (get-in index [doc-id :doc-changes])
-             doc-changes (reduce (fn [doc-changes id]
-                                   (if (get doc-changes id)
-                                     doc-changes
-                                     (assoc doc-changes id {:source-change (let [item (get doc id)]
-                                                                             (or (:mchange item) (:change item)))
-                                                            }))
-                                   ) doc-changes ids)
-             ]
-      (<? (<write-local-index (assoc-in index [doc-id :doc-changes] doc-changes)))
-      (trace log 'update-timestamps! doc-changes))
-    (let [iso-date-time (utils/iso-time-now)
-          doc (reduce (fn [doc id]
-                        (update doc id into [[:mchange iso-date-time]
-                                             (when add-create
-                                               [:create iso-date-time])
-                                             ])
-                        ) doc ids)
-          doc (assoc doc :change iso-date-time)
-          ]
-      doc)))
+  [{:keys [doc-id] :as doc} ids & [{:keys [add-create?]}]]
+  (assert (every? string? ids) ids)
+  (if (empty? ids)
+    doc
+    (do
+      (go-let [index (<? (<read-local-index))
+               doc-changes (get-in index [doc-id :doc-changes])
+               doc-changes (reduce (fn [doc-changes id]
+                                     (if (get doc-changes id)
+                                       doc-changes
+                                       (assoc doc-changes id {:source-change (let [item (get doc id)]
+                                                                               (or (:mchange item) (:change item)))
+                                                              }))
+                                     ) doc-changes ids)
+               ]
+        (<? (<write-local-index (assoc-in index [doc-id :doc-changes] doc-changes)))
+        (trace log 'update-timestamps! doc-changes))
+      (let [iso-date-time (utils/iso-time-now)
+            doc (reduce (fn [doc id]
+                          (update doc id into [[:mchange iso-date-time]
+                                               (when add-create?
+                                                 [:create iso-date-time])
+                                               ])
+                          ) doc ids)
+            doc (assoc doc :change iso-date-time)
+            ]
+        doc))))
+
+(defn update-timestamp! [doc id & [options]]
+  (update-timestamps! doc [id] options))
 
 (def <trash-file drive/<trash-file)
 
