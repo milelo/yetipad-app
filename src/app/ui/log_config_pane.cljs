@@ -2,14 +2,13 @@
   (:require
     [reagent.core :as r]
     [re-frame.core :as re-frame]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer [trace debug info warn fatal pprintl]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
     ;exceptions are reported by handlers
     [lib.asyncutils :refer [put-last!] :refer-macros [<? go-try]]
     [app.subs :as subs]
-    [cljs.pprint :refer [pprint]]
     [app.events :as events]
     [app.ui.ui :as ui :refer [error-boundary]]
     [app.ui.registry :as reg]
@@ -31,7 +30,7 @@
 (defn options-table [title options editing?]
   (r/create-class
     {:reagent-render         (fn [title options editing?]
-                               (trace log :reagent-render #(with-out-str (pprint @values*)))
+                               (trace log :reagent-render (pprintl @values*))
                                [op/table title options editing? values*]
                                )
      :component-will-unmount (fn [_this]
@@ -40,15 +39,14 @@
 
 (defn content [editing?]
   (let [packages (rsubs [::subs/logger-packages])]
-    [:<>
-     [options-table "Logging level" (for-all [package (cons :default-level (sort-by name packages))]
-                                      {
-                                       :id     package
-                                       :name   package
-                                       :value  (rsubs [::subs/log-level package])
-                                       :editor (partial op/combo-editor log/log-levels :default)
-                                       }) editing?]
-     ]))
+    [options-table "Logging level" (for-all [package (cons :default-level (sort-by name packages))]
+                                     {
+                                      :id     package
+                                      :name   package
+                                      :value  (rsubs [::subs/log-level package])
+                                      :editor (partial op/combo-editor log/log-levels :default)
+                                      }) editing?]
+    ))
 
 
 (defn restore-defaults-button []

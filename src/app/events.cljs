@@ -103,24 +103,22 @@
               ))
     content))
 
-
 (reg-event-db
   ::check-doc
   (fn-traced [{doc :doc :as db} _]
     (println "==== check-doc ====")
     ;(dispatch! [::close-all-items])
-    (let [t1 #(doseq [[k v] doc]
-                (when (and (string? k) (-> v :kind not))
-                  (println ::doc-issue [k v])
-                  ))
-          t2 #(doseq [[k v] doc]
-                (when-not (or (string? k) (keyword? k))
-                  (println ::doc-issue [k v])
-                  ))
-          ]
-      (t1)
-      (t2)
-      db)))
+    (doseq [[k v] doc]
+      (when-not (or (string? k) (keyword? k))
+        (println ::doc-issue-key [k v])
+        )
+      (when (and (string? k) (-> v :kind not))
+        (println ::doc-issue-kind [k v])
+        )
+      (when (and (string? k) (not= k (:id v)))
+        (println ::doc-issue-id [k v])
+        ))
+    db))
 
 (reg-event-db
   ::fix-doc
@@ -132,7 +130,7 @@
                                    :when (not= k id)
                                    ]
                                e))
-          fix-style #(into {} (for [[k v :as e] doc #_(select-keys doc ["nusb" "nv1z" "nuru"])]
+          fix-style #(into {} (for [[k v :as e] % #_(select-keys doc ["nusb" "nv1z" "nuru"])]
                                 (if (#{:note :tag} (:kind v))
                                   (let [{:keys [content]} v
                                         fixed (not-empty (map fix-content content))
@@ -150,31 +148,23 @@
                                   (do
                                     (println 'removed-item [k v])
                                     (dissoc doc k))
-                                  )) doc doc)
+                                  )) % %)
           fix-ids #(reduce-kv (fn [doc k _v]
                                 (if (or (string? k) (keyword? k))
                                   doc
                                   (dissoc doc k))
-                                ) doc doc)
+                                ) % %)
           fix-kind #(reduce-kv (fn [doc k v]
-                                (if (and (string? k) (-> v :kind not))
-                                  (dissoc doc k)
-                                  doc)
-                                ) doc doc)
-          t1 #(doseq [[k v] doc]
-                (when (and (string? k) (-> v :kind not))
-                  (println ::fixdoc-issue [k v])
-                  ))
-          t2 #(doseq [[k v] doc]
-                (when-not (or (string? k) (keyword? k))
-                  (println ::fixdoc-issue [k v])
-                  ))
+                                 (if (and (string? k) (-> v :kind not))
+                                   (dissoc doc k)
+                                   doc)
+                                 ) % %)
           ]
       ;(pprint (fix-style))
-      db
-      ;(assoc db :doc (fix-kind))
-      ;(assoc db :doc (fix-ids))
-      ;(assoc db :doc (fix-map))
+      (update db :doc
+              (fn [doc]
+                (-> doc fix-map fix-kind fix-ids))
+              )
       ;(assoc db :doc (merge doc (fix-style)))
       )))
 
@@ -836,13 +826,11 @@
   (fn-traced [db [_ item-id title]]
     ;potentially saves to new-id if original has external change.
     (if-let [item-id (get-in db [:editing item-id :accept-as])]
-      (update-in db [:doc item-id] (fn [{:keys [mchange] old-title :title :as item}]
+      (update-in db [:doc item-id] (fn [{old-title :title :as item}]
                                      (let [title (not-empty title)]
                                        (if (= old-title title)
                                          item
-                                         (assoc item :change mchange
-                                                     :title title
-                                                     )))))
+                                         (assoc item :title title)))))
       db)))
 
 (reg-event-db
@@ -855,7 +843,6 @@
       (update-in db [:doc :options] merge {:id :options} options)
       db)))
 
-
 (reg-event-db
   ;write options only after accept-edit
   ::set-log-config
@@ -866,7 +853,6 @@
         (trace log ::set-log-config log-config)
         (log/set-config! log-config))
       db)))
-
 
 (reg-event-db
   ;write content only after accept-edit

@@ -32,7 +32,8 @@
                                                    )))))
 
 (defn pprintl
-  "pprint for use as log argument"
+  "pprint for use as log argument.
+  Will only be evaluated when rendering log."
   [o]
   #(str \newline (with-out-str (pprint o))))
 
