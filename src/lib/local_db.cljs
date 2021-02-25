@@ -20,7 +20,7 @@
                v)
         ]
     (.setItem local-forage (name k) data (fn [err]
-                                           (put! c (or err data false))
+                                           (put! c (or err v false))
                                            (close! c)))
     c))
 
