@@ -91,14 +91,11 @@
 (defn content [editing?]
   (let [doc-options (rsubs [::subs/doc-options])
         doc-id (rsubs [::subs/doc-id])
+        {:keys [file-id]} (rsubs [::subs/file-index-entry doc-id])
         ]
     [:<>
      ;[options-table "Device options" [] editing?]
-     [options-table "Document options" [{:id    :doc-id
-                                         :name  "Document ID"
-                                         :value doc-id
-                                         }
-                                        {:id     :doc-title
+     [options-table "Document options" [{:id     :doc-title
                                          :name   "Document title"
                                          :value  (:doc-title doc-options)
                                          :editor string-editor
@@ -107,6 +104,14 @@
                                          :name   "Document subtitle"
                                          :value  (:doc-subtitle doc-options)
                                          :editor string-editor
+                                         }
+                                        {:id    :doc-id
+                                         :name  "Document ID"
+                                         :value doc-id
+                                         }
+                                        {:id    :doc-file-id
+                                         :name  "Document file ID"
+                                         :value file-id
                                          }
                                         ] editing?
       ]]))

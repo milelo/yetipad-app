@@ -254,22 +254,22 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
     (<thenable #(js/gapi.client.drive.files.update (clj->js params)) :result)
     ))
 
-(defn <rename-file2 [file-id title]
-  ;untested
+(defn <update-file
+  "Sets a files metadata like file-name and description.
+  Responds with the specified meta-data fields (:fields)
+  "
+  [file-id {:keys [description mime-type fields name]}]
   ;https://developers.google.com/drive/api/v3/reference/files/update
-  (let [params {:fileId   file-id
-                :resource {:title title}
-                }]
-    (<thenable #(js/gapi.client.drive.files.update (clj->js params)) :result)
-    ))
-
-(defn <rename-file [file-id name]
-  ;untested
-  ;https://developers.google.com/drive/api/v3/reference/files/update
+  ;Note some fields are read-only:
   ;https://developers.google.com/drive/api/v3/reference/files#resource-representations
-  (let [params {:fileId file-id
-                :name   name
-                }]
+  (let [field-values [[:fileId file-id]
+                      [:name name]
+                      [:description description]
+                      [:mimeType mime-type]
+                      [:fields (and fields (str/join \, (map cljs.core/name fields)))]
+                      ]
+        params (into {} (for [f field-values, :when (second f)] f))
+        ]
     (<thenable #(js/gapi.client.drive.files.update (clj->js params)) :result)
     ))
 

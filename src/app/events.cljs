@@ -256,6 +256,17 @@
     db))
 
 (reg-event-db
+  ::debug-rename-file
+  (fn-traced [db _]
+    (store/rename-file! {:file-id "1wtJTSjkx8gHxM5W1aaVWMtJQOdZB7Ebp"
+                         :title   "My File Name"
+                         :doc-id  "klhurigk"
+                         }
+                        {:on-complete #(debug log ::debug-rename-file 'response %)
+                         })
+    db))
+
+(reg-event-db
   ::debug-add-properties
   (fn-traced [db _]
     (go
@@ -351,7 +362,7 @@
                                  (str \? (map->query-string {:open (str/replace (pr-str open-items) \space \,)})))
                      path (str \/ query-str \# doc-id)
                      ]
-                 (info log :navigate! path)
+                 (info log 'update-nav-bar 'navigate! path)
                  (navigate! path)
                  ))
              context)))
@@ -796,8 +807,8 @@
   (fn-traced [db _]
     (update db :doc (fn [doc]
                       (let [trashed-ids (map :id (filter :trashed (vals doc)))
-                            doc (reduce (fn [m id]
-                                          (update m id dissoc :trashed)
+                            doc (reduce (fn [doc id]
+                                          (update doc id dissoc :trashed)
                                           ) doc trashed-ids)
                             ]
                         (store/update-timestamps! doc trashed-ids)
@@ -840,7 +851,17 @@
   (fn-traced [db [_ options]]
     (if (and (get-in db [:editing :options]) (not-empty options))
       ;the initial save will just have the :change entry so need to add the id.
-      (update-in db [:doc :options] merge {:id :options} options)
+      (let [{:keys [doc-id]} (:doc db)
+            {:keys [doc-title doc-subtitle]} options
+            file-id (get-in db [:doc-file-index doc-id :file-id])
+            ]
+        (when (and file-id (or doc-title doc-subtitle))
+          (store/rename-file! {:file-id file-id
+                               :title doc-title
+                               :subtitle doc-subtitle
+                               :doc-id doc-id
+                               }) {:on-complete #(info log ::options 'renamed %)})
+        (update-in db [:doc :options] merge {:id :options} options))
       db)))
 
 (reg-event-db
@@ -894,9 +915,9 @@
 (reg-event-db
   ::toggle-start-move-items
   (fn-traced [db _]
-    (update db :moving-items (fn [moving?] (and (not moving?)
-                                                (some (complement keyword?) (:open-items db))
-                                                )))))
+    (update db :moving-items (fn [moving?] (boolean (and (not moving?)
+                                                         (some string? (:open-items db))
+                                                         ))))))
 
 (reg-event-db
   ::finish-move-items-

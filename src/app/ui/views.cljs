@@ -59,7 +59,7 @@
     ;---------------main-menu--------------------------
     ["@material-ui/icons/SettingsOutlined" :default preferences-icon]
     ["@material-ui/icons/CloseOutlined" :default close-all-icon]
-    ["@material-ui/icons/AddOutlined" :default new-note-icon]
+    ["@material-ui/icons/NoteAddOutlined" :default new-note-icon]
     ["@material-ui/icons/FolderOpenOutlined" :default open-file-icon]
     ["@material-ui/icons/DeleteOutlineOutlined" :default delete-document-icon]
     ["@material-ui/icons/ArchiveOutlined" :default move-items-icon]
@@ -182,7 +182,7 @@
         moving-items? (rsubs [::subs/moving-items])
         ]
     [:> List (theme ::theme/index-list)
-     (for-all [{:keys [doc-id title subtitle status]} docs]
+     (for-all [{:keys [doc-id file-name file-description status]} docs]
        ^{:key doc-id} [:> ListItem {:style    {:padding "0 4px"}
                                     :button   true
                                     :selected (= selected-doc-id doc-id)
@@ -196,7 +196,8 @@
                                                     (dispatch! [::events/select-index-view :index-history])))
                                                 )
                                     }
-                       [:> ListItemText {:primary (str (or title subtitle doc-id) " (" (name status) \))}]]
+                       [:> Tooltip {:title file-description}
+                        [:> ListItemText {:primary (str (or file-name doc-id) " (" (name status) \))}]]]
        )]))
 
 (defn doc-index-tool [icon title action & [{:keys [selected]}]]
@@ -351,6 +352,7 @@
          [menu-list-item nil "restore-all-trashed" #(dispatch! [::events/restore-all-trashed])]
          [menu-list-item nil "Dump tag-map" #(pprint (rsubs [::subs/tag-map]))]
          [menu-list-item nil "List app drive files" #(dispatch! [::events/debug-list-app-drive-files])]
+         [menu-list-item nil "rename-file" #(dispatch! [::events/debug-rename-file])]
          [menu-list-item nil "find-file" #(dispatch! [::events/debug-find-file])]
          [menu-list-item nil "Trash file" #(dispatch! [::events/debug-trash-file])]
          [menu-list-item nil "FIle content" #(dispatch! [::events/debug-file-content])]

@@ -162,16 +162,19 @@
       (:files response)
       )))
 
-(defn file-meta>data [{:keys [id name modifiedTime appProperties] :as meta}]
+(defn file-meta>data [{:keys [id name modifiedTime description appProperties] :as meta}]
   (when meta
-    {:doc-id (:doc-id appProperties) :file-name name :file-id id :file-change modifiedTime})
+    {:doc-id (:doc-id appProperties)
+     :file-name name
+     :file-description description
+     :file-id id :file-change modifiedTime})
   )
 
 (defn <file-data
   [file-id]
   (assert file-id)
   (go
-    (file-meta>data (<? (drive/<get-file-meta file-id {:fields "id, name, modifiedTime, appProperties"})))
+    (file-meta>data (<? (drive/<get-file-meta file-id {:fields "id, name, modifiedTime, trashed, appProperties"})))
     ))
 
 (defn <find-file-data
@@ -188,13 +191,33 @@
         (file-meta>data (first (sort-by :modifiedTime files-data)))
         ))))
 
+(defn rename-file! [{:keys [file-id title subtitle doc-id]} & [{:keys [on-complete on-success on-error]}]]
+  (assert file-id)
+  (go-let [response (<! (drive/<update-file file-id
+                                            {:name        (str title ".ydn")
+                                             :description (str "YetiPad Document:"
+                                                               "\nTitle: " title
+                                                               (when subtitle
+                                                                 (str "\nSubtitle: " subtitle))
+                                                               "\ndoc-id: " doc-id
+                                                               "\nfile-id: " file-id)
+                                             ;:mime-type   "text/plain"
+                                             :fields      [:name :description :mimeType :appProperties :fileExtension]
+                                             }))
+           ]
+    (when on-complete (on-complete response))
+    (if (utils/error? response)
+      (when on-error (on-error response))
+      (when on-success (on-success response))
+      )))
+
 (defn <read-file-data-list
   "Get app-file metadata by doc-id.
   Files that aren't in the local index are allocated a new doc-id."
   []
   (go
     (let [files (<? (<list-app-drive-files {:trashed false
-                                            :fields  "files(id, name, modifiedTime, appProperties)"
+                                            :fields  "files(id, name, description, modifiedTime, appProperties)"
                                             }))]
       (into {} (for [file-meta files]
                  (let [{:keys [doc-id] :as data} (file-meta>data file-meta)]
@@ -235,7 +258,6 @@
   :change is used for sorting and display purposes it won't be updated if just metadata is changed
   "
   [{:keys [doc-id] :as doc} ids & [{:keys [add-create?]}]]
-  (assert (every? string? ids) ids)
   (if (empty? ids)
     doc
     (do
@@ -253,10 +275,12 @@
         (trace log 'update-timestamps! doc-changes))
       (let [iso-date-time (utils/iso-time-now)
             doc (reduce (fn [doc id]
-                          (update doc id into [[:mchange iso-date-time]
-                                               (when add-create?
-                                                 [:create iso-date-time])
-                                               ])
+                          (if-let [item (only map? (get doc id))]
+                            (assoc doc id (into item [[:mchange iso-date-time]
+                                                      (when add-create?
+                                                        [:create iso-date-time])
+                                                      ]))
+                            doc)
                           ) doc ids)
             doc (assoc doc :change iso-date-time)
             ]
@@ -545,15 +569,15 @@
           (into {} (for [doc-id (distinct (concat (keys local-index) (keys files-data)))]
                      ;:synched is the file changed date when the file was synched
                      ;for a particular doc-id there could be a missing file or localstore entry
-                     (let [{:keys [title subtitle] :as local-entry} (get local-index doc-id)
-                           {:keys [file-id file-name] :as file-data} (get files-data doc-id)
-                           [_ status] (drive-change-status file-data local-entry)
+                     (let [{:keys [file-id file-name file-description] :as file-data} (get files-data doc-id)
+                           [_ file-name-part _ext] (re-find #"(^.*)\.(.*$)" file-name)
+                           [_ status] (drive-change-status file-data (get local-index doc-id))
                            ]
                        ;(debug log [file local])
                        [doc-id {:doc-id    doc-id
-                                :title     title
-                                :subtitle  subtitle
-                                :file-name file-name
+                                :full-file-name file-name
+                                :file-name file-name-part
+                                :file-description file-description
                                 :status    status
                                 :file-id   file-id
                                 }]
@@ -590,6 +614,7 @@
     (let [{:keys [file-id]} file-data
           [status :as change-status] (drive-change-status file-data local-entry)
           ]
+      (debug log '<sync-drive-file!- 'file-data file-data)
       (info log '<sync-drive-file!- 'sync-status doc-id change-status)
       (and on-sync-status (on-sync-status status))
       (case status

@@ -87,6 +87,20 @@
     ))
 
 (reg-sub
+  ::doc-file-index
+  (fn [db]
+    (:doc-file-index db)
+    ))
+
+(reg-sub
+  ::file-index-entry
+  (fn []
+    (subscribe [::doc-file-index]))
+  (fn [doc-file-index [_ doc-id]]
+    (get doc-file-index doc-id)
+    ))
+
+(reg-sub
   ::doc
   (fn []
     (subscribe [::doc-with-trash]))
@@ -220,9 +234,7 @@
   ::doc-list
   (fn [{:keys [doc-file-index]} _]
     ;(debug log ::local-docs doc-index)
-    (sort-by (fn [{:keys [title subtitle]}]
-               (or title subtitle))
-             (vals doc-file-index))))
+    (sort-by :file-name (vals doc-file-index))))
 
 (reg-sub
   ::open-ids
