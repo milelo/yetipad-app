@@ -157,6 +157,12 @@
 (defn new-item-id [& docs]
   (to-str-36 (new-item-num docs)))
 
+(defn map-remove [pred m]
+  "Remove (pred v) = true entries from a map"
+  (reduce-kv (fn [m k v]
+               (if (pred v) (dissoc m k) m)
+               ) m m))
+
 (defn flatten
   "As core flatten but flatten? selects subject"
   ([x] (cljs.core/flatten x))

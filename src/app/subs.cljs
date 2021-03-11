@@ -135,14 +135,6 @@
     ))
 
 (reg-sub
-  ::doc-options
-  (fn []
-    (subscribe [::doc]))
-  (fn [doc]
-    (get doc :options {})
-    ))
-
-(reg-sub
   ::doc-item
   (fn []
     (subscribe [::doc]))

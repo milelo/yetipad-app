@@ -333,10 +333,11 @@
    (fn [path]
      ;Called with the url initially by dispatch-current!
      (let [{{:keys [open]} :query doc-id :fragment :as d} (path-decode path)]
+       (debug log 'configure-navigation!)
        (if doc-id
          (dispatch! [::read-doc-by-id-nonav- doc-id {:open-items (read-string open)}])
-         (dispatch! [::new-local-doc-nonav-]))
-       ))
+         (dispatch! [::new-local-doc-])                     ;navigation required to support url without doc-id
+         )))
    :path-exists?
    (fn [path]
      ;true stops page reload
@@ -449,9 +450,9 @@
 (reg-event-db
   ::sync-doc-index
   (fn-traced [db _]
-    (store/doc-status-index! {:on-result (fn [status-index]
-                                           (dispatch! [::set-doc-status-index- status-index])
-                                           )})
+    (store/sync-doc-index! {:on-result (fn [status-index]
+                                         (dispatch! [::set-doc-status-index- status-index])
+                                         )})
     db))
 
 (reg-event-db
@@ -533,18 +534,12 @@
       :open-items (verified-open-items doc (or open-items current-open))
       )))
 
-(defn-traced new-local-doc [db _]
-  (assoc db :open-items () :doc {:doc-id (utils/simple-uuid)}))
-
 (reg-event-db
   ;private; response handler for read-local-doc
   ::new-local-doc-
   [update-nav-bar]
-  new-local-doc)
-
-(reg-event-db
-  ::new-local-doc-nonav-
-  new-local-doc)
+  (fn-traced [db _]
+    (assoc db :open-items () :doc {:doc-id (utils/simple-uuid)})))
 
 (reg-event-db
   ;private; response handler for read-local-doc
@@ -714,9 +709,9 @@
     (debug log ::accept-edit 'editing (get-in db [:editing]))
     (if (reg/rget item-id :suppress-doc-entry)
       (assoc-in db [:editing item-id :accept-as] item-id)
-      (let [{:keys [create change]} (get doc item-id)
-            {icreate :create ichange :change :as base-item} (get-in db [:editing item-id :source])
-            external-change? (and (string? item-id) (not= (or change create) (or ichange icreate)))
+      (let [{:keys [create change mchange]} (get doc item-id)
+            {icreate :create ichange :change imchange :mchange :as base-item} (get-in db [:editing item-id :source])
+            external-change? (and (string? item-id) (not= (or mchange change create) (or imchange ichange icreate)))
             [item-id o-item-id doc] (if external-change?
                                       ;give changes to new item id
                                       (let [nid (new-item-id doc)
@@ -855,12 +850,9 @@
             {:keys [doc-title doc-subtitle]} options
             file-id (get-in db [:doc-file-index doc-id :file-id])
             ]
-        (when (and file-id (or doc-title doc-subtitle))
-          (store/rename-file! {:file-id file-id
-                               :title doc-title
-                               :subtitle doc-subtitle
-                               :doc-id doc-id
-                               }) {:on-complete #(info log ::options 'renamed %)})
+        (store/flag-file-meta-changes! doc-id {:title    doc-title
+                                               :subtitle doc-subtitle
+                                               })
         (update-in db [:doc :options] merge {:id :options} options))
       db)))
 

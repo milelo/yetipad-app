@@ -182,7 +182,7 @@
         moving-items? (rsubs [::subs/moving-items])
         ]
     [:> List (theme ::theme/index-list)
-     (for-all [{:keys [doc-id file-name file-description status]} docs]
+     (for-all [{:keys [doc-id title subtitle status]} docs]
        ^{:key doc-id} [:> ListItem {:style    {:padding "0 4px"}
                                     :button   true
                                     :selected (= selected-doc-id doc-id)
@@ -196,8 +196,8 @@
                                                     (dispatch! [::events/select-index-view :index-history])))
                                                 )
                                     }
-                       [:> Tooltip {:title file-description}
-                        [:> ListItemText {:primary (str (or file-name doc-id) " (" (name status) \))}]]]
+                       [:> Tooltip {:title (or subtitle "")}
+                        [:> ListItemText {:primary (str (or title doc-id) " (" (name status) \))}]]]
        )]))
 
 (defn doc-index-tool [icon title action & [{:keys [selected]}]]
