@@ -7,7 +7,7 @@
     ))
 
 (def log-levels [:default :trace :debug :info :warn :error :fatal])
-(def base-default-config {:default-level   :info
+(def base-default-config {:default-level   :trace
                           :console-enable? nil              ;default to true
                           :buffer-enable?  nil              ;default to true - trace to buffer
                           })
@@ -82,7 +82,7 @@
                  :error (level-tracers :error (.-error js/console))
                  :fatal (level-tracers :fatal (.-error js/console))
                  }]
-    (reset! logger* (case (or level :error)
+    (reset! logger* (case level
                       :trace tracers
                       :debug (dissoc tracers :trace)
                       :info (dissoc tracers :trace :debug)
