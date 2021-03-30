@@ -13,40 +13,40 @@
 
 (defn <put-data [k v & [{:keys [format]}]]
   (assert k)
-  (let [c (chan)
+  (let [<c (chan)
         data (case format
                :transit (t/write writer v)
                :object (pr-str v)
                v)
         ]
     (.setItem local-forage (name k) data (fn [err]
-                                           (put! c (or err v false))
-                                           (close! c)))
-    c))
+                                           (put! <c (or err data false))
+                                           (close! <c)))
+    <c))
 
 (defn <get-data [k & [{:keys [format default]}]]
   (assert k)
-  (let [c (chan)]
+  (let [<c (chan)]
     (.getItem local-forage (name k) (fn [err v]
                                       (if err
-                                        (put! c err)
+                                        (put! <c err)
                                         (let [data (case format
                                                      :transit (t/read reader v)
                                                      :object (read-string v)
                                                      v)
                                               ]
-                                          (put! c (or data default false))
+                                          (put! <c (or data default false))
                                           ))
-                                      (close! c)))
-    c))
+                                      (close! <c)))
+    <c))
 
 (defn <remove-item [k]
   (assert k)
-  (let [c (chan)]
+  (let [<c (chan)]
     (.removeItem local-forage (name k) (fn [err]
-                                         (put! c (or err true))
-                                         (close! c)))
-    c))
+                                         (put! <c (or err true))
+                                         (close! <c)))
+    <c))
 
 #_(defn t1 []
     (go?
