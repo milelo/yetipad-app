@@ -127,9 +127,10 @@
       [ui/viewer-pane item {:body ^{:key :opts-v} [content false]}]
       )))
 
-(reg/register {:id    :options
-               :title "Settings"
-               :icon  options-icon
-               :pane  options-pane
+(reg/register {:id            :options
+               :title         "Settings"
+               :icon          options-icon
+               :pane          options-pane
+               :has-doc-entry true                          ;Items with keyword ID's don't by default
                })
 

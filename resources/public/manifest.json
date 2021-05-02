@@ -2,6 +2,7 @@
   "comment": "v2",
   "name": "YetiPad",
   "short_name": "",
+  "start_url-disabled": "./",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

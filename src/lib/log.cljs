@@ -3,6 +3,7 @@
     [cljs.core.async :as async :refer [put! chan]]
     [cljs.reader :refer [read-string]]
     [cljs.pprint :refer [pprint]]
+    [clojure.data :refer [diff]]
     ["localforage" :as local-forage]
     ))
 
@@ -31,11 +32,26 @@
                                                      (js/console.error err))
                                                    )))))
 
+(defn pprint-out [object]
+  (with-out-str (pprint object)))
+
 (defn pprintl
   "pprint for use as log argument.
   Will only be evaluated when rendering log."
   [o]
-  #(str \newline (with-out-str (pprint o))))
+  #(str \newline (pprint-out o)))
+
+(defn trace-diff [ma a mb b & [{:keys [include-match include-both]}]]
+  (fn [] (let [[a b both] (diff a b)]
+           (if (or a b)
+             (str "\nDiff " ma \newline (pprint-out a)
+                  "Diff " mb \newline (pprint-out b)
+                  (when include-both
+                    (str "both:" \newline (pprint-out both))))
+             (str "Diff match: " ma \space mb
+                  (when (or include-match)
+                    (str "both:" \newline (pprint-out both)))
+                  )))))
 
 (defn- error? [x]
   ;ExceptionInfo is also an error!
@@ -103,7 +119,7 @@
                                                     (let [config-changes (read-string v)
                                                           config (swap! config* merge config-changes)
                                                           ]
-                                                      (js/console.info (str ::localstore-init-log)  (pr-str config-changes))
+                                                      (js/console.info (str ::localstore-init-log) (pr-str config-changes))
                                                       (reconfigure-loggers! config)
                                                       ))))
 

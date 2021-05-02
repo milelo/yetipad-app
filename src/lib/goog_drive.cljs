@@ -102,7 +102,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                                (warn log '<thenable 'response-timeout (pprintl (get-auth-response))))
                              ))
                      (close! <c)
-                     ) 3000)
+                     ) 4000)
     (.then (thenable)
            (fn [response]
              (trace log 'thenable-response return-type)
@@ -178,7 +178,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
 
 (defn <write-file-content
   "Write or overwrite the content of an existing file."
-  [file-id content & [{:keys [mime-type content-type]}]]
+  [file-id content & [{:keys [mime-type content-type fields]}]]
   (trace log '<write-file-content file-id)
   (assert file-id)
   (let [body (case content-type
@@ -188,7 +188,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                     :method :PATCH                          ;default get
                     :params {;URL params
                              :uploadType :media
-                             :fields     "id, name, modifiedTime"
+                             :fields     (or fields "id, name, modifiedTime, trashed, appProperties")
                              ;:mimeType   (or mime-type text-mime)
                              }
                     :body   body                            ;string | object	The HTTP request body (applies to PUT or POST).
@@ -197,8 +197,8 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
     (<thenable #(js/gapi.client.request (clj->js req-params)) :result)
     ))
 
-(defn <get-file-content [file-id & [options]]
-  (trace log '<get-file-content file-id)
+(defn <read-file-content [file-id & [options]]
+  (trace log '<read-file-content file-id)
   (assert file-id)
   ;https://developers.google.com/drive/api/v3/manage-downloads
   (let [params {:fileId file-id
@@ -259,6 +259,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
   Responds with the specified meta-data fields (:fields)
   "
   [file-id {:keys [description mime-type fields name]}]
+  (assert file-id)
   ;https://developers.google.com/drive/api/v3/reference/files/update
   ;Note some fields are read-only:
   ;https://developers.google.com/drive/api/v3/reference/files#resource-representations

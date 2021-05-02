@@ -45,9 +45,9 @@
     ))
 
 (reg-sub
-  ::moving-items
+  ::moving-items?
   (fn [db _]
-    (:moving-items db)
+    (:moving-items? db)
     ))
 
 (reg-sub
@@ -153,11 +153,11 @@
   (fn []
     (subscribe [::doc]))
   (fn [doc _]
-    (partition-by (fn [{:keys [create change]}]
-                    (iso-date-str (or change create)))
-                  (reverse (sort-by (fn [{:keys [create change]}]
-                                      (or change create))   ;sort using iso date-string
-                                    (filter :create (vals doc)))))
+    (partition-by (fn [{:keys [create mchange change]}]
+                    (iso-date-str (or change mchange create)))
+                  (reverse (sort-by (fn [{:keys [create mchange change]}]
+                                      (or change mchange create)) ;sort using iso date-string
+                                    (map doc (filter string? (keys doc))))))
     ))
 
 (reg-sub

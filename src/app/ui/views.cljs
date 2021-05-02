@@ -127,9 +127,7 @@
     [:> ListItem {:button   true
                   :style    {:padding "0 16px"}
                   ;:align-items :flex-start
-                  :on-click (fn []
-                              (on-click)
-                              )
+                  :on-click on-click
                   }
      (when icon [:> ListItemIcon {:style {:min-width 0}}
                  [:> icon {:style {:font-size font-size}}]
@@ -179,10 +177,10 @@
 (defn doc-list-pane []
   (let [docs (rsubs [::subs/doc-list])
         selected-doc-id (rsubs [::subs/doc-id])
-        moving-items? (rsubs [::subs/moving-items])
+        moving-items? (rsubs [::subs/moving-items?])
         ]
     [:> List (theme ::theme/index-list)
-     (for-all [{:keys [doc-id title subtitle status]} docs]
+     (for-all [{:keys [doc-id title subtitle file-id file-name file-description status]} docs]
        ^{:key doc-id} [:> ListItem {:style    {:padding "0 4px"}
                                     :button   true
                                     :selected (= selected-doc-id doc-id)
@@ -196,8 +194,8 @@
                                                     (dispatch! [::events/select-index-view :index-history])))
                                                 )
                                     }
-                       [:> Tooltip {:title (or subtitle "")}
-                        [:> ListItemText {:primary (str (or title doc-id) " (" (name status) \))}]]]
+                       [:> Tooltip {:title (or subtitle file-description doc-id "")}
+                        [:> ListItemText {:primary (str (or title file-name doc-id) " (" (name status) \))}]]]
        )]))
 
 (defn doc-index-tool [icon title action & [{:keys [selected]}]]
@@ -222,7 +220,7 @@
    [doc-index-tool open-file-icon "Open file" #(-> (js-this) .-upload .click)]
    [doc-index-tool move-items-icon "start move open items..."
     #(dispatch! [::events/toggle-start-move-items])
-    {:selected (rsubs [::subs/moving-items])}]
+    {:selected (rsubs [::subs/moving-items?])}]
    ])
 
 (defn doc-index-pane []
@@ -350,17 +348,19 @@
          [menu-list-item nil "check-doc" #(dispatch! [::events/check-doc])]
          [menu-list-item nil "fix-doc" #(dispatch! [::events/fix-doc])]
          [menu-list-item nil "restore-all-trashed" #(dispatch! [::events/restore-all-trashed])]
+         [menu-list-item nil "Dump document meta" #(dispatch! [::events/dump-doc-meta])]
+         [menu-list-item nil "Dump document" #(dispatch! [::events/dump-doc])]
+         [menu-list-item nil "List app drive files meta" #(dispatch! [::events/debug-list-app-drive-files])]
+         [menu-list-item nil "Dump this file meta" #(dispatch! [::events/dump-file-meta])]
+         [menu-list-item nil "Update doc index pane" #(dispatch! [::events/sync-doc-index])]
+         [menu-list-item nil "Dump index" #(dispatch! [::events/dump-index])]
+         [menu-list-item nil "Delete doc - keep file" #(dispatch! [::events/delete-doc {:keep-file true}])]
          [menu-list-item nil "Dump tag-map" #(pprint (rsubs [::subs/tag-map]))]
-         [menu-list-item nil "List app drive files" #(dispatch! [::events/debug-list-app-drive-files])]
          [menu-list-item nil "rename-file" #(dispatch! [::events/debug-rename-file])]
          [menu-list-item nil "find-file" #(dispatch! [::events/debug-find-file])]
          [menu-list-item nil "Trash file" #(dispatch! [::events/debug-trash-file])]
          [menu-list-item nil "FIle content" #(dispatch! [::events/debug-file-content])]
          [menu-list-item nil "Add property" #(dispatch! [::events/debug-add-properties])]
-         [menu-list-item nil "Update doc index pane" #(dispatch! [::events/sync-doc-index])]
-         [menu-list-item nil "Dump index" #(dispatch! [::events/dump-index])]
-         [menu-list-item nil "Dump document meta" #(dispatch! [::events/dump-doc])]
-         [menu-list-item nil "Dump file meta" #(dispatch! [::events/dump-file-meta])]
          [:> Divider]
          ;[:> ListItem [:> ListItemText {:primary (str "can reload?: " (rsubs [::subs/can-reload?]))}]]
          [:> ListItem [:> ListItemText {:primary (str "screen-width: " (rsubs [::bp/screen-width]))}]]
@@ -450,7 +450,7 @@
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}
-                          :on-click #(dispatch! [::events/window-focused])
+                          :on-click #(dispatch! [::events/sync-local])
                           } (case online-status
                               :syncing [:> syncing-icon]
                               :uploading [:> uploading-icon]
