@@ -30,9 +30,9 @@
 (defonce <task-queue (chan 20))                             ;go-block queue
 
 (defn start-task-runner []
+  ;execute queued go-block functions
+  (trace log 'task-runner-started)
   (go-loop []
-    ;execute queued go-block functions
-    (trace log 'task-runner-started)
     (when-let [[<fn <c] (<! <task-queue)]
       (when-let [v (try (<! (<fn)) (catch :default e e))]
         (put! <c v))
@@ -395,7 +395,7 @@
   [doc src-tag-ids]
   (let [to-path (fn to-path [tag-id]
                   (let [{:keys [title tags]} (get doc tag-id)]
-                    [(not-empty (sort (map to-path tags))) title]))]
+                    [(not-empty (sort-by str (map to-path tags))) title]))]
     (into {} (for [tag-id src-tag-ids]
                [tag-id (to-path tag-id)]))))
 
@@ -412,7 +412,7 @@
                         paths (not-empty (keep to-path tags))
                         ]
                     (when (or paths (= title imported-title))
-                      [(not-empty (sort (remove imported? paths))) title]
+                      [(not-empty (sort-by str (remove imported? paths))) title]
                       )))
         ]
     (into (array-map) (for [tag-id src-tag-ids]
@@ -420,12 +420,8 @@
                           (when (and path (-> path imported? not))
                             [path tag-id]))))))
 
-(defn- copy-items
-  "copy items with item-ids from source-doc to target-doc. The item ids are remapped to new ids.
-  References between items in item-ids like included tags are maintained.
-  References to tags not include in item-ids are added as a child of the tag named 'imported' retaining only their name,
-  where the tag name already exists as a child of the 'imported' tag, this will be reused as the reference target.
-  "
+
+(defn- copy-items-to-imported
   ;1) find all tag and tags-of-tag ids for items being copied
   ;2) get all tag-paths for 1).
   ;3) use these tag-paths to tie up with target tag-paths to get source id to target id map.
@@ -497,6 +493,80 @@
         change-ids (vals id-map)
         ]
     [target-doc change-ids]))
+
+
+(defn- copy-items-to-root
+  ;1) find all tag and tags-of-tag ids for items being copied
+  ;2) get all tag-paths for 1).
+  ;3) use these tag-paths to tie up with target tag-paths to get source id to target id map.
+  ;4) for source tag-paths without corresponding target tags-paths, copy over the source tags and remap their ids
+  ;source tags that already have a corresponding import tag-name don't need a new id.
+  ;source tag paths need to be matched with target-imported tag paths.
+  [source-doc target-doc item-ids]
+  (let [;remove trashed entries from target-doc
+        target-doc-notrash (reduce-kv (fn [target-doc k v] (if (:trashed v)
+                                                             (dissoc target-doc k)
+                                                             target-doc)
+                                        ) target-doc target-doc)
+        ;remove any static items (with keyword ids)
+        ;remove tags. Maybe the should be an option; moved-item tags are copied by default
+        item-ids (filter #(and (string? %)
+                               (-> % source-doc :kind (not= :tag))
+                               ) item-ids)
+
+        target-tag-ids (map :id (filter #(= (:kind %) :tag) (vals target-doc-notrash)))
+        ;get the tag-ids and tag-ids of tags for the selected items
+        deep-src-tag-ids (deep-tag-ids source-doc (reduce (fn [tags id] (concat tags (get-in source-doc [id :tags])))
+                                                          () item-ids))
+        ;_ (debug log 'deep-src-tag-ids deep-src-tag-ids)
+        ;The tag paths for the items being copied,
+        ; these will be matched with existing target imports or recreated under imports
+        src-tag-path-for-id (map-path source-doc deep-src-tag-ids)
+        _ (debug log 'source-tag-path-for-id (pprintl src-tag-path-for-id))
+        ;The existing target import paths for their id
+        _ (debug log 'target-tag-ids (pprintl target-tag-ids))
+        _ (debug log 'target-doc-notrash (pprintl target-doc-notrash))
+        target-id-for-child-path (map-path target-doc-notrash target-tag-ids)
+        _ (debug log 'import-target-id-for-child-path (pprintl target-id-for-child-path))
+        ;create map of source tags to existing import tags where they exist:
+        id-map (into {} (for [[src-tag-id src-path] src-tag-path-for-id
+                              :let [target-id (get target-id-for-child-path src-path)]
+                              :when target-id
+                              ]
+                          [src-tag-id target-id]))
+        _ (debug log 'id-map 'matched (pprintl id-map))
+        ;create new ids for unmatched tags and items being copied:
+        copy-ids (distinct (concat
+                             (remove id-map (keys src-tag-path-for-id))
+                             item-ids
+                             ))
+        id-map (into id-map (map vector
+                                 copy-ids (utils/new-item-ids target-doc)))
+
+        ;_ (debug log 'id-map 'create (pprintl id-map))
+        ;add the unmatched source tags to the target and remap their ids:
+        target-doc (into target-doc (for [{:keys [tags] :as src-tag} (map source-doc copy-ids)]
+                                      (let [id (id-map (:id src-tag))
+                                            tag (assoc src-tag
+                                                  :id id
+                                                  :tags (keep id-map tags)
+                                                  )]
+                                        [id tag])))
+        change-ids (vals id-map)
+        ]
+    [target-doc change-ids]))
+
+(defn- copy-items
+  "copy items with item-ids from source-doc to target-doc. The item ids are remapped to new ids.
+  References between items in item-ids like included tags are maintained.
+  References to tags not include in item-ids are added as a child of the tag named 'imported' retaining only their name,
+  where the tag name already exists as a child of the 'imported' tag, this will be reused as the reference target.
+  "
+  [source-doc target-doc item-ids]
+  ;todo make option
+  ;(copy-items-to-imported source-doc target-doc item-ids)
+  (copy-items-to-root source-doc target-doc item-ids)
+  )
 
 (defn copy-items! [source-doc target-doc-or-id item-ids listeners]
   (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])
