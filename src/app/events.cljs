@@ -752,18 +752,12 @@
     (pprint doc)
     db))
 
-(defn- fix-content-style [s]
-  (let [style-vec (map #(str/split % #":") (str/split s #";"))]
-    (into {}
-          (for [[k v] style-vec]
-            [(keyword (str/trim k)) (str/trim v)]))))
-
 (defn fix-content [content]
   (if-let [[tag attrs children] (ui-utils/normalize content)]
     (let [attrs (when attrs
                   (into {} (map (fn [[k v :as e]]
                                   (cond
-                                    (and (= (name k) "style") (string? v)) [k (fix-content-style v)]
+                                    (and (= (name k) "style") (string? v)) [k (lib.html-parse/parse-attrs v)]
                                     :default e)
                                   ) attrs)))
           ]
@@ -837,6 +831,7 @@
                 ;(dissoc doc :mchange)
                 )
               )
+      ;(assoc-in db [:doc "nv8k" :content] fix)
       ;(assoc db :doc (merge doc (fix-style)))
       )))
 
