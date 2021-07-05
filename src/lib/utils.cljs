@@ -15,19 +15,16 @@
 (def lorem-ipsum (LoremIpsum.))
 
 (defn sentence [& [text]]
-  (if text text (.generateSentence lorem-ipsum))
-  )
+  (or text (.generateSentence lorem-ipsum)))
 
 (defn paragraph [& [text]]
-  (if text text (.generateParagraph lorem-ipsum))
-  )
+  (or text (.generateParagraph lorem-ipsum)))
 
 (defn error? [v]
-  (or (instance? js/Error v) (instance? ExceptionInfo v)))
+  (instance? js/Error v))
 
 (defn throw-error [& s]
-  (throw (js/Error. (apply str s)))
-  )
+  (throw (js/Error. (apply str s))))
 
 (defn format
   ;see also cljs.pprint/cl-format
