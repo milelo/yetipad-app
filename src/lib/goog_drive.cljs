@@ -20,8 +20,7 @@
     (catch :default e
       (println s)
       (js/console.error e)
-      e
-      )))
+      e)))
 
 (defn simulate-error [type]
   ;server errors to support testing.
@@ -51,61 +50,60 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
     (set! (.-data e) error)
     e))
 
-(defn <ensure-authorised
-  "Ensure the access-token hasn't expired, if it has refresh it and re-issue the request.
-  This is necessary for mobile platforms that appear to put the app to sleep so it can't do a periodic
-  token refresh."
-  [error]
-  (let [<c (chan)]
-    (cond
-      (= (:code error) 401) (let [_ (trace log '<ensure-authorised 'check-token)
-                                  google-user (-> (js/gapi.auth2.getAuthInstance) .-currentUser .get)
-                                  auth-resp (-> google-user .getAuthResponse js->cljs)
-                                  now (utils/time-now-ms)
-                                  token-expired? (> now (:expires_at auth-resp))
-                                  ]
-                              #_(debug log 'auth-resp (pprintl (select-keys auth-resp [:expires_at :expires_in :access_token])))
-                              #_(debug log 'access-token-expired token-expired?
-                                       (some-> auth-resp :expires_at utils/format-ms)
-                                       'now now (-> now utils/format-ms))
-                              (if token-expired?
-                                (go
-                                  (trace log '<ensure-authorised 'reload-auth-response)
-                                  (.then (.reloadAuthResponse google-user)
-                                         (fn [response]
-                                           (trace log '<ensure-authorised 'response)
-                                           (let [auth-resp (js->cljs response)]
-                                             ;(debug log 'refresh-auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
-                                             (info log 'refresh-token-expiry (-> auth-resp :expires_at utils/format-ms))
-                                             (put-last! <c true)))
-                                         (fn [error-response]
-                                           (trace log '<ensure-authorised 'error-response)
-                                           (let [error (js->cljs error-response)]
-                                             (warn log 'refresh-error-response (pprintl error))
-                                             (put-last! <c (js-error error))
-                                             ))))
-                                (put-last! <c false)
-                                ))
-      :else (put-last! <c false)
-      ) <c))
+(def token-refresh-margin 100000)
 
-(defn <thenable [thenable return-type & [{:keys [default] :as opt}]]
+(defn- dump-token-info [now refresh-at]
+  {:now (utils/format-ms now) :refresh-at (utils/format-ms refresh-at)})
+
+(defn- dump-token []
+  (let [google-auth (js/gapi.auth2.getAuthInstance)
+        auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
+        ;access-token (:access_token auth-resp)
+        refresh-at (-> auth-resp :expires_at (- token-refresh-margin))
+        now (utils/time-now-ms)
+        ]
+    (dump-token-info now refresh-at)))
+
+(defn <ensure-authorised
+  "Check and refresh token if its expired."
+  []
+  (let [_ (trace log '<ensure-authorised 'check-token)
+        <c (chan)
+        google-auth (js/gapi.auth2.getAuthInstance)
+        signed-in? (-> google-auth .-isSignedIn .get)
+        google-user (-> google-auth .-currentUser .get)
+        auth-resp (-> google-user .getAuthResponse js->cljs)
+        now (utils/time-now-ms)
+        refresh-at (- (:expires_at auth-resp) token-refresh-margin)
+        ]
+    (assert signed-in?)
+    ;(debug log '<ensure-authorised (fn [] {:now (utils/format-ms now) :expires-at (utils/format-ms expires-at)}))
+    (if (> now refresh-at)
+      (do
+        (trace log '<ensure-authorised 'refresh-token #(dump-token-info now refresh-at))
+        (.then (.reloadAuthResponse google-user)
+               (fn [response]
+                 (trace log '<ensure-authorised "got response")
+                 (let [auth-resp (js->cljs response)]
+                   ;(debug log 'refresh-auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
+                   (info log 'refresh-token-at (-> auth-resp :expires_at (- token-refresh-margin) utils/format-ms))
+                   (put-last! <c :refreshed)))
+               (fn [error-response]
+                 (trace log '<ensure-authorised "got error-response")
+                 (let [error (js->cljs error-response)]
+                   (warn log '<ensure-authorised 'error (pprintl error))
+                   (put-last! <c (js-error error))
+                   ))))
+      (put-last! <c true))
+    <c))
+
+(defn- <thenable- [thenable return-type {:keys [default] :as opt}]
   (assert (fn? thenable))
   (when opt (trace log 'thenable-opt opt))
-  (let [<c (chan)
-        get-auth-response #(-> (js/gapi.auth2.getAuthInstance) .-currentUser .get .getAuthResponse js->cljs)
-        ]
-    (js/setTimeout (fn []
-                     (put! <c (js/Error "Response timeout")
-                           (fn [put?]
-                             (when put?
-                               (warn log '<thenable 'response-timeout (pprintl (get-auth-response))))
-                             ))
-                     (close! <c)
-                     ) 4000)
+  (let [<c (chan)]
     (.then (thenable)
            (fn [response]
-             (trace log 'thenable-response return-type)
+             (trace log '<thenable 'response return-type)
              ;(js/console.log response)
              (let [response (case return-type
                               :body-edn (-> response .-body read-string)
@@ -117,25 +115,20 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                (put-last! <c (or response default false)))
              )
            (fn [error-response]
-             (go-try
-               (trace log 'thenable-error return-type)
-               (let [error (some-> error-response .-result .-error js->cljs)
-                     error (or error (js->cljs error-response))
-                     ]
-                 (warn log 'error-response (pprintl error))
-                 ;don't use ExceptionInfo! re-frame doesn't recognise it
-                 (if (<? (<ensure-authorised error))
-                   (let [_ (trace log '<thenable 'authorised)
-                         response (<! (<thenable thenable return-type opt))
-                         ]
-                     (trace log '<thenable 'retry-response)
-                     (put-last! <c response))
-                   (do
-                     (trace log '<thenable 'authorised-error)
-                     (put-last! <c (js-error error)))
-                   ))
-               (catch :default e (do (trace log '<thenable 'caught (pprintl e)) (put-last! <c e))))))
+             (trace log '<thenable 'error return-type)
+             (let [error (some-> error-response .-result .-error js->cljs)
+                   error (or error (js->cljs error-response))
+                   ]
+               (warn log '<thenable 'error-response (pprintl error))
+               (put-last! <c (js-error error))
+               )))
     <c))
+
+(defn <thenable [thenable return-type & [opt]]
+  (go?
+    (<? (<ensure-authorised))
+    (<! (<thenable- thenable return-type opt))
+    ))
 
 (defn <create-file [{:keys [file-name mime-type parents app-data? properties]}]
   (trace log '<create-file file-name)
@@ -296,53 +289,22 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
   (let [google-auth (js/gapi.auth2.getAuthInstance)]
     (-> google-auth .-currentUser .get .getBasicProfile)))
 
-(defn start-token-refresh []
-  (let [google-auth (js/gapi.auth2.getAuthInstance)
-        auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
-        access-token (:access_token auth-resp)
-        refresh-in (* (:expires_in auth-resp) 800)
-        ;refresh-in 60000
-        ]
-    (info log 'start-token-refresh 'access-token-expiry (-> auth-resp :expires_at utils/format-ms))
-    (info log 'start-token-refresh 'refresh-access-token-at (utils/format-ms (+ (utils/time-now-ms) refresh-in)))
-    ;(take! (<ensure-authorised (simulate-error :token-expired)) #(debug log 'sim-token-refresh %))
-    (js/setTimeout (fn []
-                     (trace log 'start-token-refresh 'refreshing)
-                     (let [signed-in? (-> google-auth .-isSignedIn .get)
-                           current-access-token (-> google-auth .-currentUser .get .getAuthResponse .-access_token)
-                           ]
-                       (when (and signed-in? (= access-token current-access-token))
-                         ;Issue https://github.com/google/google-api-javascript-client/issues/232
-                         (.then (-> google-auth .-currentUser .get .reloadAuthResponse)
-                                (fn [response]
-                                  (let [auth-resp (js->cljs response)]
-                                    ;(debug log 'refresh-auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
-                                    (info log 'start-token-refresh 'refreshed-token-expiry (-> auth-resp :expires_at utils/format-ms))
-                                    ))
-                                (fn [error-response]
-                                  (let [error (js->cljs error-response)]
-                                    (warn log 'start-token-refresh 'refresh-error-response (pprintl error))
-                                    )))
-                         (start-token-refresh)
-                         ))) refresh-in)
-    ))
-
 (defn init-client! [credentials signed-in-listener]
   (go
     (info log 'init-client!)
     ;https://github.com/google/google-api-javascript-client/blob/master/docs/reference.md
-    (let [status (<? (<thenable #(js/gapi.client.init
-                                   (clj->js (if :popup
-                                              credentials
-                                              (let [redirect_uri js/window.location.href]
-                                                (debug log 'redirect_uri redirect_uri)
-                                                (merge credentials
-                                                       ;redirect
-                                                       {:ux_mode      "redirect"
-                                                        ;https://developers.google.com/identity/protocols/oauth2/openid-connect#setredirecturi
-                                                        :redirect_uri redirect_uri
-                                                        }
-                                                       ))))) :response)
+    (let [status (<? (<thenable- #(js/gapi.client.init
+                                    (clj->js (if :popup
+                                               credentials
+                                               (let [redirect_uri js/window.location.href]
+                                                 (debug log 'redirect_uri redirect_uri)
+                                                 (merge credentials
+                                                        ;redirect
+                                                        {:ux_mode      "redirect"
+                                                         ;https://developers.google.com/identity/protocols/oauth2/openid-connect#setredirecturi
+                                                         :redirect_uri redirect_uri
+                                                         }
+                                                        ))))) :response nil)
                      (fn [e] (.-data e)))
           ]
       (if status
@@ -353,7 +315,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
         (let [google-auth (js/gapi.auth2.getAuthInstance)
               signed-in? (-> google-auth .-isSignedIn .get)
               signed-in-listener (fn [signed-in?]
-                                   (when signed-in? (start-token-refresh))
+                                   (when signed-in? (trace log 'init-client! 'token dump-token))
                                    (signed-in-listener signed-in?))
               ]
           ;(debug log 'users-name (.getName (basic-user-profile)))

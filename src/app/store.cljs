@@ -275,7 +275,9 @@
               ;file-id this isn't set by create-file so include
               idx-updates (select-keys file-data [:file-change :file-id :doc-id])
               ]
-          (<? (<index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil)))))
+          (<? (<index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil
+                                                                           :doc-change (:change doc)
+                                                                           )))))
       doc)))
 
 (defn signed-in? []
@@ -745,14 +747,15 @@
     #(go?
        (if (not change)
          (and on-virgin-doc (on-virgin-doc))                ;new unchanged doc (only save after change)
-         (let [{:keys [doc-change]} (get (<? (<read-local-index)) doc-id)]
-           ;(debug log 'sync-localstore! {:doc-change doc-change :change change})
+         (let [{:keys [doc-change] :as idx} (get (<? (<read-local-index)) doc-id)]
+           (trace log 'sync-localstore! 'idx idx)
+           (trace log 'sync-localstore! 'change change)
            (if (and doc-change (> doc-change change))
              (and on-ls-change (on-ls-change (<? (<read-local-doc doc-id))))
              (and on-in-sync (on-in-sync))
              ))))))
 
-(defn- <sync-drive-file!-
+(defn- <sync-drive-file
   "Sync doc with its drive file and updates localstore and drive accordingly."
   ;Drive file could have been updated from another device.
   ;index-entry provides the file-change timestamp of the previous sync so it can be compared with the current
@@ -773,7 +776,7 @@
           [status _ :as change-status] (drive-change-status file-metadata index-entry)
           ]
       ;(debug log '<sync-drive-file!- 'file-metadata file-metadata)
-      (info log '<sync-drive-file!- src 'sync-status doc-id change-status)
+      (info log '<sync-drive-file src 'sync-status doc-id change-status)
       (and on-sync-status (on-sync-status status))
       (case status
         :in-sync
@@ -786,31 +789,31 @@
               <c (<write-local-doc drive-doc)
               ]
           (and on-synced-file (on-synced-file drive-doc))
-          (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
           (<? <c)                                           ;wait for completion
+          (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
           nil)
         :overwrite-file
         (let [file-id (or file-id (<? (<create-file (or doc-title doc-subtitle doc-id) doc-id)))
-              <c1 (<write-file-content file-id doc {:update-index true})
-              <c2 (<write-local-doc doc)
+              <c1 (<write-local-doc doc)
+              <c2 (<write-file-content file-id doc {:update-index true})
               ]
           (and on-synced-file (on-synced-file doc))
-          (and on-overwrite-file (on-overwrite-file))
           (<? <c1)
           (<? <c2)
+          (and on-overwrite-file (on-overwrite-file))
           nil)
         :resolve-conflicts
         (let [drive-doc (<? (<read-file-content file-id))
               content-changed? (not= (get drive-doc :change) (get doc :change))
               ;verify doc content has changed rather than just file modifiedTime
               synched-doc (if content-changed? (sync-doc-content doc-changes drive-doc doc) doc)
-              <c1 (<write-file-content file-id synched-doc {:update-index true})
-              <c2 (<write-local-doc synched-doc)
+              <c1 (<write-local-doc synched-doc)
+              <c2 (<write-file-content file-id synched-doc {:update-index true})
               ]
           (and on-synced-file (on-synced-file synched-doc))
-          (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
           (<? <c1)
           (<? <c2)
+          (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
           nil)
         ))))
 
@@ -836,7 +839,7 @@
                                nil)
              ]
          ;(debug log 'sync-drive-file! 'file-data (pprintl file-data))
-         (<! (<sync-drive-file!- index-entry file-metadata doc listeners))
+         (<! (<sync-drive-file index-entry file-metadata doc listeners))
          )) listeners))
 
 (defn- <drive-data-file-id
