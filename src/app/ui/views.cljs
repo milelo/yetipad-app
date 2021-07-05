@@ -4,9 +4,7 @@
     [cljs.reader :refer [read-string]]
     [clojure.string :as str]
     [app.config :as config]
-    [reagent.core :as r :refer [create-class as-element]]
-    [reagent.dom :as reagent-dom :refer [dom-node]]
-    [goog.dom :refer [appendChild]]
+    [reagent.core :as r]
     [re-frame.core :as re-frame]
     [breaking-point.core :as bp]
     [lib.log :as log :refer [trace debug info warn fatal]]
@@ -19,7 +17,6 @@
     [app.version :refer [app-version]]
     [app.ui.registry :as reg]
     [app.ui.tagmenu :refer [tag-menu]]
-    [app.ui.tagchips :refer [tag-editor tag-viewer]]
     [app.ui.theme :as theme :refer [theme]]
     [app.ui.utils :as ui-utils :refer [create-mui-theme color
                                        show-empty-title no-title]]
@@ -36,15 +33,11 @@
                                  MobileStepper
                                  ]]
     ["@material-ui/icons/MenuRounded" :default menu-icon]
-    ["@material-ui/icons/ListRounded" :default list-icon]
     ["@material-ui/icons/AccountTreeOutlined" :default tree-menu-icon]
-    ["@material-ui/icons/Search" :default search-icon]
     ["@material-ui/icons/KeyboardBackspace" :default keyboard-backspace]
     ["@material-ui/icons/ChevronLeft" :default chevron-left-icon]
     ["@material-ui/icons/ChevronRight" :default chevron-right-icon]
-    ["@material-ui/icons/Settings" :default settings-icon]
-    ["@material-ui/icons/Refresh" :default refresh-icon]
-    ["@material-ui/icons/Delete" :default trash-icon]
+
     ["@material-ui/icons/AccountCircle" :default account-icon]
     ["@material-ui/icons/SearchOutlined" :default search-icon]
     ["@material-ui/icons/ClearOutlined" :default clear-search-icon]
@@ -57,7 +50,6 @@
     ["@material-ui/icons/SyncAltOutlined" :default syncing-icon]
     ["@material-ui/icons/ErrorOutlineOutlined" :default online-error-icon]
     ;---------------main-menu--------------------------
-    ["@material-ui/icons/SettingsOutlined" :default preferences-icon]
     ["@material-ui/icons/CloseOutlined" :default close-all-icon]
     ["@material-ui/icons/NoteAddOutlined" :default new-note-icon]
     ["@material-ui/icons/FolderOpenOutlined" :default open-file-icon]
