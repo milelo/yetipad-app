@@ -11,6 +11,9 @@
 
 # Cache and data files
 /.*/
+!/.clj-kondo/
+/.clj-kondo/.cache
+/.clj-kondo/cache
 !/.idea/
 /.idea/workspace.xml
 /.idea/libraries
