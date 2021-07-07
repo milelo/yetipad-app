@@ -40,10 +40,6 @@
                            :message "Invalid Credentials"
                            }
         } type))
-#_"
-o User can sign-out any time
-o Token sometimes fails to refresh on mobile (because app is suspended?)
-"
 
 (defn js-error [error]
   (let [e (js/Error (pr-str error))]
@@ -57,45 +53,12 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
 
 (defn- dump-token []
   (let [google-auth (js/gapi.auth2.getAuthInstance)
-        auth-resp (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
-        ;access-token (:access_token auth-resp)
-        refresh-at (-> auth-resp :expires_at (- token-refresh-margin))
+        auth-response (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
+        ;access-token (:access_token auth-response)
+        refresh-at (-> auth-response :expires_at (- token-refresh-margin))
         now (utils/time-now-ms)
         ]
     (dump-token-info now refresh-at)))
-
-(defn <ensure-authorised
-  "Check and refresh token if its expired."
-  []
-  (let [_ (trace log '<ensure-authorised 'check-token)
-        <c (chan)
-        google-auth (js/gapi.auth2.getAuthInstance)
-        signed-in? (-> google-auth .-isSignedIn .get)
-        google-user (-> google-auth .-currentUser .get)
-        auth-resp (-> google-user .getAuthResponse js->cljs)
-        now (utils/time-now-ms)
-        refresh-at (- (:expires_at auth-resp) token-refresh-margin)
-        ]
-    (assert signed-in?)
-    ;(debug log '<ensure-authorised (fn [] {:now (utils/format-ms now) :expires-at (utils/format-ms expires-at)}))
-    (if (> now refresh-at)
-      (do
-        (trace log '<ensure-authorised 'refresh-token #(dump-token-info now refresh-at))
-        (.then (.reloadAuthResponse google-user)
-               (fn [response]
-                 (trace log '<ensure-authorised "got response")
-                 (let [auth-resp (js->cljs response)]
-                   ;(debug log 'refresh-auth-resp (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
-                   (info log 'refresh-token-at (-> auth-resp :expires_at (- token-refresh-margin) utils/format-ms))
-                   (put-last! <c :refreshed)))
-               (fn [error-response]
-                 (trace log '<ensure-authorised "got error-response")
-                 (let [error (js->cljs error-response)]
-                   (warn log '<ensure-authorised 'error (pprintl error))
-                   (put-last! <c (js-error error))
-                   ))))
-      (put-last! <c true))
-    <c))
 
 (defn- <thenable- [thenable return-type {:keys [default] :as opt}]
   (assert (fn? thenable))
@@ -109,26 +72,131 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
                               :body-edn (-> response .-body read-string)
                               :result (some-> response .-result js->cljs)
                               :response (js->cljs response)
-                              :raw response
-                              )
-                   ]
-               (put-last! <c (or response default false)))
-             )
+                              :raw response)]
+               (put-last! <c (or response default false))))
            (fn [error-response]
              (trace log '<thenable 'error return-type)
              (let [error (some-> error-response .-result .-error js->cljs)
-                   error (or error (js->cljs error-response))
-                   ]
+                   error (or error (js->cljs error-response))]
                (warn log '<thenable 'error-response (pprintl error))
-               (put-last! <c (js-error error))
-               )))
+               (put-last! <c (js-error error)))))
     <c))
+
+(defonce client-args* (atom nil))
+
+(defn- <init-client
+  [credentials signed-in-listener]
+  (reset! client-args* [credentials signed-in-listener])
+  (go
+    (info log '<init-client)
+    ;https://github.com/google/google-api-javascript-client/blob/master/docs/reference.md
+    (let [status (<? (<thenable- #(js/gapi.client.init
+                                   (clj->js (if :popup
+                                              credentials
+                                              (let [redirect_uri js/window.location.href]
+                                                (debug log 'redirect_uri redirect_uri)
+                                                (merge credentials
+                                                        ;redirect
+                                                       {:ux_mode      "redirect"
+                                                         ;https://developers.google.com/identity/protocols/oauth2/openid-connect#setredirecturi
+                                                        :redirect_uri redirect_uri}))))) :response nil)
+                     (fn [e] (.-data e)))]
+      (if status
+        (info log '<init-client
+              (pprintl status))
+        (info log '<init-client
+              'ok))
+      (if (:error status)
+        (signed-in-listener false)
+        (let [google-auth (js/gapi.auth2.getAuthInstance)
+              signed-in? (-> google-auth .-isSignedIn .get)
+              signed-in-listener (fn [signed-in?]
+                                   (when signed-in? (trace log '<init-client
+                                                           'token dump-token))
+                                   (signed-in-listener signed-in?))]
+          ;(debug log 'users-name (.getName (basic-user-profile)))
+          (-> google-auth .-isSignedIn (.listen signed-in-listener))
+          (signed-in-listener signed-in?)
+          ;(.signOut auth2)
+          (when-not signed-in?
+            (trace log '<init-client
+                   'sign-in)
+            (.signIn google-auth)))))
+            true))
+
+(defn- <reinit-client []
+  (info log '<reinit-client)
+  (assert @client-args*)
+  (apply <init-client @client-args*))
+
+(defn- <ensure-authorised
+  "Check and refresh token if its expired.
+   User can sign-out at any time.
+   Mobiles platforms can suspend the app so periodic background token-refreshes can't be used.
+   "
+  ;TODO handle user can sign-out at any time.
+  []
+  (let [_ (trace log '<ensure-authorised 'check-token)
+        google-auth (js/gapi.auth2.getAuthInstance)
+        signed-in? (-> google-auth .-isSignedIn .get)
+        google-user (-> google-auth .-currentUser .get)
+        auth-response (-> google-user .getAuthResponse js->cljs)
+        now (utils/time-now-ms)
+        refresh-at (- (:expires_at auth-response) token-refresh-margin)
+        ;refresh-at (- (:expires_at auth-response) (* 1000 60 59)) ;1min token timeout for testing
+        <c (async/timeout 5000);refresh token response timeout (ms)
+        ]
+    (assert signed-in?)
+    ;(debug log '<ensure-authorised (fn [] {:now (utils/format-ms now) :expires-at (utils/format-ms expires-at)}))
+    (if (< now refresh-at)
+      (put-last! <c :token-valid)
+      (do
+        (trace log '<ensure-authorised 'refresh-token #(dump-token-info now refresh-at))
+        (.then (.reloadAuthResponse google-user)
+               (fn [response]
+                 (trace log '<ensure-authorised "got response")
+                 (let [auth-response (js->cljs response)]
+                   ;(debug log '<ensure-authorised 'refresh-auth-response (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
+                   (info log 'refresh-token-at (-> auth-response :expires_at (- token-refresh-margin) utils/format-ms))
+                   (put-last! <c :token-refreshed)
+                   ;(put-last! <c false);simulate token timeout
+                   ))
+               (fn [error-response]
+                 (trace log '<ensure-authorised "got error-response")
+                 (let [error (js->cljs error-response)]
+                   (warn log '<ensure-authorised 'error (pprintl error))
+                   (put-last! <c (js-error error))
+                   )))))
+    (go?
+     ;reinit client on refresh token response time out. 
+     ;Google server bug? Why does it only occur from mobile app?
+     (or (<? <c) (<! (<reinit-client))))))
 
 (defn <thenable [thenable return-type & [opt]]
   (go?
-    (<? (<ensure-authorised))
-    (<! (<thenable- thenable return-type opt))
-    ))
+   (<? (<ensure-authorised))
+   (<! (<thenable- thenable return-type opt))))
+
+(defn sign-in! []
+  ;https://developers.google.com/identity/sign-in/web/reference
+  (when-let [auth2 (js/gapi.auth2.getAuthInstance)]
+    (when-not (-> auth2 .-isSignedIn .get)
+      (.signIn auth2))))
+
+(defn sign-out! []
+  (when-let [auth2 (js/gapi.auth2.getAuthInstance)]
+    (when (-> auth2 .-isSignedIn .get)
+      (.signOut auth2))))
+
+(defn basic-user-profile []
+  (let [google-auth (js/gapi.auth2.getAuthInstance)]
+    (-> google-auth .-currentUser .get .getBasicProfile)))
+
+(defn load-client! [credentials signed-in-listener]
+  (js/gapi.load "client:auth2:picker" #(<init-client credentials signed-in-listener)) ;':' separator
+  )
+
+;=======================================================================
 
 (defn <create-file [{:keys [file-name mime-type parents app-data? properties]}]
   (trace log '<create-file file-name)
@@ -171,7 +239,7 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
 
 (defn <write-file-content
   "Write or overwrite the content of an existing file."
-  [file-id content & [{:keys [mime-type content-type fields]}]]
+  [file-id content & [{:keys [#_mime-type content-type fields]}]]
   (trace log '<write-file-content file-id)
   (assert file-id)
   (let [body (case content-type
@@ -273,61 +341,3 @@ o Token sometimes fails to refresh on mobile (because app is suspended?)
     (let [params {:fileId file-id}]
       (<thenable #(js/gapi.client.drive.files.watch (clj->js params)))
       ))
-
-(defn sign-in! []
-  ;https://developers.google.com/identity/sign-in/web/reference
-  (when-let [auth2 (js/gapi.auth2.getAuthInstance)]
-    (when-not (-> auth2 .-isSignedIn .get)
-      (.signIn auth2))))
-
-(defn sign-out! []
-  (when-let [auth2 (js/gapi.auth2.getAuthInstance)]
-    (when (-> auth2 .-isSignedIn .get)
-      (.signOut auth2))))
-
-(defn basic-user-profile []
-  (let [google-auth (js/gapi.auth2.getAuthInstance)]
-    (-> google-auth .-currentUser .get .getBasicProfile)))
-
-(defn init-client! [credentials signed-in-listener]
-  (go
-    (info log 'init-client!)
-    ;https://github.com/google/google-api-javascript-client/blob/master/docs/reference.md
-    (let [status (<? (<thenable- #(js/gapi.client.init
-                                    (clj->js (if :popup
-                                               credentials
-                                               (let [redirect_uri js/window.location.href]
-                                                 (debug log 'redirect_uri redirect_uri)
-                                                 (merge credentials
-                                                        ;redirect
-                                                        {:ux_mode      "redirect"
-                                                         ;https://developers.google.com/identity/protocols/oauth2/openid-connect#setredirecturi
-                                                         :redirect_uri redirect_uri
-                                                         }
-                                                        ))))) :response nil)
-                     (fn [e] (.-data e)))
-          ]
-      (if status
-        (info log 'init-client! (pprintl status))
-        (info log 'init-client! 'ok))
-      (if (:error status)
-        (signed-in-listener false)
-        (let [google-auth (js/gapi.auth2.getAuthInstance)
-              signed-in? (-> google-auth .-isSignedIn .get)
-              signed-in-listener (fn [signed-in?]
-                                   (when signed-in? (trace log 'init-client! 'token dump-token))
-                                   (signed-in-listener signed-in?))
-              ]
-          ;(debug log 'users-name (.getName (basic-user-profile)))
-          (-> google-auth .-isSignedIn (.listen signed-in-listener))
-          (signed-in-listener signed-in?)
-          ;(.signOut auth2)
-          (when-not signed-in?
-            (trace log 'init-client! 'sign-in)
-            (.signIn google-auth)
-            )
-          )))) nil)
-
-(defn load-client! [credentials signed-in-listener]
-  (js/gapi.load "client:auth2:picker" #(init-client! credentials signed-in-listener)) ;':' separator
-  )
