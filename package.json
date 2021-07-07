@@ -1,11 +1,11 @@
 {
 	"name": "yetipad-app",
 	"scripts": {
-		"watch": "shadow-cljs watch app;",
-		"release": "shadow-cljs release app;",
-		"release-with-docs": "shadow-cljs release docs;",
-		"server": "shadow-cljs server;",
-		"build-sw": "node ./build-service-worker.js"
+		"watch": "shadow-cljs watch app",
+		"release": "shadow-cljs release app && npm run build-sw",
+		"release-with-docs": "shadow-cljs release docs",
+		"server": "shadow-cljs server",
+		"build-sw": "npx browserslist@latest --update-db && node ./build-service-worker.js"
 	},
 	"dependencies": {
 		"@material-ui/core": "^4.11.0",
