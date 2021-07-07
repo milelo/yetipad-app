@@ -3,4 +3,5 @@
            lib.utils/for-all                 cljs.core/for
            cljs.core.async/go-loop           cljs.core/loop
            lib.asyncutils/go-let             clojure.core/let
+           lib.asyncutils/go?                cljs.core.async/go
            }}
