@@ -140,10 +140,12 @@
   (fn-traced [db [_ status type]]
     ;(debug log ::set-app-status status)
     (let [default-type :info]
-      (assoc db :status (assoc (if (map? status)
-                                 (let [{:keys [type]} status] (assoc status :type (or type default-type)))
-                                 {:text (str status) :type (or type default-type)})
-                          :time-ms (time-now-ms))))))
+      (assoc db :status (assoc
+                         (cond
+                           (map? status) (let [{:keys [type]} status] (assoc status :type (or type default-type)))
+                           (utils/error? status) {:text (str status) :type :error}
+                           :else {:text (str status) :type (or type default-type)})
+                         :time-ms (time-now-ms))))))
 
 (reg-event-db
   ::clear-app-status
@@ -223,7 +225,8 @@
                                                          (dispatch! [::update-doc- synched-doc doc "Synched with Drive"]))
                                :on-error               (fn [error]
                                                          (warn log ::sync-drive-file 'sync error)
-                                                         (dispatch! [::online-status :error]))
+                                                         (dispatch! [::online-status :error])
+                                                         (dispatch!  [::set-app-status error]))
                                })
       (dispatch! [::sync-doc-index]))
     db))
@@ -640,7 +643,7 @@
 (reg-event-db
   ;write content only after accept-edit
   ::new-tags
-  (fn-traced [{:keys [doc doc-changes] :as db} [_ item-id tag-ids new-tags]]
+  (fn-traced [{:keys [doc] :as db} [_ item-id tag-ids new-tags]]
     (if (get-in db [:editing item-id])
       (let [new-tags (when (not-empty new-tags)
                        (into {} (for [[id {:keys [title]}] (map vector
@@ -735,6 +738,16 @@
 
 ;===============================================================
 ;------------------debug-support---------------------
+
+(reg-event-db
+ ::refresh-drive-token
+ (fn-traced [db _]
+    (store/refresh-drive-token! {:on-success #(dispatch! [::set-app-status "Drive token refreshed"])
+                                 :on-error (fn [error]
+                                             (dispatch! [::set-app-status error])
+                                             (dispatch! [::online-status :error]))
+                                 })
+     db))
 
 (reg-event-db
   ::dump-doc-meta

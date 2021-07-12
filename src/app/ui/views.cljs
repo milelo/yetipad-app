@@ -334,6 +334,7 @@
       [static-pane-list-item :about]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
       [:> ListItem [:> ListItemText {:primary app-version}]]
+      [menu-list-item nil "refresh Drive-token" #(dispatch! [::events/refresh-drive-token])]
       (when config/debug?
         [:<>
          [:> Divider]

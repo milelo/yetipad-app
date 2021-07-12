@@ -41,24 +41,29 @@
                            }
         } type))
 
-(defn js-error [error]
+(defn- js-error
+  "Adapt an error response to a js error"
+  [error]
   (let [e (js/Error (pr-str error))]
     (set! (.-data e) error)
     e))
 
 (def token-refresh-margin 100000)
+;(def token-refresh-margin (* 1000 60 59)); hack: timeout in 1min
 
-(defn- dump-token-info [now refresh-at]
-  {:now (utils/format-ms now) :refresh-at (utils/format-ms refresh-at)})
-
-(defn- dump-token []
-  (let [google-auth (js/gapi.auth2.getAuthInstance)
-        auth-response (-> google-auth .-currentUser .get .getAuthResponse js->cljs)
-        ;access-token (:access_token auth-response)
-        refresh-at (-> auth-response :expires_at (- token-refresh-margin))
-        now (utils/time-now-ms)
-        ]
-    (dump-token-info now refresh-at)))
+(defn- dump-token
+  ([auth-response]
+   (assoc auth-response
+          :now+ (-> (utils/time-now-ms) utils/format-ms)
+          :refresh-at+ (some-> auth-response :expires_at (- token-refresh-margin) utils/format-ms)
+          :expires_at+ (some-> auth-response :expires_at utils/format-ms)
+          :first_issued_at+ (some-> auth-response :first_issued_at utils/format-ms)
+          ))
+  ([]
+   (let [google-auth (js/gapi.auth2.getAuthInstance)
+         auth-response (-> google-auth .-currentUser .get (.getAuthResponse false) js->cljs)
+         ]
+     (dump-token auth-response))))
 
 (defn- <thenable- [thenable return-type {:keys [default] :as opt}]
   (assert (fn? thenable))
@@ -122,7 +127,7 @@
             (trace log '<init-client
                    'sign-in)
             (.signIn google-auth)))))
-            true))
+          :client-initialized))
 
 (defn- <reinit-client []
   (info log '<reinit-client)
@@ -135,31 +140,30 @@
    Mobiles platforms can suspend the app so periodic background token-refreshes can't be used.
    "
   ;TODO handle user can sign-out at any time.
-  []
-  (let [_ (trace log '<ensure-authorised 'check-token)
-        google-auth (js/gapi.auth2.getAuthInstance)
+  [& [{:keys [refresh-now]}]]
+  (let [google-auth (js/gapi.auth2.getAuthInstance)
         signed-in? (-> google-auth .-isSignedIn .get)
         google-user (-> google-auth .-currentUser .get)
         auth-response (-> google-user .getAuthResponse js->cljs)
         now (utils/time-now-ms)
         refresh-at (- (:expires_at auth-response) token-refresh-margin)
-        ;refresh-at (- (:expires_at auth-response) (* 1000 60 59)) ;1min token timeout for testing
         <c (async/timeout 5000);refresh token response timeout (ms)
         ]
+    (trace log '<ensure-authorised 'check-token-expires #(-> auth-response :expires_at utils/format-ms))
     (assert signed-in?)
     ;(debug log '<ensure-authorised (fn [] {:now (utils/format-ms now) :expires-at (utils/format-ms expires-at)}))
-    (if (< now refresh-at)
+    (if (and (< now refresh-at) (not refresh-now))
       (put-last! <c :token-valid)
       (do
-        (trace log '<ensure-authorised 'refresh-token #(dump-token-info now refresh-at))
+        (trace log '<ensure-authorised 'refresh-token #(dump-token auth-response))
+        ;(put-last! <c false);hack: simulate token timeout (comment out next expression)
         (.then (.reloadAuthResponse google-user)
                (fn [response]
                  (trace log '<ensure-authorised "got response")
                  (let [auth-response (js->cljs response)]
-                   ;(debug log '<ensure-authorised 'refresh-auth-response (pprints (select-keys auth-resp [:expires_at :expires_in :access_token])))
-                   (info log 'refresh-token-at (-> auth-response :expires_at (- token-refresh-margin) utils/format-ms))
+                   (trace log '<ensure-authorised 'token-refreshed #(dump-token auth-response))
+                   (info log '<ensure-authorised 'next-token-refresh-at (-> auth-response :expires_at (- token-refresh-margin) utils/format-ms))
                    (put-last! <c :token-refreshed)
-                   ;(put-last! <c false);simulate token timeout
                    ))
                (fn [error-response]
                  (trace log '<ensure-authorised "got error-response")
@@ -168,9 +172,15 @@
                    (put-last! <c (js-error error))
                    )))))
     (go?
-     ;reinit client on refresh token response time out. 
-     ;Google server bug? Why does it only occur from mobile app?
-     (or (<? <c) (<! (<reinit-client))))))
+      ;reinit client on refresh token response time out. 
+      ;Google server bug? Why does it only occur from mobile app?
+     (or (<? <c)
+         ;(<! (<reinit-client))
+         (js/Error. "No response from Token refresh request")
+         ))))
+
+(defn <refresh-drive-token []
+  (<ensure-authorised {:refresh-now true}))
 
 (defn <thenable [thenable return-type & [opt]]
   (go?

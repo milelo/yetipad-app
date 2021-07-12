@@ -225,6 +225,9 @@
                                                                       ]))))
         file-data))))
 
+(defn refresh-drive-token! [listeners]
+  (info log 'refresh-drive-token!)
+  (do-sync! drive/<refresh-drive-token listeners))
 
 (defn rename-file! [doc-id params & [listeners]]
   (do-sync! #(<rename-file doc-id params) listeners))
