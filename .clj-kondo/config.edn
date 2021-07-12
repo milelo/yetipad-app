@@ -1,7 +1,7 @@
 {:lint-as {day8.re-frame.tracing/fn-traced   cljs.core/fn
-           day8.re-frame.tracing/defn-traced clojure.core/defn
+           day8.re-frame.tracing/defn-traced cljs.core/defn
            lib.utils/for-all                 cljs.core/for
            cljs.core.async/go-loop           cljs.core/loop
-           lib.asyncutils/go-let             clojure.core/let
+           lib.asyncutils/go-let             cljs.core/let
            lib.asyncutils/go?                cljs.core.async/go
            }}
