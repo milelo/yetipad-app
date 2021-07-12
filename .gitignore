@@ -19,5 +19,3 @@
 /.idea/libraries
 /.idea/shelf
 !/.run/
-
-package-lock.json
