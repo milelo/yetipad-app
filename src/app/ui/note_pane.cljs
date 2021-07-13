@@ -43,7 +43,7 @@
                                       ;:InputLabelProps {}
                                       :default-value title
                                       :on-change     (fn [e]
-                                                       (reset! new-title* (.-target.value e)))
+                                                       (reset! new-title* (.-target.value ^js e)))
                                       }])
                 {:component-will-unmount
                  (fn [_this]

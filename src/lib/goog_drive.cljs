@@ -124,9 +124,10 @@
           (signed-in-listener signed-in?)
           ;(.signOut auth2)
           (when-not signed-in?
-            (trace log '<init-client
-                   'sign-in)
-            (.signIn google-auth)))))
+            (trace log '<init-client 'sign-in)
+            ;(.signIn ^js google-auth); this shouldn't give a warning
+            (#(.signIn ^js google-auth));work around for compiler warning bug
+            ))))
           :client-initialized))
 
 (defn- <reinit-client []

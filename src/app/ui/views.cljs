@@ -79,9 +79,9 @@
 
 (def file-reader (js/FileReader.))
 
-(defn got-file [e]
+(defn got-file [^js e]
   (when-let [file (-> e .-target.files first)]
-    (set! (.-onload file-reader) (fn [e]
+    (set! (.-onload file-reader) (fn [^js e]
                                    (let [doc (-> e .-target.result read-string)]
                                      (dispatch! [::events/open-doc-file (dissoc doc nil)])
                                      )))

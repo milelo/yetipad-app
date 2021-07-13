@@ -31,7 +31,7 @@
 #_(defn html->clj [html]
     (map as-hiccup (parse-fragment html)))
 
-(defn parse-content [editor]
+(defn parse-content [^js editor]
   (when editor
     (let [html (.getCleanContents editor)
           content (not-empty-content (hp/html->clj html))

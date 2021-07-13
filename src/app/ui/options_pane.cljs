@@ -28,7 +28,7 @@
                  :size          :small
                  :margin        :dense
                  :default-value value
-                 :on-change     #(swap! values* assoc id (not-empty (.-target.value %)))
+                 :on-change     #(swap! values* assoc id (not-empty (.-target.value ^js %)))
                  }])
 
 (defn combo-editor [options default id value values*]

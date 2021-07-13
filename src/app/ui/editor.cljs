@@ -76,7 +76,7 @@
 
         controller (ToolbarController. field, toolbar)
         ;         controller (MyToolbarController. editor, toolbar)
-        dispose (fn [] (wd :dispose [toolbar-id editor-id]) (doseq [d [scroll-floater field toolbar controller]] (.dispose d)))
+        dispose (fn [] (wd :dispose [toolbar-id editor-id]) (doseq [d [scroll-floater field toolbar controller]] (.dispose ^js d)))
         reposition (fn [] (.update scroll-floater))
         ;reposition (fn [] (.handleResize_ scroll-floater))
         float-enable (fn [enabled?] (.setScrollingEnabled scroll-floater enabled?))

@@ -29,7 +29,7 @@
 ;see http://www.50ply.com/blog/2012/07/08/extending-closure-from-clojurescript/
 ;http://stackoverflow.com/questions/9018326/how-do-i-create-an-js-object-with-methods-and-constructor-in-clojurescript
 ;(goog-extend (deftype HtmlHandler [output])  goog/string.html.HtmlSaxHandler
-(goog-extend HtmlHandler HtmlSaxHandler
+(goog-extend ^js HtmlHandler HtmlSaxHandler
              #_([args]
                 (this-as this (set! (.-args this) args))
                 ;(goog.base (js-this));call the base constructor (js* "this")
@@ -37,22 +37,22 @@
 
                 )
              ([])
-             (init [args] (this-as this (set! (.-args this) args)))
+             (init [args] (this-as ^js this (set! (.-args this) args)))
              (startDoc []
                        ;            (goog/base (js* "this") "startDoc")
                        ;           (we :startDoc))
-                       (this-as this ((.-args this) "("))
+                       (this-as ^js this ((.-args this) "("))
                        )
              (cdata [text]
-                    (when text (this-as this ((.-args this) (str "\"" (-> text gstr/stripNewlines gstr/trim) "\""))))
+                    (when text (this-as ^js this ((.-args this) (str "\"" (-> text gstr/stripNewlines gstr/trim) "\""))))
                     )
              (endDoc []
                      ;          (we :endDoc :no-args)
-                     (this-as this ((.-args this) ")"))
+                     (this-as ^js this ((.-args this) ")"))
                      )
              (endTag [name]
                      ;          (we :endTag name)
-                     (this-as this ((.-args this) (when-not (no-content-tags name) "]")))
+                     (this-as ^js this ((.-args this) (when-not (no-content-tags name) "]")))
                      )
              (pcdata [text]
                      ;          (we :pcdata text)
@@ -60,7 +60,7 @@
                            text (gstr/stripNewlines (gstr/unescapeEntities text))
                            ;                text (.replace (/(\r\n|\r|\n)+/g, ""))
                            ]
-                       (this-as this ((.-args this) (pr-str text)))
+                       (this-as ^js this ((.-args this) (pr-str text)))
                        ))
              (rcdata [text]
                      (we :rcdata text)
@@ -78,7 +78,7 @@
                                                        )))))
                              end (when (no-content-tags name) "]")
                              ]
-                         (this-as this ((.-args this) "[:" name attrs end))
+                         (this-as ^js this ((.-args this) "[:" name attrs end))
                          )))
 
 (defn html->clj
