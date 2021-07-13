@@ -20,7 +20,7 @@
 
 (def no-content-tags #{"br" "hr" "base" "basefont" "img" "col" "frame" "input" "isindex" "link" "meta" "param"})
 
-(defn- parse-attrs [s]
+(defn parse-attrs [s]
   (let [entries (map #(str/split % #":") (str/split s #";"))]
     (into {}
           (for [[k v] entries]

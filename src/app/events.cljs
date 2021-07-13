@@ -10,6 +10,7 @@
     [lib.debug :as debug :refer [we wd]]
     [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
     [lib.goog-drive :as drive]
+    [lib.html-parse :as html-parse]
     [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
     ;exceptions are reported by handlers
     [lib.asyncutils :refer [put-last!] :refer-macros [<? go-try]]
@@ -770,8 +771,8 @@
     (let [attrs (when attrs
                   (into {} (map (fn [[k v :as e]]
                                   (cond
-                                    (and (= (name k) "style") (string? v)) [k (lib.html-parse/parse-attrs v)]
-                                    :default e)
+                                    (and (= (name k) "style") (string? v)) [k (html-parse/parse-attrs v)]
+                                    :else e)
                                   ) attrs)))
           ]
       (cond-> [tag]
