@@ -1,4 +1,4 @@
-{:deps   true ;{:aliases [:cljs]}
+{:deps   {:aliases [:cljs]};see https://shadow-cljs.github.io/docs/UsersGuide.html#_installatio
  :nrepl  {:port 8778
           ;:port 8779
           ;:cider false ;doesn't seem to be required any more
@@ -7,9 +7,7 @@
           {:target           :browser,
            :output-dir       "resources/public/js/compiled",
            :asset-path       "/js/compiled",
-           :compiler-options {:output-feature-set :es6
-                              :infer-externs :auto
-                              }
+           :compiler-options {:output-feature-set :es6}
            :devtools         {:http-root "resources/public"
                               :http-port 8281
                               ;:http-port 8282
