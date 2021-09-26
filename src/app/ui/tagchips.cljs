@@ -25,11 +25,11 @@
   [:> Tooltip {:title "remove tag"}
    [:> Chip {:label    (if new-tag? title (rsubs [::subs/tag-path-str id]))
              :size     :small
+             :clickable false ;hack: avoid mui bug with 'true'
              :color    (if new-tag? :secondary :primary)
              :on-click #(if new-tag?
                           (swap! new-tags* dissoc id)
-                          (swap! tag-ids* disj id))
-             }]])
+                          (swap! tag-ids* disj id))}]])
 
 (defn- tag-chips [tag-ids* new-tags*]
   (let [tag-data-map (rsubs [::subs/tag-data-map])]
@@ -89,6 +89,7 @@
    [:> Chip {:label    (rsubs [::subs/tag-path-str id])
              :size     :small
              ;:color    :primary
+             :clickable false ;hack: avoid mui bug with 'true'
              :on-click #(dispatch! [::events/open-item id])
              }]])
 
