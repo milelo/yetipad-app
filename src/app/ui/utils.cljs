@@ -8,7 +8,7 @@
     [lib.debug :as debug :refer [we wd wee expose]]
     [clojure.string :as str]
     [cljs.pprint :refer [pprint]]
-    ["@material-ui/core/styles" :refer [createMuiTheme]]
+    ["@material-ui/core/styles" :refer [createTheme]]
     ["@material-ui/core/colors" :as mui-colors]
     ["react" :as react]
     ))
@@ -129,7 +129,7 @@
   ([raw-theme] (->> raw-theme
                     (transform-keys camel-case)
                     clj->js
-                    createMuiTheme)))
+                    createTheme)))
 
 (defn create-mui-transition [theme properties transitionParams]
   (.create (gobject/get theme "transitions") (clj->js properties) (clj->js transitionParams)))
