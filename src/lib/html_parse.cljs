@@ -21,7 +21,7 @@
 (def no-content-tags #{"br" "hr" "base" "basefont" "img" "col" "frame" "input" "isindex" "link" "meta" "param"})
 
 (defn parse-attrs [s]
-  (let [entries (map #(str/split % #":") (str/split s #";"))]
+  (let [entries (map #(str/split % #":") (str/split s #";"))] 
     (into {}
           (for [[k v] entries]
             [(keyword (str/trim k)) (str/trim v)]))))
@@ -69,12 +69,11 @@
                        (let [attrs (when-not (empty? attributes)
                                      (pr-str (into {}
                                                    (for [[k v] (partition 2 attributes)]
-                                                     (let [k (keyword k)
-                                                           v (if (and (= k :style) (string? v))
-                                                               (parse-attrs v)
-                                                               v)
-                                                           ]
-                                                       [k v]
+                                                     (let [k (keyword k)]
+                                                       (if (and (= k :style) (string? v))
+                                                         (when (not-empty (str/trim v))
+                                                           [k (parse-attrs v)])
+                                                         [k v])
                                                        )))))
                              end (when (no-content-tags name) "]")
                              ]
