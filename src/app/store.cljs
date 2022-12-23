@@ -1,6 +1,7 @@
 (ns app.store
   (:require
    [cljs.reader :as reader]
+   [re-frame.core :as rc]
    [lib.log :as log :refer [trace debug info warn fatal error pprintl]]
    [lib.debug :as debug :refer [we wd]]
    [lib.local-db :as ldb :refer []]
@@ -45,12 +46,17 @@
 
 (defn- <do-sync
   "Add go-block function to queue for synchronous execution.
-  Returns a channel with the result.
+   Returns a channel with the result.
+   Go blocks called from event handlers return immediately so they can potentially
+   execute out of order. Wrapping them with <do-sync adds them to a queue to execute sequentially.
   "
   [<fn]
   (let [<c (chan)]
     (put! <task-queue [<fn <c])
     <c))
+
+(defn update-db [updates]
+  (rc/dispatch [::update-db updates]))
 
 (defn do-sync!
   "Adds a function returning a channel yielding a single result (usually a go block) to a task queue.
@@ -697,6 +703,19 @@
         ]
     status))
 
+(defn open-local-file! [db {:keys [doc-id] :as doc} {:keys [on-show-dialog on-open-doc] :as listeners}]
+  (do-sync!
+     (fn []
+       (go?
+       (let [index (<? (<read-local-index))
+             doc-id-exists? (some (partial = doc-id) (keys index))
+             ]
+         (if doc-id-exists? 
+           #(on-show-dialog doc)
+           #(on-open-doc doc)
+           )
+         ))) listeners))
+
 (defn sync-doc-index!
   "Reads the Drive file list and updates the
   "
@@ -707,24 +726,25 @@
          (let [local-index (<? (<read-local-index))
                files-data (<? (<read-file-data-list))
                doc-status (into {} (for [doc-id (distinct (concat (keys local-index) (keys files-data)))
-                                         :let [file-data (get files-data doc-id)
-                                               {:keys [file-trashed file-change]} file-data
-                                               index-entry (get local-index doc-id)
-                                               {idx-file-change :file-change} index-entry
-                                               index-entry (when-not (and file-data file-trashed
-                                                                          (and index-entry
-                                                                               (= idx-file-change file-change)
-                                                                               ))
-                                                             index-entry)
-                                               file-data (and (not file-trashed) file-data)
+                                         :let [index-entry (get local-index doc-id)
+                                               file-data (get files-data doc-id)
+                                               not-trashed-file? (and file-data 
+                                                                      (-> file-data :file-trashed not))
                                                ]
-                                         :when (or index-entry file-data)
+                                         ;Skip entry if file is trashed and there are not local changes
+                                         ;See below for removal of trashed-file index entry
+                                         :when (or not-trashed-file?
+                                                   (and index-entry 
+                                                        (or not-trashed-file?
+                                                            ;local file has changes:
+                                                            (not= (:file-change index-entry) (:file-change file-data))
+                                                            )))
                                          ]
                                      ;:synched is the file changed date when the file was synched
                                      ;for a particular doc-id there could be a missing file or localstore entry
                                      (let [{:keys [file-id file-name file-description]} file-data
                                            [_ file-name-part _ext] (and file-name (re-find #"(^.*)\.(.*$)" file-name))
-                                           [_ status debug-data] (drive-change-status file-data index-entry)
+                                           [_ status _debug-data] (drive-change-status file-data index-entry)
                                            ]
                                        ;(debug log 'sync-doc-index! doc-id [status debug-data])
                                        ;(debug log 'doc-status-index! 'files-data (pprintl files-data))
@@ -742,12 +762,12 @@
            (on-doc-status doc-status)
            ;If a file has been trashed by another device it needs removing from this devices localstore
            (when-let [remove-doc-ids (not-empty
-                                       (for [{:keys [doc-id file-change]} (filter :trashed (vals files-data))
-                                             :let [idx-entry (get local-index doc-id)]
+                                       (for [{trashed-doc-id :doc-id :as trashed-file-data} (filter :trashed (vals files-data))
+                                             :let [idx-entry (get local-index trashed-doc-id)]
                                              ;Don't remove if an un-synched local change has been made
-                                             :when (and idx-entry (not= file-change (:file-change idx-entry)))
+                                             :when (and idx-entry (not= (:file-change trashed-file-data) (:file-change idx-entry)))
                                              ]
-                                         doc-id))
+                                         trashed-doc-id))
                       ]
              (trace log 'sync-doc-index! 'remove-trashed-docs-locally remove-doc-ids)
              (doseq [doc-id remove-doc-ids]
@@ -757,7 +777,7 @@
          (let [local-index (<? (<read-local-index))
                doc-status (into {} (for [doc-id (keys local-index)]
                                      [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])
-                                               :status :offline)]
+                                                    :status :offline)]
                                      ))
                ]
            (on-doc-status doc-status)

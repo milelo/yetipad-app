@@ -33,6 +33,12 @@
     ))
 
 (reg-sub
+  ::local-file-dialog
+  (fn [db _]
+    (:local-file-dialog db)
+    ))
+
+(reg-sub
   ::editing
   (fn [db _]
     (:editing db)

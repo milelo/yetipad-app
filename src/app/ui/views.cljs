@@ -28,6 +28,7 @@
                                  Card CardMedia CardContent CardActions
                                  BottomNavigation BottomNavigationAction
                                  Tabs Tab
+                                 Dialog DialogTitle
                                  TextField InputBase
                                  CssBaseline MuiThemeProvider
                                  MobileStepper
@@ -58,7 +59,7 @@
     ;-------------
     )
   (:import
-    [fontsource-roboto]
+    ["@fontsource/roboto/300.css"]
     ))
 
 (def log (log/logger 'app.ui.views))
@@ -393,6 +394,17 @@
     (set! (.-title js/document) doc-title)
     nil))
 
+(defn local-file-dialog-pane []
+  (let [content (rsubs [::subs/local-file-dialog])]
+    [:> Dialog {:open (boolean content)
+                ;:on-close #()
+                }
+     [:> DialogTitle "Open file dialog"]
+     [:> List
+      [:> ListItem
+       [:> ListItemText {:primary "List item"}]]]]
+    ))
+
 (defn app-root []
   (let [
         page-item false
@@ -477,8 +489,10 @@
                           } [:> menu-icon]
            ]])
        ]
+
       [ui/error-boundary ::tag-drawer [tag-drawer]]
       [ui/error-boundary ::index-drawer [index-drawer]]
+      [ui/error-boundary ::dialog [local-file-dialog-pane]]
       [ui/error-boundary ::items-pane [items-pane]]
       ]]))
 

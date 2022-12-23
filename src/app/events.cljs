@@ -1,7 +1,7 @@
 (ns app.events
   (:require
    [re-frame.core :as rc
-    :refer [reg-event-db reg-event-fx dispatch]
+    :refer [reg-event-db reg-event-fx]
      ;:rename {dispatch dispatch!}
     ]
     ;[cljs-uuid-utils.core :as uuid]
@@ -65,6 +65,7 @@
   (fn-traced [db _]
     (merge db {:tag-drawer-open?   false
                :index-drawer-open? false
+               :local-file-dialog  nil
                :index-view         :index-history
                :open-items         nil
                :doc-file-index     {}
@@ -666,8 +667,39 @@
 
 (reg-event-db
   ::open-doc-file
-  (fn-traced [db [_ doc]]
-    (assoc db :doc (store/decode doc))))
+  (fn-traced [db [_ content]]
+    (let [doc (store/decode content)]
+      #_(store/open-local-file! db doc {:on-success #(dispatch! [::finish-open-doc-file- doc])
+                                      :local-file-dialog-open? #()
+                                      ;:on-error #()
+                                      })
+      (store/open-local-file! db doc {:on-show-dialog #(dispatch! [::open-doc-file-dialog- %])
+                                      :on-open-doc #(::finish-open-doc-file- %)
+                                      :on-error (fn [error]
+                                                  (warn log ::sync-drive-file 'sync error)
+                                                  (dispatch!  [::set-app-status error]))}))
+             ))
+
+(reg-event-db
+ ::open-doc-file-dialog-
+ (fn-traced [db [_ doc]]
+            (assoc db :local-file-dialog {})))
+
+#_(reg-event-db
+ ::update-db
+ (fn-traced [db [_ update]]
+            (update db)))
+
+(reg-event-db
+ ::finish-open-doc-file-
+ (fn-traced [db [_ doc {:keys [new-doc-id?]}]]
+            (let [doc (if new-doc-id?
+                        (assoc doc :doc-id (utils/simple-uuid))
+                        doc)]
+              (assoc db
+                     :doc doc
+                     :persist-doc nil
+                     :open-items (verified-open-items doc (:open-items db))))))
 
 ;----------------------------------------------------
 
