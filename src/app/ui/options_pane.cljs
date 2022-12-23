@@ -10,7 +10,7 @@
     [app.events :as events]
     [app.ui.ui :as ui]
     [app.ui.registry :as reg]
-    ["@material-ui/core" :refer [Tooltip TextField Typography
+    ["@material-ui/core" :refer [Tooltip TextField Typography Checkbox
                                  TableContainer TableBody Table TableHead TableRow TableCell
                                  ]]
     ["@material-ui/lab" :refer [Autocomplete]]
@@ -30,6 +30,16 @@
                  :default-value value
                  :on-change     #(swap! values* assoc id (not-empty (.-target.value ^js %)))
                  }])
+
+(defn checkbox-editor [id value values*]
+  [:> Checkbox {
+                :color :primary
+                :default-checked value
+                :on-change #(swap! values* assoc id (.-target.checked ^js %))
+                }])
+
+(defn checkbox-viewer [_id value]
+  (str (boolean value)))
 
 (defn combo-editor [options default id value values*]
   [:> Autocomplete {:options           (map name options)
@@ -68,13 +78,15 @@
    [:> TableContainer
     [:> Table {:size :small}
      [:> TableBody
-      (for-all [{:keys [id name value editor]} options]
+      (for-all [{:keys [id name value editor viewer]} options]
         ^{:key id} [:> TableRow
                     [:> TableCell name]
                     [:> TableCell
-                     (if-let [editor (and editing? editor)]
+                     (if (and editing? editor)
                        [editor id value values*]
-                       value)]
+                       (if viewer
+                         [viewer id value]
+                         value))]
                     ])]]]]
   )
 
@@ -105,6 +117,12 @@
                                          :value  (:doc-subtitle doc-options)
                                          :editor string-editor
                                          }
+                                        {:id     :compress-file?
+                                         :name   "Compress file?"
+                                         :value  (:compress-file? doc-options)
+                                         :editor checkbox-editor
+                                         :viewer checkbox-viewer
+                                         }                      
                                         {:id    :doc-id
                                          :name  "Document ID"
                                          :value doc-id

@@ -1,18 +1,19 @@
 (ns app.store
   (:require
-    [lib.log :as log :refer [trace debug info warn fatal error pprintl]]
-    [lib.debug :as debug :refer [we wd]]
-    [lib.local-db :as ldb :refer []]
-    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
-    [lib.asyncutils :as au :refer [put-last!] :refer-macros [<? go? go-try goc go-let]]
-    [lib.goog-drive :as drive]
-    [lib.utils :as utils :refer [only] :refer-macros [for-all]]
-    [cljs.pprint :refer [pprint cl-format]]
-    [clojure.data :refer [diff]]
-    [app.ui.utils :as ui-utils]
-    [clojure.string :as str]
-    [app.credentials]
-    ))
+   [cljs.reader :as reader]
+   [lib.log :as log :refer [trace debug info warn fatal error pprintl]]
+   [lib.debug :as debug :refer [we wd]]
+   [lib.local-db :as ldb :refer []]
+   [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
+   [lib.asyncutils :as au :refer [put-last!] :refer-macros [<? go? go-try goc go-let]]
+   [lib.goog-drive :as drive]
+   [lib.utils :as utils :refer [only] :refer-macros [for-all]]
+   [cljs.pprint :refer [cl-format]]
+   [clojure.data :refer [diff]]
+   [app.ui.utils :as ui-utils]
+   [clojure.string :as str]
+   [app.credentials]
+   ["lz-string" :as lz-string]))
 
 (def log (log/logger 'app.store))
 
@@ -66,6 +67,33 @@
      ) nil)
   ([<fn]
    (do-sync! <fn nil)))
+
+(defn compress [s]
+  (assert (string? s))
+  (let [c (.compressToUTF16 lz-string s)]
+    (info log 'compress #(let [sc (count s)
+                               cc (count c)]
+                           {:size sc
+                            :compressed cc
+                            :compression (str (Math/round (* (/ cc sc) 100)) \%)}))
+    c))
+
+(defn decompress [s]
+  (assert (string? s))
+  (.decompressFromUTF16 lz-string s))
+
+(defn encode [d en]
+  (assert (map? d))
+  (case en
+    :lz {:en :lz :d (-> d pr-str compress)}
+    nil d))
+
+(defn decode [{:keys [en d] :as s}]
+  (if (and en d)
+    (case en
+      :lz (-> d decompress drive/read-string)
+      )
+    s))
 
 (defn- <read-local-index []
   (trace log '<read-local-index)
@@ -240,9 +268,11 @@
     (let [files (<? (<list-app-drive-files
                       {:fields "files(id, name, description, modifiedTime, trashed, appProperties)"
                        }))]
-      (into {} (for [file-meta files]
-                 (let [{:keys [doc-id] :as data} (file-meta>data file-meta)]
-                   [doc-id data])))
+      (into {} (for [file-meta files
+                     :let [{:keys [doc-id] :as data} (file-meta>data file-meta)]
+                     :when doc-id
+                     ]
+                 [doc-id data]))
       )))
 
 (defn- <write-app-data
@@ -256,9 +286,12 @@
   [file-id {:keys [doc-id] :as doc} & [{:keys [update-index]}]]
   (assert doc)
   (go?
-    (let [file-data (file-meta>data (<? (drive/<write-file-content file-id doc {:content-type :edn
-                                                                                :fields       "id, modifiedTime"
-                                                                                })))]
+    (let [file-data (file-meta>data (<? (drive/<write-file-content file-id
+                                                                   (encode doc (when (get-in doc [:options :compress-file?])
+                                                                                 :lz)) 
+                                                                   {:content-type :edn
+                                                                    :fields       "id, modifiedTime"
+                                                                    })))]
       (when update-index
         ;(debug log '<write-file-content 'file-data file-data)
         (let [idx-updates (select-keys file-data [:file-change :file-id])]
@@ -272,7 +305,7 @@
   [file-id & [{:keys [update-index]}]]
   (go?
     ;todo can <read-file-content also read meta-data
-    (let [doc (or (<? (drive/<read-file-content file-id)) {})]
+    (let [doc (or (decode (<? (drive/<read-file-edn file-id))) {})]
       (when update-index
         (let [file-data (file-meta>data (<? (drive/<get-file-meta file-id {:fields "id, modifiedTime, appProperties"})))
               ;file-id this isn't set by create-file so include
@@ -736,7 +769,7 @@
     (let [file-name (str file-name ".ydn")
           _ (trace log '<create-file file-name)
           {id :id} (<? (drive/<create-file {:file-name  file-name
-                                            :properties {:doc-id doc-id}
+                                            :properties (when doc-id {:doc-id doc-id})
                                             }))
           ]
       id)))

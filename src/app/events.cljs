@@ -1,35 +1,36 @@
 (ns app.events
   (:require
-    [re-frame.core :as rc
-     :refer [reg-event-db reg-event-fx dispatch]
+   [re-frame.core :as rc
+    :refer [reg-event-db reg-event-fx dispatch]
      ;:rename {dispatch dispatch!}
-     ]
+    ]
     ;[cljs-uuid-utils.core :as uuid]
-    [day8.re-frame.tracing :refer-macros [fn-traced defn-traced]]
-    [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
-    [lib.debug :as debug :refer [we wd]]
-    [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
-    [lib.goog-drive :as drive]
-    [lib.html-parse :as html-parse]
-    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
+   [day8.re-frame.tracing :refer-macros [fn-traced defn-traced]]
+   [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
+   [lib.debug :as debug :refer [we wd]]
+   [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
+   [lib.goog-drive :as drive]
+   [lib.html-parse :as html-parse]
+   [clojure.pprint :refer [cl-format]]
+   [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
     ;exceptions are reported by handlers
-    [lib.asyncutils :refer [put-last!] :refer-macros [<? go-try]]
+   [lib.asyncutils :refer [put-last!] :refer-macros [<? go-try]]
     ;[app.localstore :as ls :refer [<write-doc]]
-    [app.store :as store]
-    [app.ui.utils :as ui-utils]
-    [cljs.pprint :refer [pprint]]
-    [accountant.core :refer [configure-navigation! navigate! dispatch-current!]]
-    [app.route :refer [path-decode map->query-string]]
-    [cljs.reader :refer [read-string]]
-    [clojure.data :refer [diff]]
-    [clojure.string :as str]
-    [clojure.walk :as walk]
-    [app.ui.registry :as reg]
-    ["react-device-detect" :refer [browserName browserVersion fullBrowserVersion osVersion
-                                   deviceType engineName deviceDetect osName getUA
-                                   mobileVendor mobileModel engineVersion
-                                   ]]
-    ))
+   [app.store :as store]
+   [app.ui.utils :as ui-utils]
+   [cljs.pprint :refer [pprint]]
+   [accountant.core :refer [configure-navigation! navigate! dispatch-current!]]
+   [app.route :refer [path-decode map->query-string]]
+   [cljs.reader :refer [read-string]]
+   [clojure.data :refer [diff]]
+   [clojure.string :as str]
+   [clojure.walk :as walk]
+   [app.ui.registry :as reg]
+   ["react-device-detect" :refer [browserName browserVersion fullBrowserVersion osVersion
+                                  deviceType engineName deviceDetect osName getUA
+                                  mobileVendor mobileModel engineVersion
+                                  ]]
+   ))
 
 (def log (log/logger 'app.events))
 
@@ -666,7 +667,7 @@
 (reg-event-db
   ::open-doc-file
   (fn-traced [db [_ doc]]
-    (assoc db :doc doc)))
+    (assoc db :doc (store/decode doc))))
 
 ;----------------------------------------------------
 
@@ -933,11 +934,45 @@
     (go
       (let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
             file-id "1ZYqrs1QLvoB5P4GhV8Q9Hz0FsyDDPSIR"     ;"kgrsc300.ydn"
-            response (<? (drive/<read-file-content file-id))
+            response (<? (drive/<read-file-edn file-id))
             ]
         (info log ::debug-file-content response)
         ))
     db))
+
+(reg-event-db
+ ::debug-file-compress
+ (fn-traced [db _]
+            (go
+              (let [;file-id (<? (store/<create-file "compress-test" nil))
+                    value (fn [c] (.charCodeAt c 0))
+                    file-id "1QDGeNA9aIWD7KDN60wVKv9r-FY5gZK8y"
+                    read (<? (drive/<read-file-edn file-id))
+                    read (or read (let [content {:en :lz
+                                                 :d (-> db :doc pr-str store/compress)
+                                                 :r (-> db :doc pr-str)}
+                                        fields (<? (drive/<write-file-content file-id content {:content-type :edn}))]
+                                    (debug log ::debug-file-compress 'write-fields fields)
+                                    (<? (drive/<read-file-edn file-id))))
+                    {:keys [d r]} read
+                    good (-> r store/compress)
+                    compare (filter identity (map (fn [dc rc]
+                                                    (when (not= dc rc) 
+                                                      (cl-format nil "file: ~s ~b; good: ~s ~b" dc (value dc) rc (value rc))
+                                                      ;[dc rc (value dc) (value rc)]
+                                                      )) d good))]
+                
+                ;(debug log ::debug-file-compress 'file-id file-id)
+                ;(info log ::debug-file-compress  'read read)
+                (info log ::debug-file-compress  'equal (= good d))
+                (info log ::debug-file-compress  'equal (pprintl {:d d :g good}))
+                (info log ::debug-file-compress {:d-count (-> d count)
+                                                 :r-count (-> good count)})
+                (info log ::debug-file-compress  'decompress-file (-> d store/decompress))
+                (info log ::debug-file-compress  'decompress-local (-> r store/compress store/decompress))
+                (info log ::debug-file-compress  'compare (pprintl compare))
+                ))
+            db))
 
 (reg-event-db
   ::debug-rename-file

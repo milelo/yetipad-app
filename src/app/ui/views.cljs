@@ -83,7 +83,7 @@
   (when-let [file (-> e .-target.files first)]
     (set! (.-onload file-reader) (fn [^js e]
                                    (let [doc (-> e .-target.result read-string)]
-                                     (dispatch! [::events/open-doc-file (dissoc doc nil)])
+                                     (dispatch! [::events/open-doc-file doc])
                                      )))
     (.readAsText file-reader file)
     ))
@@ -338,6 +338,7 @@
       (when config/debug?
         [:<>
          [:> Divider]
+         [menu-list-item nil "debug-file-compress" #(dispatch! [::events/debug-file-compress])]
          [menu-list-item nil "check-doc" #(dispatch! [::events/check-doc])]
          [menu-list-item nil "fix-doc" #(dispatch! [::events/fix-doc])]
          [menu-list-item nil "restore-all-trashed" #(dispatch! [::events/restore-all-trashed])]

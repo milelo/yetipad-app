@@ -18,8 +18,8 @@
   (try
     (reader/read-string s)
     (catch :default e
-      (println s)
-      (js/console.error e)
+      (warn log 'read-string s)
+      (warn log 'error e)
       e)))
 
 (defn simulate-error [type]
@@ -75,6 +75,7 @@
              ;(js/console.log response)
              (let [response (case return-type
                               :body-edn (-> response .-body read-string)
+                              :body (-> response .-body)
                               :result (some-> response .-result js->cljs)
                               :response (js->cljs response)
                               :raw response)]
@@ -250,7 +251,7 @@
 
 (defn <write-file-content
   "Write or overwrite the content of an existing file."
-  [file-id content & [{:keys [#_mime-type content-type fields]}]]
+  [file-id content & [{:keys [mime-type content-type fields]}]]
   (trace log '<write-file-content file-id)
   (assert file-id)
   (let [body (case content-type
@@ -261,7 +262,7 @@
                     :params {;URL params
                              :uploadType :media
                              :fields     (or fields "id, name, modifiedTime, trashed, appProperties")
-                             ;:mimeType   (or mime-type text-mime)
+                             :mimeType   (or mime-type text-mime)
                              }
                     :body   body                            ;string | object	The HTTP request body (applies to PUT or POST).
                     }]
@@ -269,7 +270,7 @@
     (<thenable #(js/gapi.client.request (clj->js req-params)) :result)
     ))
 
-(defn <read-file-content [file-id & [options]]
+(defn <read-file-edn [file-id & [options]]
   (trace log '<read-file-content file-id)
   (assert file-id)
   ;https://developers.google.com/drive/api/v3/manage-downloads
