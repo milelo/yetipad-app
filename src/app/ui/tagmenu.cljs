@@ -53,12 +53,12 @@
                                              :anchor-origin {:horizontal :right :vertical :center}
                                              :anchorEl      selected-el
                                              }
-                                 (let [[tag-items other-items] (rsubs [::subs/child-data-by-tag-id id])]
+                                 (let [[tag-items other-items] @(subs/child-data-by-tag-id id)]
                                    [tag-submenu id tag-items other-items])])
                               ]])]))
 
 (defn tag-menu []
-  (let [root-tag-items (rsubs [::subs/root-tag-data])]
+  (let [root-tag-items @subs/root-tag-data*]
     (if root-tag-items
       [tag-submenu nil root-tag-items nil]
       [:> Typography {:align   :center

@@ -38,12 +38,12 @@
      }))
 
 (defn content [editing?]
-  (let [packages (rsubs [::subs/logger-packages])]
+  (let [packages @subs/logger-packages*]
     [options-table "Logging level" (for-all [package (cons :default-level (sort-by name packages))]
                                      {
                                       :id     package
                                       :name   package
-                                      :value  (rsubs [::subs/log-level package])
+                                      :value  @(subs/log-level package)
                                       :editor (partial op/combo-editor log/log-levels :default)
                                       }) editing?]
     ))
@@ -58,7 +58,7 @@
               :title "Log config"
               }
         ]
-    (if (rsubs [::subs/edit-item :log-config])
+    (if @(subs/edit-item :log-config)
       [ui/editor-pane item {:body ^{:key :edit} [content true] :buttons [restore-defaults-button]}]
       [ui/viewer-pane item {:body ^{:key :view} [content false]}])))
 

@@ -49,7 +49,7 @@
                        }]]))
 
 (defn tag-list [parent-id]
-  (let [[tags other] (rsubs [::subs/child-data-by-tag-id parent-id])]
+        (let [[tags other] @(subs/child-data-by-tag-id parent-id)]
     [:> List (for-all [{:keys [id kind title]} (concat other tags)]
                ^{:key id} [index-list-item (reg/rget kind :icon) title #(dispatch! [::events/open-item id])])]))
 
@@ -69,7 +69,7 @@
   [ui/item-button open-all-icon "open all children" #(dispatch! [::events/open-tag-children id])])
 
 (defn tag-pane [{:keys [item]}]
-  (if-let [edit-item (rsubs [::subs/edit-item (:id item)])]
+  (if-let [edit-item @(subs/edit-item (:id item))]
     [note-editor edit-item]
     [tag-view item {:buttons (cons open-all-button ui/standard-viewer-buttons)}]
     ))

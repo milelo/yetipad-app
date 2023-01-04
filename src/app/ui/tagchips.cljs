@@ -23,7 +23,7 @@
 
 (defn tag-chip-edit [tag-ids* new-tags* id {:keys [title new-tag?]}]
   [:> Tooltip {:title "remove tag"}
-   [:> Chip {:label    (if new-tag? title (rsubs [::subs/tag-path-str id]))
+   [:> Chip {:label    (if new-tag? title @(subs/tag-path-str id))
              :size     :small
              :clickable false ;hack: avoid mui bug with 'true'
              :color    (if new-tag? :secondary :primary)
@@ -32,7 +32,7 @@
                           (swap! tag-ids* disj id))}]])
 
 (defn- tag-chips [tag-ids* new-tags*]
-  (let [tag-data-map (rsubs [::subs/tag-data-map])]
+  (let [tag-data-map @subs/tag-data-map*]
     [:div
      (for-all [[id tag] (merge (select-keys tag-data-map @tag-ids*) @new-tags*)]
        ^{:key (str id :tag)} [tag-chip-edit tag-ids* new-tags* id tag]
@@ -41,11 +41,11 @@
 (defn- tagger [id tag-ids* new-tags*]
   (let [value* (r/atom "")]
     (fn [id]
-      (let [tag-data (rsubs [::subs/tag-data])
-            tag-data-map (rsubs [::subs/tag-data-map])
+      (let [tag-data @subs/tag-data*
+            tag-data-map @subs/tag-data-map*
             ]
         (when-not @tag-ids*
-          (reset! tag-ids* (into #{} (filter tag-data-map (:tags (rsubs [::subs/doc-item id]))))))
+          (reset! tag-ids* (into #{} (filter tag-data-map (:tags @(subs/doc-item id))))))
         [:<>
          [tag-chips tag-ids* new-tags*]
          [:> Autocomplete {:options          (clj->js tag-data)
@@ -86,7 +86,7 @@
 
 (defn tag-chip [id]
   [:> Tooltip {:title "open tag"}
-   [:> Chip {:label    (rsubs [::subs/tag-path-str id])
+   [:> Chip {:label    @(subs/tag-path-str id)
              :size     :small
              ;:color    :primary
              :clickable false ;hack: avoid mui bug with 'true'
@@ -95,7 +95,7 @@
 
 (defn tag-viewer [id]
   [:div
-   (for-all [{:keys [id]} (rsubs [::subs/item-tag-data id])]
+   (for-all [{:keys [id]} @(subs/item-tag-data id)]
      ^{:key id} [tag-chip id]
      )])
 

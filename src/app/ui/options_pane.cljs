@@ -101,9 +101,9 @@
        })))
 
 (defn content [editing?]
-  (let [doc-options (rsubs [::subs/doc-options])
-        doc-id (rsubs [::subs/doc-id])
-        {:keys [file-id]} (rsubs [::subs/file-index-entry doc-id])
+  (let [doc-options @subs/doc-options*
+        doc-id @subs/doc-id*
+        {:keys [file-id]} @(subs/file-index-entry doc-id)
         ]
     [:<>
      ;[options-table "Device options" [] editing?]
@@ -140,7 +140,7 @@
               :title "Settings"
               }
         ]
-    (if (rsubs [::subs/edit-item :options])
+    (if @(subs/edit-item :options)
       [ui/editor-pane item {:body ^{:key :opts-e} [content true]}]
       [ui/viewer-pane item {:body ^{:key :opts-v} [content false]}]
       )))

@@ -46,7 +46,7 @@
                        }]]))
 
 (defn trash-list []
-  (let [trashed (rsubs [::subs/deleted-items])]
+  (let [trashed @subs/deleted-items*]
     [:<>
      [:> Typography {:variant :body2} (if trashed "Select to view:" "Empty")]
      [:> List
