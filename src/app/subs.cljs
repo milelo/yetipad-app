@@ -84,8 +84,8 @@
                  (get @doc* item-id))))
 
 (defn iso-date-str
-  [iso-str]
   "Returns the date part of the date-time iso string"
+  [iso-str]
   (subs iso-str 0 8))
 
 (def items-by-history* (db/atom
@@ -99,10 +99,9 @@
                                                           (map doc (filter string? (keys doc)))))))))
 
 (def items-by-history-filtered (db/atomfn
-                                (fn [_db]
-                                  @items-by-history*)
-                                (fn [items-by-history search-str]
-                                  (for [day-group items-by-history
+                                (fn [_db search-str]
+                                  ;Don't use cache-fn; too many variants of search-str.
+                                  (for [day-group  @items-by-history*
                                         :let [day-group (not-empty (if (empty? search-str)
                                                                      day-group
                                                                      (filter #(ui-utils/search search-str %) day-group)))]
@@ -123,10 +122,9 @@
                 (get-in db [:doc :doc-id]))))
 
 (def items-by-title-filtered (db/atomfn
-                              (fn [_db]
-                                @items-by-title*)
-                              (fn [items-by-title search-str]
-                                (for [item items-by-title
+                              (fn [_db search-str]
+                                ;Don't use cache-fn; too many variants of search-str.
+                                (for [item @items-by-title*
                                       :when (or (empty? search-str) (ui-utils/search search-str item))]
                                   item))))
 
