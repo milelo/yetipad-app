@@ -35,9 +35,9 @@
                   (:platform db))))
 
 (def edit-item (db/atomfn
-                (fn [db item-id]
-                  [(:editing db) item-id])
-                (fn [[editing item-id]]
+                (fn [db]
+                  (:editing db))
+                (fn [editing item-id]
                   ;a copy of the original item being edited
                   (let [entry (get editing item-id)]
                     (and (not (:accept-as entry)) (:source entry))))))
