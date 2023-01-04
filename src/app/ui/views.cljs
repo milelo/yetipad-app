@@ -247,8 +247,8 @@
 
 (defn items-pane []
   [:> Paper
-   (for-all [{:keys [id kind] :as item} @subs/open-items-with-trash*]
-            ^{:key id} [(reg/rget kind :pane) {:item item}])])
+   (for [{:keys [id kind] :as item} @subs/open-items-with-trash*]
+     ^{:key id} [(reg/rget kind :pane) {:item item}])])
 
 (defn static-pane-list-item [kind]
   (let [{:keys [title icon]} (reg/rget kind)]
@@ -298,7 +298,7 @@
          [menu-list-item nil "Dump this file meta" #(dispatch! [::events/dump-file-meta])]
          [menu-list-item nil "Update doc index pane" #(dispatch! [::events/sync-doc-index])]
          [menu-list-item nil "Dump index" #(dispatch! [::events/dump-index])]
-         [menu-list-item nil "Delete doc - keep file" #(dispatch! [::events/delete-doc {:keep-file true}])] 
+         [menu-list-item nil "Delete doc - keep file" #(dispatch! [::events/delete-doc {:keep-file true}])]
          [menu-list-item nil "Dump tag-map" #(pprint @subs/tag-map*)]
          [menu-list-item nil "rename-file" #(dispatch! [::events/debug-rename-file])]
          [menu-list-item nil "find-file" #(dispatch! [::events/debug-find-file])]

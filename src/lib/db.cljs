@@ -52,7 +52,7 @@
                                 (let [cache-fn-args (apply ipfn @db* instance-args)]
                                   (if (and cache-entry (= (:input cache-entry) cache-fn-args))
                                     cache-entry
-                                    (assoc cache-entry :cached (cachefn cache-fn-args) :input cache-fn-args))))]
+                                    (assoc cache-entry :cached (apply cachefn cache-fn-args instance-args) :input cache-fn-args))))]
                   (get-in (swap! cache* update instance-args updater) [instance-args :cached]))))))
   ([ipfn]
    (partial r/track

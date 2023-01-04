@@ -99,9 +99,9 @@
                                                           (map doc (filter string? (keys doc)))))))))
 
 (def items-by-history-filtered (db/atomfn
-                                (fn [_db search-str]
-                                  [@items-by-history* search-str])
-                                (fn [[items-by-history search-str]]
+                                (fn [_db]
+                                  @items-by-history*)
+                                (fn [items-by-history search-str]
                                   (for [day-group items-by-history
                                         :let [day-group (not-empty (if (empty? search-str)
                                                                      day-group
@@ -109,6 +109,7 @@
                                         :when day-group
                                         day (cons (assoc (first day-group) :head__ true) (rest day-group))]
                                     day))))
+
 (def items-by-title* (db/atom
                       (fn []
                         @doc*)
@@ -122,9 +123,9 @@
                 (get-in db [:doc :doc-id]))))
 
 (def items-by-title-filtered (db/atomfn
-                              (fn [_db search-str]
-                                [@items-by-title* search-str])
-                              (fn [[items-by-title search-str]]
+                              (fn [_db]
+                                @items-by-title*)
+                              (fn [items-by-title search-str]
                                 (for [item items-by-title
                                       :when (or (empty? search-str) (ui-utils/search search-str item))]
                                   item))))
@@ -180,9 +181,9 @@
                       (sort-by :title (keep tag-data-map (:tags doc-item))))))
 
 (def tag-path-str (db/atomfn
-                   (fn [_db tag-id]
-                     [@doc* tag-id])
-                   (fn [[doc tag-id]]
+                   (fn [_db]
+                     @doc*)
+                   (fn [doc tag-id]
                      (tag-path-str- (tag-path doc tag-id)))))
 
 (def tag-data* (db/atom
@@ -210,9 +211,9 @@
 (def child-data-by-tag-id
   "returns sorted item-data for items tagged with tag-id as [tag-item-data other-item-data]"
   (db/atomfn
-   (fn [_db tag-id]
-     [@tag-map* @doc* tag-id])
-   (fn [[tag-map doc tag-id]]
+   (fn [_db]
+     [@tag-map* @doc*])
+   (fn [[tag-map doc] tag-id]
      (let [[tids xids] (get tag-map tag-id)
            data (fn [tags] (sort-by :title (keep doc tags)))]
        [(data tids) (data xids)]))))
@@ -236,8 +237,8 @@
                          (filter symbol? (keys logger-config)))))
 
 (def log-level (db/atomfn
-                (fn [db package]
-                  [(:logger-config db)] package)
-                (fn [[logger-config package]]
+                (fn [db]
+                  (:logger-config db))
+                (fn [logger-config package]
                   (or (get logger-config package) :default))))
 

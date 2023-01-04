@@ -5,6 +5,7 @@
 /yetipad/workbox-*
 /*-init.clj
 /*.loggit
+/.nrepl-port
 
 # Node.js dependencies
 /node_modules/
