@@ -10,42 +10,27 @@
 
 (defonce db* (r/atom {:db? true}))
 
-#_(defn fire
-    "Update the db, optionally with a promise."
-    ([f {:keys [label before! after!]}]
-     (-> (p/let [old-db @db*
-                 _ (and before! (before! old-db))
-                 db (f old-db)
-                 _ (and after! (js/setTimeout #(after! old-db db) 0))]
-         ;(println :done)
-           (if (and (map? db) (:db? db))
-             (do
-               (info log 'fire label)
-               (reset! db* db))
-             (when db (throw (js/Error "Attempted db overwrite.")))))
-         (p/catch (fn [e] (-> e str println)
-                 ;(-> e .-name println)
-                 ;(-> e .-message println)
-                    ))))
-    ([f] (fire f nil)))
-
 (defn fire
   "Update the db, optionally with a promise."
   ([f {:keys [label before! after!]}]
-   (-> (let [old-db @db*
-             _ (and before! (before! old-db))
-             db (f old-db)
-             _ (and after! (js/setTimeout #(after! old-db db) 0))]
-         ;(println :done)
-         (if (and (map? db) (:db? db))
-           (do
-             (info log 'fire label)
-             (reset! db* db))
-           (when db (throw (js/Error "Attempted db overwrite.")))))
-       (p/catch (fn [e] (-> e str println)
+   (let [old-db @db*
+         _ (and before! (before! old-db))
+         db (f old-db)
+         set-db! (fn [old-db db]
+                   (if (and (map? db) (:db? db))
+                     (do
+                       (info log 'fire label)
+                       (reset! db* db)
+                       (and after! (js/setTimeout #(after! old-db db) 0)))
+                     (when db (throw (js/Error "Attempted db overwrite.")))))]
+     (if (p/promise? db)
+       (-> db
+           (p/then (set-db! old-db db))
+           (p/catch (fn [e] (-> e str println)
                  ;(-> e .-name println)
                  ;(-> e .-message println)
-                  ))))
+                      )))
+       (set-db! old-db db))))
   ([f] (fire f nil)))
 
 (defn atom
@@ -89,5 +74,4 @@
 (comment
   (pprint @db*)
   (keys @db*)
-  (pprint (dissoc @db* :doc :logger-config :doc-file-index :platform))
-  )
+  (pprint (dissoc @db* :doc :logger-config :doc-file-index :platform)))
