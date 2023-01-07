@@ -1,7 +1,6 @@
 (ns app.ui.log-pane
   (:require
     [reagent.core :as r]
-    [re-frame.core :as re-frame]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
@@ -22,9 +21,6 @@
 
 (def log (log/logger 'app.ui.log-pane))
 
-(def rsubs (comp deref re-frame/subscribe))
-(def dispatch! re-frame/dispatch)
-
 (defonce log* (r/atom nil))
 (defonce entry-id* (atom 0))
 
@@ -41,7 +37,7 @@
 
 (defn debug-settings-button []
   (let [{:keys [icon title]} (reg/rget :log-config)]
-    [ui/item-button icon title #(dispatch! [::events/open-item :log-config])]))
+    [ui/item-button icon title #(events/open-item :log-config)]))
 
 (defn entry [{:keys [level package time args]}]
   (let [s {:style {:margin-right 4}}

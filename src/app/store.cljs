@@ -1,7 +1,6 @@
 (ns app.store
   (:require
    [cljs.reader :as reader]
-   [re-frame.core :as rc]
    [lib.log :as log :refer [trace debug info warn fatal error pprintl]]
    [lib.debug :as debug :refer [we wd]]
    [lib.local-db :as ldb :refer []]
@@ -54,9 +53,6 @@
   (let [<c (chan)]
     (put! <task-queue [<fn <c])
     <c))
-
-(defn update-db [updates]
-  (rc/dispatch [::update-db updates]))
 
 (defn do-sync!
   "Adds a function returning a channel yielding a single result (usually a go block) to a task queue.

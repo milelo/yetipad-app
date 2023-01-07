@@ -2,7 +2,6 @@
   (:require
     [reagent.core :refer [create-class as-element]]
     [reagent.dom :as rdom :refer [dom-node]]
-    [re-frame.core :as re-frame]
     ;[hickory.core :refer [parse-fragment as-hiccup]]        ;https://github.com/davidsantiago/hickory
     [app.ui.editor :refer [create-editor editor-buttons-standard]]
     [app.ui.utils :as ui-utils]
@@ -16,9 +15,6 @@
 ;(-> "<a href=\"foo\">foo</a>" parse as-hiccup)
 
 (def log (log/logger 'app.note-editor))
-
-(def rsubs (comp deref re-frame/subscribe))
-(def dispatch! re-frame/dispatch)
 
 (defn not-empty-content [content]
   (when (some #(if (vector? %)
@@ -62,7 +58,7 @@
                           ]
                       ;(debug log "writing content: ")
                       ;(pprint content)
-                      (dispatch! [::evts/new-content id content])
+                      (evts/new-content id content)
                       (dispose)
                       (reset! editor* nil)
                       ))

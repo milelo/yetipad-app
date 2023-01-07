@@ -1,7 +1,6 @@
 (ns app.ui.editor
   (:require
     [reagent.core :as reagent]
-    [re-frame.core :as re-frame]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd wee]]
     [lib.utils :as u]
@@ -22,9 +21,6 @@
 
 
 (def log (log/logger 'app.ui.editor))
-
-(def <sub (comp deref re-frame/subscribe))
-(def >evt re-frame/dispatch)
 
 (def editor-buttons-standard [
                               Command.FORMAT_BLOCK

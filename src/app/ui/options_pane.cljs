@@ -1,7 +1,6 @@
 (ns app.ui.options-pane
   (:require
     [reagent.core :as r]
-    [re-frame.core :as re-frame]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
@@ -18,9 +17,6 @@
     ))
 
 (def log (log/logger 'app.ui.options-pane))
-
-(def rsubs (comp deref re-frame/subscribe))
-(def dispatch! re-frame/dispatch)
 
 (defn string-editor [id value values*]
   [:> TextField {
@@ -97,7 +93,7 @@
                                  [table title options editing? values*]
                                  )
        :component-will-unmount (fn [_this]
-                                 (dispatch! [::events/options @values*]))
+                                 (events/options @values*))
        })))
 
 (defn content [editing?]

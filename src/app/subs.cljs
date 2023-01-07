@@ -1,7 +1,6 @@
 (ns app.subs
   (:require
    [lib.db :as db]
-   [re-frame.core :as re-frame :refer [reg-sub subscribe]]
    [lib.log :as log :refer [trace debug info warn fatal]]
    [lib.debug :as debug :refer [we wd wee expose]]
    [lib.utils :as utils :refer [iso-time->date-time only]]

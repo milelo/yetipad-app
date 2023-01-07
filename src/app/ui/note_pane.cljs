@@ -1,7 +1,6 @@
 (ns app.ui.note-pane
   (:require
     [reagent.core :as r]
-    [re-frame.core :as re-frame]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
@@ -17,9 +16,6 @@
     ))
 
 (def log (log/logger 'app.ui.note-pane))
-
-(def rsubs (comp deref re-frame/subscribe))
-(def dispatch! re-frame/dispatch)
 
 (defn content-pane [{:keys [content]}]
   ;break-word is required to avoid horizontal scroll bar on long words ie url's
@@ -48,7 +44,7 @@
                 {:component-will-unmount
                  (fn [_this]
                    ;(debug log :new-title @new-title*)
-                   (dispatch! [::events/new-title id @new-title*])
+                   (events/new-title id @new-title*)
                    )})]))
 
 (defn note-editor [{:keys [id] :as item} & [options]]

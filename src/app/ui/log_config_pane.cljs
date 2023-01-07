@@ -1,7 +1,6 @@
 (ns app.ui.log-config-pane
   (:require
     [reagent.core :as r]
-    [re-frame.core :as re-frame]
     [lib.log :as log :refer [trace debug info warn fatal pprintl]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
@@ -22,9 +21,6 @@
 
 (def log (log/logger 'app.ui.log-config-pane))
 
-(def rsubs (comp deref re-frame/subscribe))
-(def dispatch! re-frame/dispatch)
-
 (def values* (r/atom {}))
 
 (defn options-table [title options editing?]
@@ -34,7 +30,7 @@
                                [op/table title options editing? values*]
                                )
      :component-will-unmount (fn [_this]
-                               (dispatch! [::events/set-log-config @values*]))
+                               (events/set-log-config @values*))
      }))
 
 (defn content [editing?]

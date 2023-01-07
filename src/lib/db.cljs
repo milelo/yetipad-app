@@ -1,25 +1,33 @@
 (ns lib.db
   (:refer-clojure :exclude [atom])
   (:require
+   [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
    [promesa.core :as p]
    [reagent.core :as r]
-   [clojure.pprint :refer [pprint]]
-   [re-frame.db :as rdb]))
+   [clojure.pprint :refer [pprint]]))
 
-;(defonce db* (r/atom {:db? true}))
-(def db* rdb/app-db)
+(def log (log/logger 'lib.db))
+
+(defonce db* (r/atom {:db? true}))
 
 (defn fire
-  "Update the db, optionally with a promise."
-  [f]
-  (-> (p/let [db (f @db*)]
-        ;(println :done)
-        (when (and (map? db) (:db? db))
-          (reset! db* db)))
-      (p/catch (fn [e] (-> e str println)
+    "Update the db, optionally with a promise."
+    ([f {:keys [label before! after!]}]
+     (-> (p/let [old-db @db*
+                 _ (and before! (before! old-db))
+                 db (f old-db)
+                 _ (and after! (js/setTimeout #(after! old-db db) 0))]
+         ;(println :done)
+           (if (and (map? db) (:db? db))
+             (do
+               (info log 'fire label)
+               (reset! db* db))
+             (when db (throw (js/Error "Attempted db overwrite.")))))
+         (p/catch (fn [e] (-> e str println)
                  ;(-> e .-name println)
                  ;(-> e .-message println)
-                 ))))
+                    ))))
+    ([f] (fire f nil)))
 
 (defn atom
   "Returns: a potentially cacheable deref-able var that behaves as reagent atom.

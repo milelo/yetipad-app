@@ -5,7 +5,6 @@
    [clojure.string :as str]
    [app.config :as config]
    [reagent.core :as r]
-   [re-frame.core :as re-frame]
    ;[breaking-point.core :as bp]
    [lib.log :as log :refer [trace debug info warn fatal]]
    [lib.debug :as debug :refer [we wd wee expose]]
@@ -64,9 +63,6 @@
 
 (info log app-version)
 
-;(def rsubs (comp deref re-frame/subscribe))
-(def dispatch! re-frame/dispatch)
-
 (defn on-before-unload [e]
   (when-not @subs/can-reload?*
     ;modern browsers ignore message
@@ -82,7 +78,7 @@
   (when-let [file (-> e .-target.files first)]
     (set! (.-onload file-reader) (fn [^js e]
                                    (let [doc (-> e .-target.result read-string)]
-                                     (dispatch! [::events/open-doc-file doc]))))
+                                     (events/open-doc-file doc))))
     (.readAsText file-reader file)))
 
 (def mui-theme
@@ -141,13 +137,13 @@
      (for-all [{:keys [id title kind create change head__]} items-by-history]
               ^{:key id} [:<>
                           (when head__ [date-item (ui-utils/iso-time->formatted-date (or change create))])
-                          [index-list-item (reg/rget kind :icon) title #(dispatch! [::events/open-item id])]])]))
+                          [index-list-item (reg/rget kind :icon) title #(events/open-item id)]])]))
 
 (defn title-index-pane []
   (let [items-filtered @(subs/items-by-title-filtered @search-value*)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [id title kind]} items-filtered]
-              ^{:key id} [index-list-item (reg/rget kind :icon) title #(dispatch! [::events/open-item id])])]))
+              ^{:key id} [index-list-item (reg/rget kind :icon) title #(events/open-item id)])]))
 
 (defn doc-list-pane []
   (let [docs @subs/doc-list*
@@ -161,10 +157,10 @@
                                                        (if @subs/moving-items?*
                                                   ;source and target must be different
                                                          (when (not= selected-doc-id doc-id)
-                                                           (dispatch! [::events/move-items doc-id]))
+                                                           (events/move-items doc-id))
                                                          (do
-                                                           (dispatch! [::events/read-doc-by-id- doc-id])
-                                                           (dispatch! [::events/select-index-view :index-history]))))}
+                                                           (events/read-doc-by-id- doc-id)
+                                                           (events/select-index-view :index-history))))}
                               [:> Tooltip {:title (or subtitle file-description doc-id "")}
                                [:> ListItemText {:primary (str (or title file-name doc-id) " (" (name status) \))}]]])]))
 
@@ -177,7 +173,7 @@
 (defn doc-index-toolbar []
   [:div {:style {:display        :flex
                  :flex-direction :row}}
-   [doc-index-tool delete-document-icon "Delete current document" #(dispatch! [::events/delete-doc])]
+   [doc-index-tool delete-document-icon "Delete current document" #(events/delete-doc {})]
    [:input {:accept    ".edn,.odn"
             :style     {:display :none}
             :multiple  false
@@ -186,7 +182,7 @@
             :on-change got-file}]
    [doc-index-tool open-file-icon "Open file" #(-> (js-this) .-upload .click)]
    [doc-index-tool move-items-icon "start move open items..."
-    #(dispatch! [::events/toggle-start-move-items])
+    events/toggle-start-move-items
     {:selected @subs/moving-items?*}]])
 
 (defn doc-index-pane []
@@ -208,7 +204,7 @@
 (defn menu-list-item [icon text on-click]
   [:> ListItem {:button   true
                 :on-click (fn []
-                            (dispatch! [::events/open-tag-drawer false])
+                            (events/open-tag-drawer false) 
                             (on-click))}
    (when icon [:> ListItemIcon [:> icon]])
    [:> ListItemText {:primary text}]])
@@ -217,7 +213,7 @@
   (let [index-view @subs/index-view*
         tab (fn [id label]
               [:> Tab {:label    label
-                       :on-click #(dispatch! [::events/select-index-view id])
+                       :on-click #(events/select-index-view id)
                        :style    {:text-transform :none
                                   :min-width      50
                                   :min-height     0         ;override and let line-height determine
@@ -226,8 +222,8 @@
                    :flex-direction :column
                    :padding        "0 8px"}}
      [:> List
-      [menu-list-item close-all-icon "Close all" #(dispatch! [::events/close-all-items])]
-      [menu-list-item new-note-icon "New note" #(dispatch! [::events/start-edit-new-note])]]
+      [menu-list-item close-all-icon "Close all" #(events/close-all-items)]
+      [menu-list-item new-note-icon "New note" events/start-edit-new-note]]
      [:> Paper {:style {:width "100%"}}
       [:> Tabs {:value    (case index-view :index-history 0 :index-title 1 :index-docs 2)
                 :variant  :fullWidth
@@ -252,7 +248,7 @@
 
 (defn static-pane-list-item [kind]
   (let [{:keys [title icon]} (reg/rget kind)]
-    [menu-list-item icon title #(dispatch! [::events/open-item kind #{:disable-toggle}])]))
+    [menu-list-item icon title #(events/open-item kind #{:disable-toggle})]))
 
 (defn tag-drawer []
   ;left side drawer
@@ -260,13 +256,13 @@
         show-close-main-menu false]
     [:> Drawer
      {:open     @subs/main-menu-open*
-      :on-close #(dispatch! [::events/open-tag-drawer false])}
+      :on-close #(events/open-tag-drawer false)}
      (when show-close-main-menu
        [:div {:style {:display        :flex
                       :alignItems     :center
                       :justifyContent :flex-end
                       :padding        "0 8px"}}
-        [:> chevron-left-icon {:on-click #(dispatch! [::events/open-tag-drawer false])}]])
+        [:> chevron-left-icon {:on-click #(events/open-tag-drawer false)}]])
      (when show-close-main-menu
        [:> Divider])
      [:div {:style {:flex-grow 2
@@ -279,32 +275,32 @@
       [static-pane-list-item :options]
       [static-pane-list-item :log]
       (if online-status
-        [menu-list-item account-icon "Sign-out" #(dispatch! [::events/sign-out])]
-        [menu-list-item account-icon "Sign-in" #(dispatch! [::events/sign-in])])
+        [menu-list-item account-icon "Sign-out" events/sign-out]
+        [menu-list-item account-icon "Sign-in" events/sign-in])
       [static-pane-list-item :about]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
       [:> ListItem [:> ListItemText {:primary app-version}]]
-      [menu-list-item nil "refresh Drive-token" #(dispatch! [::events/refresh-drive-token])]
+      [menu-list-item nil "refresh Drive-token" events/refresh-drive-token]
       (when config/debug?
         [:<>
          [:> Divider]
-         [menu-list-item nil "debug-file-compress" #(dispatch! [::events/debug-file-compress])]
-         [menu-list-item nil "check-doc" #(dispatch! [::events/check-doc])]
-         [menu-list-item nil "fix-doc" #(dispatch! [::events/fix-doc])]
-         [menu-list-item nil "restore-all-trashed" #(dispatch! [::events/restore-all-trashed])]
-         [menu-list-item nil "Dump document meta" #(dispatch! [::events/dump-doc-meta])]
-         [menu-list-item nil "Dump document" #(dispatch! [::events/dump-doc])]
-         [menu-list-item nil "List app drive files meta" #(dispatch! [::events/debug-list-app-drive-files])]
-         [menu-list-item nil "Dump this file meta" #(dispatch! [::events/dump-file-meta])]
-         [menu-list-item nil "Update doc index pane" #(dispatch! [::events/sync-doc-index])]
-         [menu-list-item nil "Dump index" #(dispatch! [::events/dump-index])]
-         [menu-list-item nil "Delete doc - keep file" #(dispatch! [::events/delete-doc {:keep-file true}])]
+         [menu-list-item nil "debug-file-compress" events/debug-file-compress]
+         [menu-list-item nil "check-doc" events/check-doc]
+         [menu-list-item nil "fix-doc" events/fix-doc]
+         [menu-list-item nil "restore-all-trashed" events/restore-all-trashed]
+         [menu-list-item nil "Dump document meta" events/dump-doc-meta]
+         [menu-list-item nil "Dump document" events/dump-doc]
+         [menu-list-item nil "List app drive files meta" events/debug-list-app-drive-files]
+         [menu-list-item nil "Dump this file meta" events/dump-file-meta]
+         [menu-list-item nil "Update doc index pane" events/sync-doc-index!]
+         [menu-list-item nil "Dump index" events/dump-index]
+         [menu-list-item nil "Delete doc - keep file" #(events/delete-doc {:keep-file true})]
          [menu-list-item nil "Dump tag-map" #(pprint @subs/tag-map*)]
-         [menu-list-item nil "rename-file" #(dispatch! [::events/debug-rename-file])]
-         [menu-list-item nil "find-file" #(dispatch! [::events/debug-find-file])]
-         [menu-list-item nil "Trash file" #(dispatch! [::events/debug-trash-file])]
-         [menu-list-item nil "FIle content" #(dispatch! [::events/debug-file-content])]
-         [menu-list-item nil "Add property" #(dispatch! [::events/debug-add-properties])]
+         [menu-list-item nil "rename-file" events/debug-rename-file]
+         [menu-list-item nil "find-file" events/debug-find-file]
+         [menu-list-item nil "Trash file" events/debug-trash-file]
+         [menu-list-item nil "FIle content" events/debug-file-content]
+         [menu-list-item nil "Add property" events/debug-add-properties]
          [:> Divider]
          ;[:> ListItem [:> ListItemText {:primary (str "can reload?: " (rsubs [::subs/can-reload?]))}]]
          ;[:> ListItem [:> ListItemText {:primary (str "screen-width: " (rsubs [::bp/screen-width]))}]]
@@ -316,7 +312,7 @@
     [:> Drawer
      {:open     @subs/index-menu-open*
       :anchor   :right
-      :on-close #(dispatch! [::events/open-index-drawer false])}
+      :on-close #(events/open-index-drawer false)}
      [:div {:style {:position :relative
                     :width    240
                     :anchor   :right}}
@@ -327,7 +323,7 @@
                        :padding    "0 8px"
                        ;; ...theme.mixins.toolbar,
                        }}
-         [:> chevron-right-icon {:on-click #(dispatch! [::events/open-index-drawer false])}]])
+         [:> chevron-right-icon {:on-click #(events/open-index-drawer false)}]])
       (when show-close-index-menu
         [:> Divider])
       [index-pane]]]))
@@ -348,8 +344,6 @@
 
 (defn app-root []
   (let [page-item false
-        doc-title @subs/doc-title*
-        doc-subtitle @subs/doc-subtitle*
         app-status @subs/app-status*
         online-status @subs/online-status*]
     ;(debug log (->  base-theme js->clj :root))
@@ -376,18 +370,18 @@
             [:> IconButton {:title    "Open drawer"
                             :color    :inherit
                             :style    menu-btn-style
-                            :on-click #(dispatch! [::events/open-tag-drawer true])} [:> tree-menu-icon]])
-          [:> Tooltip {:title (or doc-subtitle "")}
+                            :on-click #(events/open-tag-drawer true)} [:> tree-menu-icon]])
+          [:> Tooltip {:title (or @subs/doc-subtitle* "")}
            [:> Typography {:variant :h6
                            :color   :inherit
                            :style   {:flex        1
                                      :line-height :normal
                                      ;;:font-weight :bold
-                                     }}doc-title]]
+                                     }} @subs/doc-title*]]
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}
-                          :on-click #(dispatch! [::events/sync-local])} (case online-status
+                          :on-click events/sync-local} (case online-status
                                                                           :syncing [:> syncing-icon]
                                                                           :uploading [:> uploading-icon]
                                                                           :downloading [:> downloading-icon]
@@ -411,7 +405,7 @@
           [:> IconButton {:title    "index menu"
                           :color    :inherit
                           :style    menu-btn-style
-                          :on-click #(dispatch! [::events/open-index-drawer true])} [:> menu-icon]]])]
+                          :on-click #(events/open-index-drawer true)} [:> menu-icon]]])]
 
       [ui/error-boundary ::tag-drawer [tag-drawer]]
       [ui/error-boundary ::index-drawer [index-drawer]]

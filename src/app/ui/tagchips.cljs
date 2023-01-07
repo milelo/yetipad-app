@@ -1,7 +1,6 @@
 (ns app.ui.tagchips
   (:require
     [reagent.core :as r]
-    [re-frame.core :as re-frame]
     [clojure.string :as str]
     [lib.log :as log :refer [trace debug info warn fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
@@ -14,9 +13,6 @@
     ))
 
 (def log (log/logger 'app.ui.tagchips))
-
-(def rsubs (comp deref re-frame/subscribe))
-(def dispatch! re-frame/dispatch)
 
 (defn- js->cljs [js]
   (js->clj js :keywordize-keys true))
@@ -90,7 +86,7 @@
              :size     :small
              ;:color    :primary
              :clickable false ;hack: avoid mui bug with 'true'
-             :on-click #(dispatch! [::events/open-item id])
+             :on-click #(events/open-item id)
              }]])
 
 (defn tag-viewer [id]
@@ -108,7 +104,7 @@
       [(with-meta (fn [] [tagger id tag-ids* new-tags*])
                   {:component-will-unmount
                    (fn [_this]
-                     (dispatch! [::events/new-tags id @tag-ids* @new-tags*])
+                     (events/new-tags id @tag-ids* @new-tags*)
                      (reset! tag-ids* nil)
                      (reset! new-tags* nil)
                      )})])))
