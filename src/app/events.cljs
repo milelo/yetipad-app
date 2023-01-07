@@ -62,7 +62,9 @@
                 :status             {}
                 :online-status      false
                 :keep-doc-in-sync?  true
-                :platform           platform} new-doc)) {:label 'initialize-db}))
+                :platform           platform}
+            new-doc))
+   {:label 'initialize-db}))
 
 ;----------app-status----------------
 
@@ -95,7 +97,7 @@
         (info log 'navbar-interceptor! 'navigate! path)
         (navigate! path)))))
 
-(defn after-db-change [old-db db]
+(defn after-db-change! [old-db db]
   (let [on-change (fn [path] (let [v (get-in db path)]
                                (when-not (identical? (get-in old-db path) v)
                                  v)))]
@@ -112,9 +114,9 @@
 
 (defn fire
   ([f]
-   (db/fire f {:after! after-db-change}))
+   (db/fire f {:after! after-db-change!}))
   ([f options]
-   (db/fire f (merge {:after! after-db-change} options))))
+   (db/fire f (merge {:after! after-db-change!} options))))
 
 (defn set-app-status [status & [type]]
   (fire
@@ -130,7 +132,8 @@
 
 (defn clear-app-status []
   (fire (fn [db]
-          (assoc db :status {})) {:label 'clear-app-status}))
+          (assoc db :status {}))
+        {:label 'clear-app-status}))
 
 (defn verified-open-items
   "return only item (ids) that are present in the document"
@@ -166,8 +169,9 @@
 (defonce init-status* (atom {}))
 (defn init-once [id f]
   (when-not (get init-status* id)
-    (f)
-    (swap! init-status* assoc id true)))
+    (let [r (f)]
+      (swap! init-status* assoc id true)
+      r)))
 
 (defn init-navigation! []
   (configure-navigation!
@@ -224,7 +228,8 @@
           (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
           (let [status (and online-status status)]
             (trace log ::online-status status)
-            (assoc db :online-status status))) {:label 'online-status}))
+            (assoc db :online-status status)))
+        {:label 'online-status}))
 
 (defn- update-doc- [updated-doc old-doc status-message]
   (fire
@@ -296,9 +301,10 @@
 (defn- new-local-doc-
   "private response handler for read-local-doc"
   []
-  (fire (fn [db]
-          (assoc db :open-items () :doc {:doc-id (utils/simple-uuid)}))
-        {:label 'new-local-doc-}))
+  (fire
+   (fn [db]
+     (assoc db :open-items () :doc {:doc-id (utils/simple-uuid)}))
+   {:label 'new-local-doc-}))
 
 (defn delete-doc [options]
   (fire
@@ -344,12 +350,16 @@
           (assoc db :tag-drawer-open? open?))))
 
 (defn open-index-drawer [open?]
-  (fire (fn [db]
-          (assoc db :index-drawer-open? open?))))
+  (fire
+   (fn [db]
+     (assoc db :index-drawer-open? open?))
+   {:label 'open-index-drawer}))
 
 (defn select-index-view [view]
-  (fire (fn [db]
-          (assoc db :index-view view))))
+  (fire
+   (fn [db]
+     (assoc db :index-view view))
+   {:label 'select-index-view}))
 
 ;-------------------view-item---------------
 
