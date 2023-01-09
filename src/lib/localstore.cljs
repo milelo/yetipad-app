@@ -18,18 +18,6 @@
   (assert k)
   (.removeItem local-forage (name k)))
 
-#_(defn set-item
-    "Saves data to an offline store. You can store the following types of JavaScript objects:
-   Array, ArrayBuffer, Blob,
-   Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, 
-   Number, Object, Uint8Array, Uint8ClampedArray, Uint16Array, Uint32Array, String"
-    ([k v {:keys [raw?]}]
-     (.setItem local-forage (name k) (cond
-                                       raw? v
-                                       (string? v) v
-                                       :else (pr-str v))))
-    ([k v] (set-item k v nil)))
-
 (defn set-item
   "Saves data to an offline store. You can store the following types of JavaScript objects:
    Array, ArrayBuffer, Blob,
