@@ -19,7 +19,7 @@
          set-db! (fn [old-db db]
                    (if (and (map? db) (:db? db))
                      (do
-                       (info log 'fire label)
+                       (trace log 'fire label)
                        (reset! db* db)
                        (and after! (js/setTimeout #(after! old-db db) 0)))
                      (when db (throw (js/Error "Attempted db overwrite.")))))]

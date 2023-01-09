@@ -22,6 +22,8 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [app.ui.registry :as reg]
+   [cljs.core.async.interop :refer-macros [<p!]]
+   [cljs.core.async :refer [go]]
    ["react-device-detect" :refer [browserName browserVersion fullBrowserVersion osVersion
                                   deviceType engineName deviceDetect osName getUA
                                   mobileVendor mobileModel engineVersion]]))
@@ -470,7 +472,7 @@
 
 (defn delete-item-permanent [item-id]
   (fire
-   (fn [{:keys [doc doc-changes] :as db}]
+   (fn [{:keys [doc] :as db}]
      (let [doc (dissoc doc item-id)]
        ;(dispatch! [::cancel-edit item-id])
        (close-item item-id)
@@ -478,7 +480,7 @@
 
 (defn empty-trash []
   (fire
-   (fn [{:keys [doc doc-changes open-items] :as db}]
+   (fn [{:keys [doc open-items] :as db}]
      (if-let [trashed-ids (not-empty (keep #(when (:trashed %) (:id %)) (vals doc)))]
        (let [doc (apply dissoc doc trashed-ids)]
          (assoc db :doc (store/update-timestamps! doc trashed-ids)

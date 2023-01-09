@@ -52,7 +52,7 @@
         [tag nil content]))))
 
 (defn contains [match form]
-  (if-let [[tag attrs content] (normalize form)]
+  (if-let [[_tag _attrs content] (normalize form)]
     (contains match content)
     (cond
       (string? form) (str-contains match form)

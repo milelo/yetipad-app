@@ -204,7 +204,7 @@
 (defn menu-list-item [icon text on-click]
   [:> ListItem {:button   true
                 :on-click (fn []
-                            (events/open-tag-drawer false) 
+                            (events/open-tag-drawer false)
                             (on-click))}
    (when icon [:> ListItemIcon [:> icon]])
    [:> ListItemText {:primary text}]])
@@ -377,19 +377,19 @@
                            :style   {:flex        1
                                      :line-height :normal
                                      ;;:font-weight :bold
-                                     }} @subs/doc-title*]]
+                                     }}@subs/doc-title*]]
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}
                           :on-click events/sync-local} (case online-status
-                                                                          :syncing [:> syncing-icon]
-                                                                          :uploading [:> uploading-icon]
-                                                                          :downloading [:> downloading-icon]
-                                                                          :synced [:> synced-icon]
-                                                                          :online [:> signed-in-icon]
-                                                                          :error [:> online-error-icon]
-                                                                          false [:> signed-out-icon]    ;offline
-                                                                          (warn log ::online-status-unknown online-status))]
+                                                         :syncing [:> syncing-icon]
+                                                         :uploading [:> uploading-icon]
+                                                         :downloading [:> downloading-icon]
+                                                         :synced [:> synced-icon]
+                                                         :online [:> signed-in-icon]
+                                                         :error [:> online-error-icon]
+                                                         false [:> signed-out-icon]    ;offline
+                                                         (warn log ::online-status-unknown online-status))]
           ;variant ["h1","h2","h3","h4","h5","h6","subtitle1","subtitle2","body1","body2","caption","button","overline","srOnly","inherit"]
           ;valid colours: ["initial","inherit","primary","secondary","textPrimary","textSecondary","error"]
           [:> Typography {:variant :subtitle2
