@@ -5,6 +5,8 @@
    [cljs.reader :refer [read-string]]
    [promesa.core :as p]))
 
+;https://localforage.github.io/localForage/
+
 (defn get-item
   "Gets an item from the storage library and supplies the result to a callback. 
    If the key does not exist, getItem() will return null"
@@ -53,8 +55,9 @@
 (defn get-data
   ([k default]
    (p/let [v (get-item k)]
-     (or (read-string v) default false)))
-  ([k] (get-data k nil)))
+     (or (read-string v) default)))
+  ;default to false to support async channels
+  ([k] (get-data k false)))
 
 
 
