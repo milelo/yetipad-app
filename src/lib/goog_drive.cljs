@@ -163,7 +163,7 @@
     (request #(js/gapi.client.drive.files.update (clj->js params)) :result)))
 
 ;======================================= Authentication =============================================
-(def token-client* (atom {}))
+(defonce token-client* (atom {}))
 
 (defn signed-in? []
   (boolean (and js/gapi.client (js/gapi.client.getToken))))
