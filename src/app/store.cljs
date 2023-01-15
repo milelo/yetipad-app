@@ -20,9 +20,6 @@
 
 (def pr-t ui-utils/iso-time->time-format-full)
 
-(def sign-in drive/sign-in!)
-(def sign-out drive/sign-out!)
-
 (defonce drive-file-id* (atom nil))
 (defonce signed-in?* (atom nil))
 
@@ -96,37 +93,37 @@
       :lz (-> d decompress drive/read-string))
     s))
 
-(defn- <read-local-index []
-  (trace log '<read-local-index)
-  (go? (<p! (ls/get-data index-key {}))))
+(defn- read-local-index []
+  (trace log 'read-local-index)
+  (ls/get-data index-key {}))
 
 
-(defn- <write-local-index [index]
-  (trace log '<write-local-index)
-  (go? (<p! (ls/put-data index-key index))))
+(defn- write-local-index [index]
+  (trace log 'write-local-index)
+  (ls/put-data index-key index))
 
 (defn- <index-entry-merge [doc-id updates]
   (trace log '<index-entry-merge [doc-id updates])
   (assert (and (string? doc-id) (map? updates)) [doc-id updates])
   (go?
    (when (not-empty updates)
-     (let [idx (or (<? (<read-local-index)) nil)
+     (let [idx (or (<p! (read-local-index)) nil)
            entry (get idx doc-id)
            updated (utils/map-remove nil? (merge entry updates))]
        (when (not= entry updated)
          (trace log '<index-entry-merge 'write-entry updated)
-         (<? (<write-local-index (assoc idx doc-id updated))))
+         (<p! (write-local-index (assoc idx doc-id updated))))
        nil))))
 
 (defn- index-entry-merge! [doc-id updates]
   (do-sync!
    #(<index-entry-merge doc-id updates)))
 
-(defn <read-local-doc
+(defn read-local-doc
   "Return the doc or false"
   [doc-id]
   (assert doc-id)
-  (go? (<p! (ls/get-data doc-id))))
+  (ls/get-data doc-id))
 
 (defn <write-local-doc [doc]
   (assert doc)
@@ -192,7 +189,7 @@
   (go?
    (let [fields (or fields "files(id, name, description, modifiedTime, trashed, appProperties)")
          q (make-query options)
-         response (<? (drive/<list-app-files {:query q :fields fields}))]
+         response (<p! (drive/list-app-files {:query q :fields fields}))]
      (:files response))))
 
 (defn file-meta>data [{:keys [id name modifiedTime description trashed appProperties mimeType]}]
@@ -208,7 +205,7 @@
   [file-id]
   (assert file-id)
   (go
-    (file-meta>data (<? (drive/<get-file-meta file-id {:fields "id, name, modifiedTime, trashed, appProperties"})))))
+    (file-meta>data (<p! (drive/get-file-meta file-id {:fields "id, name, modifiedTime, trashed, appProperties"})))))
 
 (defn- <find-file-data
   "Find latest file metadata for doc-id. Return file data or false"
@@ -225,8 +222,8 @@
   (trace log '<rename-file doc-id params)
   (assert (and doc-id doc-title) [doc-id doc-title])
   (go?
-   (when-let [file-id (get-in (<? (<read-local-index)) [doc-id :file-id])]
-     (let [file-data (file-meta>data (<? (drive/<update-file file-id
+   (when-let [file-id (get-in (<p! (read-local-index)) [doc-id :file-id])]
+     (let [file-data (file-meta>data (<p! (drive/update-file file-id
                                                              {:name        (str doc-title ".ydn")
                                                               :description (str "YetiPad Document:"
                                                                                  ;"\nTitle: " title
@@ -242,8 +239,7 @@
        file-data))))
 
 (defn refresh-drive-token! [listeners]
-  (info log 'refresh-drive-token!)
-  (do-sync! drive/<refresh-drive-token listeners))
+  (warn log 'refresh-drive-token! 'unimplemented))
 
 (defn rename-file! [doc-id params & [listeners]]
   (do-sync! #(<rename-file doc-id params) listeners))
@@ -264,14 +260,14 @@
   "Writes data to the hidden app Drive data-file.
   Not in use"
   [index]
-  (drive/<write-file-content @drive-file-id* index {:content-type :edn}))
+  (go? (<p! (drive/write-file-content @drive-file-id* index {:content-type :edn}))))
 
 (defn- <write-file-content
   "Write the file content to file with file-id"
   [file-id {:keys [doc-id] :as doc} & [{:keys [update-index]}]]
   (assert doc)
   (go?
-   (let [file-data (file-meta>data (<? (drive/<write-file-content file-id
+   (let [file-data (file-meta>data (<p! (drive/write-file-content file-id
                                                                   (encode doc (when (get-in doc [:options :compress-file?])
                                                                                 :lz))
                                                                   {:content-type :edn
@@ -289,23 +285,26 @@
   [file-id & [{:keys [update-index]}]]
   (go?
     ;todo can <read-file-content also read meta-data
-   (let [doc (or (decode (<? (drive/<read-file-edn file-id))) {})]
+   (let [doc (or (decode (<p! (drive/read-file-edn file-id))) {})]
      (when update-index
-       (let [file-data (file-meta>data (<? (drive/<get-file-meta file-id {:fields "id, modifiedTime, appProperties"})))
+       (let [file-data (file-meta>data (<p! (drive/get-file-meta file-id {:fields "id, modifiedTime, appProperties"})))
               ;file-id this isn't set by create-file so include
              idx-updates (select-keys file-data [:file-change :file-id :doc-id])]
          (<? (<index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil
                                                               :doc-change (:change doc))))))
      doc)))
 
-(defn signed-in? []
+(defn old-signed-in? []
   (boolean @signed-in?*))
+
+(defn signed-in? []
+  (drive/signed-in?))
 
 (defn <file-meta
   "Returns a map of file metadata. Defaults to all metadata or specify fields,
   a list of keys or strings selecting metadata eg [:modifiedTime :mimeType]."
   [file-id & [fields]]
-  (drive/<get-file-meta file-id {:fields fields}))
+  (go? (<p! (drive/get-file-meta file-id {:fields fields}))))
 
 (defn update-timestamps!
   "Registers a document item change in the index to support file syncing.
@@ -336,9 +335,11 @@
       (index-entry-merge! doc-id {:doc-change iso-date-time :doc-changes doc-changes})
       doc)))
 
-(def <trash-file drive/<trash-file)
+(defn <trash-file [file-id]
+  (go? (<p! (drive/trash-file file-id))))
 
-(def <add-properties drive/<add-properties)
+(defn <add-properties [file-id property-map]
+  (go? (<p! (drive/add-properties file-id property-map))))
 
 (defn- <get-trashed []
   (go? (<p! (ls/get-data :trashed []))))
@@ -350,8 +351,8 @@
   ;todo test offline
   (do-sync!
    #(go?
-     (let [local-index (<? (<read-local-index))]
-       (<? (<write-local-index (dissoc local-index doc-id)))
+     (let [local-index (<p! (read-local-index))]
+       (<p! (write-local-index (dissoc local-index doc-id)))
        (<p! (ls/remove-item doc-id))
        (when-not keep-file
          (if (signed-in?)
@@ -366,7 +367,7 @@
    #(go?
      (let [trashed (<? (<get-trashed))]
        (when (not-empty trashed)
-         (let [idx (<? (<read-local-index))]
+         (let [idx (<p! (read-local-index))]
            (doseq [doc-id trashed]
              (<? (<trash-file (get-in idx [doc-id :file-id]))))
            (<? (<put-trashed nil))
@@ -567,7 +568,7 @@
    #(go?
      (let [target-doc (if (map? target-doc-or-id)
                         target-doc-or-id
-                        (or (<? (<read-local-doc target-doc-or-id)) {:doc-id target-doc-or-id}))
+                        (or (<p! (read-local-doc target-doc-or-id)) {:doc-id target-doc-or-id}))
            [target-doc target-change-ids] (copy-items source-doc target-doc item-ids)
            target-doc (update-timestamps! target-doc target-change-ids)]
        (<? (<write-local-doc target-doc))
@@ -644,7 +645,7 @@
   (do-sync!
    (fn []
      (go?
-      (let [index (<? (<read-local-index))
+      (let [index (<p! (read-local-index))
             doc-id-exists? (some (partial = doc-id) (keys index))]
         (if doc-id-exists?
           #(on-show-dialog doc)
@@ -657,7 +658,7 @@
   (do-sync!
    #(go?
      (if (signed-in?)
-       (let [local-index (<? (<read-local-index))
+       (let [local-index (<p! (read-local-index))
              files-data (<? (<read-file-data-list))
              doc-status (into {} (for [doc-id (distinct (concat (keys local-index) (keys files-data)))
                                        :let [index-entry (get local-index doc-id)
@@ -698,9 +699,9 @@
            (trace log 'sync-doc-index! 'remove-trashed-docs-locally remove-doc-ids)
            (doseq [doc-id remove-doc-ids]
              (<p! (ls/remove-item doc-id)))
-           (<? (<write-local-index (apply dissoc local-index remove-doc-ids))))
+           (<p! (write-local-index (apply dissoc local-index remove-doc-ids))))
          nil)
-       (let [local-index (<? (<read-local-index))
+       (let [local-index (<p! (read-local-index))
              doc-status (into {} (for [doc-id (keys local-index)]
                                    [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])
                                                   :status :offline)]))]
@@ -711,7 +712,7 @@
   (go?
    (let [file-name (str file-name ".ydn")
          _ (trace log '<create-file file-name)
-         {id :id} (<? (drive/<create-file {:file-name  file-name
+         {id :id} (<p! (drive/create-file {:file-name  file-name
                                            :properties (when doc-id {:doc-id doc-id})}))]
      id)))
 
@@ -724,11 +725,11 @@
    #(go?
      (if (not change)
        (and on-virgin-doc (on-virgin-doc))                ;new unchanged doc (only save after change)
-       (let [{:keys [doc-change] :as idx} (get (<? (<read-local-index)) doc-id)]
+       (let [{:keys [doc-change] :as idx} (get (<p! (read-local-index)) doc-id)]
          (trace log 'sync-localstore! 'idx idx)
          (trace log 'sync-localstore! 'change change)
          (if (and doc-change (> doc-change change))
-           (and on-ls-change (on-ls-change (<? (<read-local-doc doc-id))))
+           (and on-ls-change (on-ls-change (<p! (read-local-doc doc-id))))
            (and on-in-sync (on-in-sync))))))))
 
 (defn- <sync-drive-file
@@ -801,8 +802,8 @@
    #(go?
      (let [[doc doc-id] (if (map? doc-or-id)
                           [doc-or-id (:doc-id doc-or-id)]
-                          [(or (<? (<read-local-doc doc-or-id)) nil) doc-or-id])
-           {:keys [file-id] :as index-entry} (get (<? (<read-local-index)) doc-id)
+                          [(or (<p! (read-local-doc doc-or-id)) nil) doc-or-id])
+           {:keys [file-id] :as index-entry} (get (<p! (read-local-index)) doc-id)
              ;If this device has seen the file before it will be in the index otherwise search Drive
            file-metadata (or (and file-id (<? (<file-data file-id)))
                              (and doc-id (<? (<find-file-data doc-id)))
@@ -817,27 +818,9 @@
   []
   (go?
    (let [data-file-name "yetipad-data.edn"
-         {app-data-files :files} (<? (drive/<list-app-data-files {:query (str "name='" data-file-name "'")}))
+         {app-data-files :files} (<p! (drive/list-app-data-files {:query (str "name='" data-file-name "'")}))
           ;Assume many files with data-file-name, use latest.
          {drive-data-file-id :id} (first (sort-by :modifiedTime app-data-files))]
      (or
       drive-data-file-id
-      (:id (<? (drive/<create-file {:file-name data-file-name :app-data? true})))))))
-
-(defn load-client [signed-in-listener]
-  (reset! signed-in?* false)
-  (signed-in-listener false)
-  (drive/load-client! app.credentials/yetipad-credentials
-                      (fn [signed-in?]
-                        (reset! signed-in?* signed-in?)
-                        (info log 'signed-in? signed-in?)
-                        (go
-                          (when (and signed-in? (not @drive-file-id*))
-                            ;Drive app data file not currently used
-                            #_(reset! drive-file-id* (<? (<drive-data-file-id)
-                                                         (fn [e] (js/console.error e)))))
-                          (when signed-in?
-                            ;When signing in, synchronise loaded and drive doc.
-                            ;View is always initially loaded from localstore then synched when sign-in is complete.
-                            )
-                          (signed-in-listener signed-in?)))))
+      (:id (<p! (drive/create-file {:file-name data-file-name :app-data? true})))))))

@@ -1,23 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset='utf-8'>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>yetipad-app</title>
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="manifest" href="/manifest.json">
-  </head>
-  <body>
-    <noscript>
-      yetipad-app is a JavaScript app. Please enable JavaScript to continue.
-    </noscript>
-    <div id="app"></div>
-    <script src="js/compiled/app.js"></script>
-    <script async defer src="https://apis.google.com/js/api.js"
+
+<head>
+  <meta charset='utf-8'>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>yetipad-app</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="manifest" href="/manifest.json">
+</head>
+
+<body>
+  <noscript>
+    yetipad-app is a JavaScript app. Please enable JavaScript to continue.
+  </noscript>
+  <div id="app"></div>
+  <script src="js/compiled/app.js"></script>
+  <!--script async defer src="https://apis.google.com/js/api.js"
             onload="this.onload=function(){};app.core.handle_client_load()"
             onreadystatechange="if (this.readyState === 'complete') this.onload()">
-    </script>
-  </body>
+    </script-->
+  <script async defer src="https://apis.google.com/js/api.js" onload="app.core.gapi_load()"></script>
+  <script async defer src="https://accounts.google.com/gsi/client" onload="app.core.gis_init()"></script>
+</body>
+
 </html>

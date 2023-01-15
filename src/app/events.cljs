@@ -7,14 +7,13 @@
    [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
    [lib.goog-drive :as drive]
    [lib.html-parse :as html-parse]
-   [clojure.pprint :refer [cl-format]]
+   [clojure.pprint :refer [pprint cl-format]]
    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
     ;exceptions are reported by handlers
    [lib.asyncutils :refer [put-last!] :refer-macros [<? go-try]]
     ;[app.localstore :as ls :refer [<write-doc]]
    [app.store :as store]
    [app.ui.utils :as ui-utils]
-   [cljs.pprint :refer [pprint]]
    [accountant.core :refer [configure-navigation! navigate! dispatch-current!]]
    [app.route :refer [path-decode map->query-string]]
    [cljs.reader :refer [read-string]]
@@ -24,6 +23,8 @@
    [app.ui.registry :as reg]
    [cljs.core.async.interop :refer-macros [<p!]]
    [cljs.core.async :refer [go]]
+   [cljs-bean.core :refer [bean ->clj ->js]]
+   [promesa.core :as p]
    ["react-device-detect" :refer [browserName browserVersion fullBrowserVersion osVersion
                                   deviceType engineName deviceDetect osName getUA
                                   mobileVendor mobileModel engineVersion]]))
@@ -53,7 +54,7 @@
    :saving?        false})
 
 (defn initialize-db []
-  (db/fire
+  (db/firex
    (fn [db]
      (merge db {:tag-drawer-open?   false
                 :index-drawer-open? false
@@ -75,8 +76,10 @@
 (declare clear-app-status)
 (declare save-doc)
 
-(defn run-later [f]
-  (js/setTimeout f 0))
+(defn run-later
+  ([f delay-ms]
+   (js/setTimeout f delay-ms))
+  ([f] (run-later f 0)))
 
 (defn save-on-doc-change-interceptor! [old-db {:keys [doc save-pending?]}]
   (let [old-doc (:doc old-db)]
@@ -100,28 +103,31 @@
         (navigate! path)))))
 
 (defn after-db-change! [old-db db]
-  (let [on-change (fn [path] (let [v (get-in db path)]
-                               (when-not (identical? (get-in old-db path) v)
-                                 v)))]
-    (when (and db (not (identical? old-db db)))
-      (let [ms (get-in old-db [:status :time-ms])]
-        (when (and ms (> (time-now-ms) (+ ms min-status-display-time-ms)))
-          (clear-app-status))
-        (save-on-doc-change-interceptor! old-db db)
-        (navbar-interceptor! old-db db)
-        (when-let [persist-doc (on-change [:persist-doc])]
-          (store/<write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
-        (when-let [persist-device (on-change [:persist-device])]
-          (store/<write-persist-device persist-device))))))
+  (run-later
+   (let [on-change (fn [path] (let [v (get-in db path)]
+                                (when-not (identical? (get-in old-db path) v)
+                                  v)))]
+     (when (and db (not (identical? old-db db)))
+       (let [ms (get-in old-db [:status :time-ms])]
+         (when (and ms (> (time-now-ms) (+ ms min-status-display-time-ms)))
+           (clear-app-status))
+         (save-on-doc-change-interceptor! old-db db)
+         (navbar-interceptor! old-db db)
+         (when-let [persist-doc (on-change [:persist-doc])]
+           (store/<write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
+         (when-let [persist-device (on-change [:persist-device])]
+           (store/<write-persist-device persist-device)))))))
 
-(defn fire
+(defn firex
   ([f]
-   (db/fire f {:after! after-db-change!}))
-  ([f options]
-   (db/fire f (merge {:after! after-db-change!} options))))
+   (db/firex f {:after! after-db-change!}))
+  ([f {:keys [after!] :as options}]
+   (db/firex f (assoc options :after! (fn [old-db db]
+                                       (and after! (after! old-db db))
+                                       (after-db-change! old-db db))))))
 
 (defn set-app-status [status & [type]]
-  (fire
+  (firex
    (fn [db]
      ;(debug log ::set-app-status status)
      (let [default-type :info]
@@ -133,7 +139,7 @@
                           :time-ms (time-now-ms))))) {:label 'set-app-status}))
 
 (defn clear-app-status []
-  (fire (fn [db]
+  (firex (fn [db]
           (assoc db :status {}))
         {:label 'clear-app-status}))
 
@@ -152,7 +158,7 @@
 
 (defn read-doc-by-id-
   ([doc-id {:keys [open-items]}]
-   (fire
+   (firex
     (fn [{{old-doc-id :doc-id :as doc} :doc :as db}]
       (assert (string? doc-id))
       (if (= old-doc-id doc-id)
@@ -160,7 +166,7 @@
         (do
           (go
             (read-doc-by-id-handler- {:doc-id      doc-id
-                                      :doc         (or (<? (store/<read-local-doc doc-id)) nil)
+                                      :doc         (or (<p! (store/read-local-doc doc-id)) nil)
                                       :persist-doc (or (<? (store/<read-persist-doc doc-id)) nil)
                                       :open-items  open-items}))
           db))) {:label 'read-doc-by-id-}))
@@ -200,7 +206,7 @@
 (declare sync-drive-file)
 
 (defn- save-doc-with-sync- []
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      (info log "saving doc...")
      ;write to localstore
@@ -210,14 +216,15 @@
             :saving? false)) {:label 'save-doc-with-sync-}))
 
 (defn save-doc []
-  (fire
+  (firex
    (fn [{:keys [save-pending?] :as db}]
      (when-not save-pending?
-       (run-later save-doc-with-sync-)
-       (assoc db :save-pending? true))) {:label 'save-doc}))
+       {:db (assoc db :save-pending? true)
+        :on-updated #(run-later save-doc-with-sync- 100)}))
+   {:label 'save-doc}))
 
 (defn- set-doc-status-index- [doc-index]
-  (fire
+  (firex
    (fn [db]
      (assoc db :doc-file-index doc-index)) {:label 'set-doc-status-index-}))
 
@@ -226,15 +233,22 @@
                                            (set-doc-status-index- status-index))}))
 
 (defn online-status [status]
-  (fire (fn [{:keys [online-status] :as db}]
+  (firex (fn [{:keys [online-status] :as db}]
           (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
           (let [status (and online-status status)]
             (trace log ::online-status status)
             (assoc db :online-status status)))
         {:label 'online-status}))
 
+(defn- online-status- [status]
+  (fn [{:keys [online-status] :as db}]
+    (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
+    (let [status (and online-status status)]
+      (trace log ::online-status status)
+      (assoc db :online-status status))))
+
 (defn- update-doc- [updated-doc old-doc status-message]
-  (fire
+  (firex
    (fn [{:keys [doc open-items] :as db}]
      (let [doc-change-during-sync? (and old-doc (not (identical? doc old-doc)))]
        (when doc-change-during-sync?
@@ -247,7 +261,7 @@
    {:label 'update-doc-}))
 
 (defn sync-drive-file [updated-doc {:keys [src]}]
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      (online-status :online)
      (if (store/signed-in?)
@@ -278,11 +292,45 @@
      db)
    {:label 'sync-drive-file}))
 
-(def sign-in store/sign-in)
-(def sign-out store/sign-out)
+#_(defn sync-drive-file [updated-doc {:keys [src]}]
+       (if (store/signed-in?)
+         (store/sync-drive-file! updated-doc
+                                 {:src                    src
+                                  :on-sync-status         (fn [sync-status]
+                                                            (when-let [status ({:overwrite-from-file :downloading
+                                                                                :overwrite-file      :uploading
+                                                                                :resolve-conflicts   :syncing} sync-status)]
+                                                              (online-status status)))
+                                  :on-success             (fn []
+                                                         ;(:keep-doc-in-sync? db)
+                                                         ;(dispatch! [::sync-drive-docs {:exclude-docs [(:doc-id updated-doc)]}])
+                                                            (online-status :synced))
+                                  :on-in-sync             sync-doc-index!
+                                  :on-overwrite-from-file (fn [drive-doc]
+                                                            (update-doc- drive-doc doc "Updated from Drive"))
+                                  :on-overwrite-file      (fn []
+                                                            (set-app-status "Drive updated" :info)
+                                                            (sync-doc-index!))
+                                  :on-conflicts-resolved  (fn [synched-doc]
+                                                            (update-doc- synched-doc doc "Synched with Drive"))
+                                  :on-error               (fn [error]
+                                                            (warn log ::sync-drive-file 'sync error)
+                                                            (online-status :error)
+                                                            (set-app-status error))})
+         (sync-doc-index!))
+  )
+
+;(def sign-in store/sign-in)
+;(def sign-out store/sign-out)
+
+(defn sign-in! []
+  (drive/sign-in!))
+
+(defn sign-out! []
+  (drive/sign-out!))
 
 (defn signed-in [signed-in?]
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      (when (and signed-in? (:doc-id doc))
        (store/trash-files-pending! {:on-success #(sync-drive-file doc {:src ::signed-in})}))
@@ -290,7 +338,7 @@
    {:label 'signed-in}))
 
 (defn read-doc-by-id-handler- [loaded]
-  (fire
+  (firex
    (fn [db]
      (let [{:keys [doc-id doc persist-doc open-items]} loaded
            doc (or doc {:doc-id doc-id})]
@@ -303,13 +351,13 @@
 (defn- new-local-doc-
   "private response handler for read-local-doc"
   []
-  (fire
+  (firex
    (fn [db]
      (assoc db :open-items () :doc {:doc-id (utils/simple-uuid)}))
    {:label 'new-local-doc-}))
 
 (defn delete-doc [options]
-  (fire
+  (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
      (store/delete-doc! doc-id (merge {:on-success sync-doc-index!} options))
     ;Replace deleted doc with a new one:
@@ -318,7 +366,7 @@
    {:label 'delete-doc}))
 
 (defn sync-local []
-  (fire
+  (firex
    (fn [{:keys [doc saving?] :as db}]
          ;Check for external changes and sync if required:
     ;localstore - by another browser window - Just replace doc if it has changed. conflicts with open editors
@@ -328,13 +376,16 @@
     ;first merge localstore than sync with the drive file
      (when-not saving?
        (store/sync-localstore! doc {:on-ls-change  (fn [ls-doc]
+                                                     (trace log 'sync-local :on-ls-change)
                                                      (update-doc- ls-doc doc "Updated from Localstore")
                                                     ;re-enter to check for file changes
                                                      (sync-local))
                                     :on-in-sync    (fn []
+                                                     (trace log 'sync-local :on-in-sync)
                                                     ;now sync with Drive
                                                      (sync-drive-file doc {:src ::sync-local}))
                                     :on-virgin-doc (fn []
+                                                     (trace log 'sync-local :on-virgin-doc)
                                                     ;new doc - don't save until changed
                                                      (info log "no localstore entry")
                                                      (sync-doc-index!))}))
@@ -348,17 +399,17 @@
 ;--------------------------------Panel selection-------------------------------
 
 (defn open-tag-drawer [open?]
-  (fire (fn [db]
+  (firex (fn [db]
           (assoc db :tag-drawer-open? open?))))
 
 (defn open-index-drawer [open?]
-  (fire
+  (firex
    (fn [db]
      (assoc db :index-drawer-open? open?))
    {:label 'open-index-drawer}))
 
 (defn select-index-view [view]
-  (fire
+  (firex
    (fn [db]
      (assoc db :index-view view))
    {:label 'select-index-view}))
@@ -371,7 +422,7 @@
 
 (defn open-item
   ([item-id {:keys [disable-toggle]}]
-   (fire
+   (firex
     (fn [{:keys [open-items] :as db}]
       (assoc db :open-items (if (and (= (first open-items) item-id) (not (editing? db item-id)))
                               (if disable-toggle open-items (drop 1 open-items))
@@ -380,7 +431,7 @@
              {:label 'open-item}))
 
 (defn open-tag-children [tag-id]
-  (fire
+  (firex
    (fn [{:keys [doc open-items] :as db}]
      (assoc db :open-items (distinct (concat
                                       open-items
@@ -391,29 +442,29 @@
 ;---------------close-item------------
 
 (defn close-item [item-id]
-  (fire (fn [{:keys [open-items editing] :as db}]
+  (firex (fn [{:keys [open-items editing] :as db}]
           (assoc db :open-items (filter #(or (not= item-id %) (editing? db %))
                                         open-items)))))
 
 (defn close-other-items [item-id]
-  (fire (fn [{:keys [open-items] :as db}]
+  (firex (fn [{:keys [open-items] :as db}]
           (assoc db :open-items (filter #(or (= item-id %) (editing? db %))
                                         open-items)))))
 
 (defn close-all-items []
-  (fire (fn [{:keys [open-items] :as db}]
+  (firex (fn [{:keys [open-items] :as db}]
           (assoc db :open-items (filter #(editing? db %)
                                         open-items)))))
 
 (defn close-trashed []
-  (fire
+  (firex
    (fn [{:keys [open-items doc] :as db}]
      (assoc db :open-items (remove #(-> % doc :trashed) open-items)))))
 
 ;---------------------edit-item---------
 
 (defn start-edit [item-id]
-  (fire
+  (firex
    (fn [db]
      (update-in db [:editing] (fn [editing]
                                ;remove completed edits and add new
@@ -422,23 +473,24 @@
 
 
 (defn start-edit-new- [kind]
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      (let [item-id (new-item-id doc)
-           iso-date-time (utils/iso-time-now)]
-       (run-later (fn []
-                    (open-item item-id)
-                    (start-edit item-id)))
-       (assoc-in db [:doc item-id] {:id     item-id
-                                    :kind   kind
-                                    :create iso-date-time})))))
+           iso-date-time (utils/iso-time-now)
+           db (assoc-in db [:doc item-id] {:id     item-id
+                                           :kind   kind
+                                           :create iso-date-time})]
+       {:db db
+        :on-updated (fn []
+                      (open-item item-id)
+                      (start-edit item-id))}))))
 
 (defn start-edit-new-note []
   (println :start-edit-new-note)
   (start-edit-new- :note))
 
 (defn accept-edit [item-id]
-  (fire
+  (firex
    (fn [{:keys [doc editing] :as db}]
      ;initiates a save:
      ; set editing to ::accept-edit > close-editor > editor sends event like ::new-content > save new content to doc
@@ -464,14 +516,14 @@
                 :saving? true))))))
 
 (defn cancel-edit [item-id]
-  (fire
+  (firex
    (fn [db]
      (update-in db [:editing] dissoc item-id))))
 
 ;--------------------------update-doc--------------------------
 
 (defn delete-item-permanent [item-id]
-  (fire
+  (firex
    (fn [{:keys [doc] :as db}]
      (let [doc (dissoc doc item-id)]
        ;(dispatch! [::cancel-edit item-id])
@@ -479,7 +531,7 @@
        (assoc db :doc (store/update-timestamps! doc [item-id]))))))
 
 (defn empty-trash []
-  (fire
+  (firex
    (fn [{:keys [doc open-items] :as db}]
      (if-let [trashed-ids (not-empty (keep #(when (:trashed %) (:id %)) (vals doc)))]
        (let [doc (apply dissoc doc trashed-ids)]
@@ -488,7 +540,7 @@
        db))))
 
 (defn trash-item [item-id]
-  (fire
+  (firex
    (fn [{:keys [doc] :as db}]
      (if (string? item-id)
        (let [doc (update doc item-id assoc :trashed true)]
@@ -499,13 +551,13 @@
        db))))
 
 (defn restore-item [item-id]
-  (fire
+  (firex
    (fn [{:keys [doc] :as db}]
      (let [doc (update doc item-id dissoc :trashed)]
        (assoc db :doc (store/update-timestamps! doc [item-id]))))))
 
 (defn restore-all-trashed []
-  (fire
+  (firex
    (fn [{:keys [doc] :as db}]
      (let [trashed-ids (map :id (filter :trashed (vals doc)))
            doc (reduce (fn [doc id]
@@ -514,7 +566,7 @@
 
 (defn new-content [item-id content]
   ;write content only after accept-edit
-  (fire
+  (firex
    (fn [db]
      ;potentially saves to new-id if original has external change.
      (if-let [item-id (get-in db [:editing item-id :accept-as])]
@@ -528,7 +580,7 @@
 
 (defn new-title [item-id title]
   ;write content only after accept-edit
-  (fire
+  (firex
    (fn [db]
      ;potentially saves to new-id if original has external change.
      (if-let [item-id (get-in db [:editing item-id :accept-as])]
@@ -540,14 +592,14 @@
        db))))
 
 (defn rename-file [options]
-  (fire
+  (firex
    (fn [db]
      (store/rename-file! (get-in db [:doc :doc-id]) options {:on-success sync-doc-index!})
      db)))
 
 (defn options [options-update]
   ;write options only after accept-edit
-  (fire
+  (firex
    (fn [db]
      (if (and (get-in db [:editing :options]) (not-empty options-update))
       ;the initial save will just have the :change entry so need to add the id.
@@ -563,7 +615,7 @@
 
 (defn set-log-config [log-config]
   ;write options only after accept-edit
-  (fire
+  (firex
    (fn [db]
      (if (get-in db [:editing :log-config])
        (do
@@ -573,7 +625,7 @@
    {:label 'set-log-config}))
 
 (defn new-tags [item-id tag-ids new-tags]
-  (fire
+  (firex
    (fn [{:keys [doc] :as db}]
      (if (get-in db [:editing item-id])
        (let [new-tags (when (not-empty new-tags)
@@ -592,12 +644,12 @@
 ;------------------------file-ops-----------------------
 
 (defn- open-doc-file-dialog- [doc]
-  (fire
+  (firex
    (fn [db]
      (assoc db :local-file-dialog {}))))
 
 (defn finish-open-doc-file- [doc {:keys [new-doc-id?]}]
-  (fire
+  (firex
    (fn [db]
      (let [doc (if new-doc-id?
                  (assoc doc :doc-id (utils/simple-uuid))
@@ -608,7 +660,7 @@
               :open-items (verified-open-items doc (:open-items db)))))))
 
 (defn open-doc-file [content]
-  (fire
+  (firex
    (fn [db]
      (let [doc (store/decode content)]
        #_(store/open-local-file! db doc {:on-success #(dispatch! [::finish-open-doc-file- doc])
@@ -624,7 +676,7 @@
 ;----------------------------------------------------
 
 (defn logger-config [logger-config]
-  (fire
+  (firex
    (fn [db]
      (assoc db :logger-config logger-config))
    {:label 'logger-config}))
@@ -632,13 +684,13 @@
 ;-----------------move-items-------------------------
 
 (defn toggle-start-move-items []
-  (fire
+  (firex
    (fn [db]
      (update db :moving-items? (fn [moving?] (boolean (and (not moving?)
                                                            (some string? (:open-items db)))))))))
 
 (defn- finish-move-items- [target-doc move-items]
-  (fire
+  (firex
    (fn [{:keys [doc] :as db}]
          ;(debug log ::finish-move-items- 'target-doc (pprintl target-doc))
      (when (store/signed-in?)
@@ -652,7 +704,7 @@
        (assoc db :doc (store/update-timestamps! doc move-items))))))
 
 (defn move-items [target-doc-id]
-  (fire
+  (firex
    (fn [{:keys [moving-items? open-items] source-doc :doc :as db}]
      (assert (and moving-items? (not= (:doc-id source-doc) target-doc-id)))
             ;first sync target doc
@@ -681,6 +733,16 @@
          (assoc :moving-items? false)))))
 
 ;===============================================================
+
+(defn got-access-token [token]
+  (trace log 'got-access-token "token:" (-> token bean pprintl))
+  (signed-in true)
+  (firex
+   (fn [db]
+     (assoc db :signed-in? true))))
+
+
+;===============================================================
 ;------------------debug-support---------------------
 
 (defn refresh-drive-token []
@@ -690,7 +752,7 @@
                                            (online-status :error))}))
 
 (defn dump-doc-meta []
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      ;(go (utils/throw-error "e1"))
      (let [doc-meta (select-keys doc (filter keyword? (keys doc)))]
@@ -699,7 +761,7 @@
      db)))
 
 (defn dump-doc []
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      (pprint doc)
      db)))
@@ -717,7 +779,7 @@
     content))
 
 (defn check-doc []
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      (println "==== check-doc ====")
     ;(dispatch! [::close-all-items])
@@ -731,7 +793,7 @@
      db)))
 
 (defn fix-doc []
-  (fire
+  (firex
    (fn [{doc :doc :as db}]
      (println "fix-doc====")
      (close-all-items)
@@ -775,10 +837,10 @@
        ))))
 
 (defn dump-file-meta []
-  (fire
+  (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
      (go
-       (let [{:keys [file-id] :as idx} (get (<? (store/<read-local-index)) doc-id)
+       (let [{:keys [file-id] :as idx} (get (<p! (store/read-local-index)) doc-id)
              _ (println ::dump-file-meta :doc-d doc-id :file-id file-id :idx idx)
             ;meta (<? (store/<file-meta file-id [:modifiedTime]))
             ;meta (<? (store/<file-meta file-id))
@@ -796,7 +858,7 @@
       (pprint files))))
 
 (defn dump-item-content [item-id]
-  (fire
+  (firex
    (fn [db]
      (println "vvvvvvvvvvvvvvvv")
      (pprint (get-in db [:doc item-id]))
@@ -804,10 +866,10 @@
      db)))
 
 (defn dump-index []
-  (fire
+  (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
      (go
-       (let [local-index (<? (store/<read-local-index))]
+       (let [local-index (<p! (store/read-local-index))]
          (println "\nlocal index entry:")
          (pprint local-index)
          (println "\nfiles data:")
@@ -835,26 +897,26 @@
       (pprint (<? (store/<file-meta file-id))))))
 
 (defn debug-file-content []
-  (go
-    (let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
-          file-id "1ZYqrs1QLvoB5P4GhV8Q9Hz0FsyDDPSIR"     ;"kgrsc300.ydn"
-          response (<? (drive/<read-file-edn file-id))]
+  (let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
+        file-id "1ZYqrs1QLvoB5P4GhV8Q9Hz0FsyDDPSIR"     ;"kgrsc300.ydn"
+        ]
+    (p/let [response (drive/read-file-edn file-id)]
       (info log ::debug-file-content response))))
 
 (defn debug-file-compress []
-  (fire
+  (firex
    (fn [db]
      (go
        (let [;file-id (<? (store/<create-file "compress-test" nil))
              value (fn [c] (.charCodeAt c 0))
              file-id "1QDGeNA9aIWD7KDN60wVKv9r-FY5gZK8y"
-             read (<? (drive/<read-file-edn file-id))
+             read (<p! (drive/read-file-edn file-id))
              read (or read (let [content {:en :lz
                                           :d (-> db :doc pr-str store/compress)
                                           :r (-> db :doc pr-str)}
-                                 fields (<? (drive/<write-file-content file-id content {:content-type :edn}))]
+                                 fields (<p! (drive/write-file-content file-id content {:content-type :edn}))]
                              (debug log ::debug-file-compress 'write-fields fields)
-                             (<? (drive/<read-file-edn file-id))))
+                             (<p! (drive/read-file-edn file-id))))
              {:keys [d r]} read
              good (-> r store/compress)
              compare (filter identity (map (fn [dc rc]

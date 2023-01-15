@@ -1,6 +1,6 @@
 (ns app.credentials)
 
-(def yetipad-credentials
+(def yetipad-credentials-old
   ;The nature of the app means these can't be kept secret.
   ;To ensure security they are only valid for specified API's and white-listed domains:
   ;https://console.developers.google.com/apis/credentials?project=yetipad
@@ -15,3 +15,9 @@
    ;https://developers.google.com/drive/api/v3/appdata
    :scope         "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file"
    })
+
+(def yetipad-credentials
+  {:client_id "582900055519-d660gmj115ds3se0hm8l6t773cdledr7.apps.googleusercontent.com"
+   ;:scope     "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file"
+   :scope     "https://www.googleapis.com/auth/drive.file"
+   :callback ""})

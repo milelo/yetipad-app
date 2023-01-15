@@ -10,7 +10,7 @@
 
 (defonce db* (r/atom {::db? true}))
 
-(defn fire
+(defn firex
   "Update the db, optionally with a promise."
   ([f {:keys [label before! after!]}]
    (let [old-db @db*
@@ -42,7 +42,7 @@
                  ;(-> e .-message println)
                       )))
        (set-db! db))))
-  ([f] (fire f nil)))
+  ([f] (firex f nil)))
 
 (defn atom
   "Returns: a potentially cacheable deref-able var that behaves as reagent atom.

@@ -275,8 +275,8 @@
       [static-pane-list-item :options]
       [static-pane-list-item :log]
       (if online-status
-        [menu-list-item account-icon "Sign-out" events/sign-out]
-        [menu-list-item account-icon "Sign-in" events/sign-in])
+        [menu-list-item account-icon "Sign-out" events/sign-out!]
+        [menu-list-item account-icon "Sign-in" events/sign-in!])
       [static-pane-list-item :about]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
       [:> ListItem [:> ListItemText {:primary app-version}]]

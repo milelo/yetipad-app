@@ -15,7 +15,9 @@
    [app.ui.trash-pane]
    [app.ui.log-pane]
    [app.ui.log-config-pane]
-   [app.ui.about-pane]))
+   [app.ui.about-pane]
+   [lib.goog-drive :as drive]
+   [app.credentials]))
 
 (def log (log/logger 'app.core))
 
@@ -47,8 +49,15 @@
   (events/logger-config @log/config*)
   (events/init-navigation!))
 
-(defn ^:export handle-client-load []
+#_(defn ^:export handle-client-load []
   (trace log :handle-client-load)
   (store/load-client (fn [signed-in?]
                        (events/signed-in signed-in?))))
+
+(defn ^:export gapi-load []
+  (drive/gapi-load!))
+
+(defn ^:export gis-init []
+  (drive/gis-init! app.credentials/yetipad-credentials
+                   events/got-access-token))
 
