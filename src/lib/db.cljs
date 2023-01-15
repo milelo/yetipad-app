@@ -8,29 +8,40 @@
 
 (def log (log/logger 'lib.db))
 
-(defonce db* (r/atom {:db? true}))
+(defonce db* (r/atom {::db? true}))
 
 (defn fire
   "Update the db, optionally with a promise."
   ([f {:keys [label before! after!]}]
    (let [old-db @db*
          _ (and before! (before! old-db))
-         db (f old-db)
-         set-db! (fn [old-db db]
-                   (if (and (map? db) (:db? db))
-                     (do
-                       (trace log 'fire label)
+         updates (f old-db)
+         {:keys [db on-updated]} (cond
+                                   (-> updates map? not) nil
+                                   (::db? updates) {:db updates}
+                                   (get-in updates [:db ::db?]) updates
+                                   :else nil)
+         set-db! (fn [db]
+                   (trace log 'fire label)
+                   (if db
+                     (let [old-db- @db*]
+                       (when-not (= old-db old-db-)
+                         (log/error log 'fire 'overwritten-db-change (trace-diff 'old-db old-db 'old-db- old-db-))
+                         #_(throw (js/Error (str "Out of sync db changes"))))
                        (reset! db* db)
-                       (and after! (js/setTimeout #(after! old-db db) 0)))
-                     (when db (throw (js/Error "Attempted db overwrite.")))))]
+                       (when on-updated (on-updated))
+                       (and after! (after! old-db db))
+                       (trace log 'fire-end label)
+                       db)
+                     (when updates (throw (js/Error "Attempted db overwrite.")))))]
      (if (p/promise? db)
        (-> db
-           (p/then (set-db! old-db db))
+           (p/then (set-db! db))
            (p/catch (fn [e] (-> e str println)
                  ;(-> e .-name println)
                  ;(-> e .-message println)
                       )))
-       (set-db! old-db db))))
+       (set-db! db))))
   ([f] (fire f nil)))
 
 (defn atom
