@@ -2,17 +2,80 @@
   (:refer-clojure :exclude [atom])
   (:require
    [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
+   [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
+   [lib.asyncutils :as au :refer [put-last!] :refer-macros [<? go? go-try goc go-let]]
+   [cljs.core.async.interop :refer-macros [<p!]]
    [promesa.core :as p]
    [reagent.core :as r]
-   ;[promesa.exec.csp :as sp]
+   [clojure.core :as core]
+   [cljs-bean.core :refer [bean ->clj ->js]]
    [clojure.pprint :refer [pprint]]))
 
 (def log (log/logger 'lib.db))
 
+;====================================task queue=================================================
+
+(defonce <task-queue (chan 20))                             ;go-block queue
+
+(defn defer
+  "?f can return a value or promise
+   p will be resolved after the return value of ?f resolved.
+   ?f will be called after f is called also returning p"
+  [?f]
+  (let [p (p/deferred)
+        f (fn []
+            (-> (p/do (?f));use do to convert all return types and exceptions to a promise
+                (p/then (partial p/resolve! p))
+                (p/catch (partial p/reject! p)))
+            p)]
+    [p f]))
+
+(defn start-task-runner []
+  ;execute queued go-block functions
+  (trace log 'task-runner-started)
+  (go (loop []
+        (let [_ (<p! ((<! <task-queue)))]
+          (recur)))
+      (warn log 'task-runner-stopped)))
+
+(defonce _ (start-task-runner))
+
+(defn  do-sync!
+  ([?f]
+   (let [[p f] (defer ?f)]
+     (put! <task-queue f)
+     p))
+  ([?f {:keys [on-success on-error]}]
+   (-> (do-sync! ?f)
+       (p/then on-success)
+       (p/catch on-error))))
+
+(comment 
+  (let [[p f] (defer (fn [] :x))]
+    (-> p (p/then (partial prn :then)))
+    (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
+
+  (let [<task-queue (chan 20)
+        [p f] (defer (fn [] :x))
+        _ (put! <task-queue f)]
+    (-> p (p/then (partial prn :then)))
+    (go
+      (let [_ (<p! ((<! <task-queue)))]
+        (prn :go))) 
+    (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
+
+  (let [d (p/deferred)]
+    (prn :start)
+    (p/then (do-sync! (fn [] d)) prn)
+    (p/then (do-sync! (fn [] :b)) prn)
+    (js/setTimeout #(p/resolve! d :a) 5000)))
+
+
+;====================================task queue=================================================
+
 (defonce db* (r/atom {::db? true}))
 
-(defn fire [fsync f]
-  )
+(defn fire [fsync f])
 
 (defn firex
   "Update the db, optionally with a promise."
