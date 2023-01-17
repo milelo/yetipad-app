@@ -4,11 +4,15 @@
    [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
    [promesa.core :as p]
    [reagent.core :as r]
+   ;[promesa.exec.csp :as sp]
    [clojure.pprint :refer [pprint]]))
 
 (def log (log/logger 'lib.db))
 
 (defonce db* (r/atom {::db? true}))
+
+(defn fire [fsync f]
+  )
 
 (defn firex
   "Update the db, optionally with a promise."

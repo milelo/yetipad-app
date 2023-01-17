@@ -1,6 +1,5 @@
 (ns app.store
   (:require
-   [cljs.reader :as reader]
    [lib.log :as log :refer [trace debug info warn fatal error pprintl]]
    [lib.debug :as debug :refer [we wd]]
    [lib.localstore :as ls]
@@ -10,9 +9,9 @@
    [lib.goog-drive :as drive]
    [lib.utils :as utils :refer [only] :refer-macros [for-all]]
    [cljs.pprint :refer [cl-format]]
-   [clojure.data :refer [diff]]
    [app.ui.utils :as ui-utils]
    [clojure.string :as str]
+   [promesa.core :as p]
    [app.credentials]
    ["lz-string" :as lz-string]))
 
@@ -41,7 +40,7 @@
 
 (defonce _ (start-task-runner))
 
-(defn- <do-sync
+(defn- <do-sync-
   "Add go-block function to queue for synchronous execution.
    Returns a channel with the result.
    Go blocks called from event handlers return immediately so they can potentially
@@ -60,7 +59,7 @@
   Listeners: on-success & on-error notify of completion or error respectively.
   "
   ([<fn {:keys [on-success on-error]}]
-   (go-let [v (<! (<do-sync <fn))]
+   (go-let [v (<! (<do-sync- <fn))]
            (if (utils/error? v)
              (if on-error (on-error v) (warn log 'do-sync! v))
              (when on-success (on-success v)))) nil)
@@ -102,18 +101,20 @@
   (trace log 'write-local-index)
   (ls/put-data index-key index))
 
-(defn- <index-entry-merge [doc-id updates]
-  (trace log '<index-entry-merge [doc-id updates])
+(defn- index-entry-merge [doc-id updates]
+  (trace log 'index-entry-merge [doc-id updates])
   (assert (and (string? doc-id) (map? updates)) [doc-id updates])
-  (go?
-   (when (not-empty updates)
-     (let [idx (or (<p! (read-local-index)) nil)
-           entry (get idx doc-id)
-           updated (utils/map-remove nil? (merge entry updates))]
-       (when (not= entry updated)
-         (trace log '<index-entry-merge 'write-entry updated)
-         (<p! (write-local-index (assoc idx doc-id updated))))
-       nil))))
+  (when (not-empty updates)
+    (p/let [idx (read-local-index)
+            entry (get (or idx nil) doc-id)
+            updated (utils/map-remove nil? (merge entry updates))
+            _  (when (not= entry updated)
+                 (trace log 'index-entry-merge 'write-entry updated)
+                 (write-local-index (assoc idx doc-id updated)))]
+      nil)))
+
+(defn- <index-entry-merge [doc-id updates]
+  (go? (<p! (index-entry-merge doc-id updates))))
 
 (defn- index-entry-merge! [doc-id updates]
   (do-sync!
@@ -125,40 +126,58 @@
   (assert doc-id)
   (ls/get-data doc-id))
 
-(defn <write-local-doc [doc]
+(defn write-local-doc [doc]
   (assert doc)
-  (go? (<p! (ls/put-data (:doc-id doc) doc))))
+  (ls/put-data (:doc-id doc) doc))
+
+(defn <write-local-doc [doc]
+  (go? (<p! (write-local-doc doc))))
+
+(defn- write-localstore [k v]
+  (ls/put-data k v))
 
 (defn- <write-localstore [k v]
-  (go? (<p! (ls/put-data k v))))
+  (go? (<p! (write-localstore k v))))
+
+(defn- read-localstore [k]
+  (ls/get-data k))
 
 (defn- <read-localstore [k]
-  (go? (<p! (ls/get-data k))))
+  (go? (<p! (read-localstore k))))
 
 (defn- ldb-doc-data-key [doc-id]
   (str doc-id \*))
 
-(defn <write-persist-doc [doc-id data]
-  (trace log '<write-persist-doc)
+(defn write-persist-doc [doc-id data]
+  (trace log 'write-persist-doc)
   (if (empty? data)
-    (go? (<p! (ls/remove-item (ldb-doc-data-key doc-id))))
-    (<write-localstore (ldb-doc-data-key doc-id) data)))
+    (ls/remove-item (ldb-doc-data-key doc-id))
+    (write-localstore (ldb-doc-data-key doc-id) data)))
+
+(defn <write-persist-doc [doc-id data]
+  (go? (<p! (write-persist-doc doc-id data))))
+
+(defn read-persist-doc [doc-id]
+  (trace log 'read-persist-doc)
+  (read-localstore (ldb-doc-data-key doc-id)))
 
 (defn <read-persist-doc [doc-id]
-  (trace log '<read-persist-doc)
-  (<read-localstore (ldb-doc-data-key doc-id)))
+  (go? (<p! (read-persist-doc doc-id))))
 
 (def ldb-device-key \*)
 
-(defn <write-persist-device [data]
+(defn write-persist-device [data]
   (trace log '<write-persist-device)
   (if (empty? data)
-    (go? (<p! (ls/remove-item ldb-device-key)))
-    (<write-localstore ldb-device-key data)))
+    (ls/remove-item ldb-device-key)
+    (write-localstore ldb-device-key data)))
 
-(defn <read-persist-device []
-  (trace log '<read-persist-device)
-  (<read-localstore \*))
+(defn <write-persist-device [data]
+  (go? (<p! (write-persist-device data))))
+
+(defn read-persist-device []
+  (trace log 'read-persist-device)
+  (read-localstore \*))
 
 (defn write-local-doc!
   "Write doc to localstore and update the localstore index."
@@ -183,14 +202,18 @@
       ;(debug log :query query)
       query)))
 
-(defn <list-app-drive-files [& [{:keys [fields] :as options}]]
+(defn list-app-drive-files
+  ([{:keys [fields] :as options}]
   ;http://www.cs.cmu.edu/afs/cs.cmu.edu/project/ai-repository/ai/html/cltl/clm/node200.html#SECTION002633000000000000000)
   ;https://developers.google.com/drive/api/v3/reference/files
-  (go?
    (let [fields (or fields "files(id, name, description, modifiedTime, trashed, appProperties)")
-         q (make-query options)
-         response (<p! (drive/list-app-files {:query q :fields fields}))]
-     (:files response))))
+         q (make-query options)]
+     (p/let [response (drive/list-app-files {:query q :fields fields})]
+       (:files response))))
+  ([] (list-app-drive-files nil)))
+
+(defn <list-app-drive-files [& [options]]
+  (go? (<p! (list-app-drive-files options))))
 
 (defn file-meta>data [{:keys [id name modifiedTime description trashed appProperties mimeType]}]
   (into {} [(when-let [doc-id (:doc-id appProperties)] :doc-id [:doc-id doc-id])
@@ -201,42 +224,51 @@
             (when (-> trashed nil? not) [:file-trashed trashed])
             (when mimeType [:mime-type mimeType])]))
 
-(defn- <file-data
+(defn- file-data
   [file-id]
   (assert file-id)
-  (go
-    (file-meta>data (<p! (drive/get-file-meta file-id {:fields "id, name, modifiedTime, trashed, appProperties"})))))
+  (p/let [file-meta (drive/get-file-meta file-id {:fields "id, name, modifiedTime, trashed, appProperties"})]
+    (file-meta>data file-meta)))
 
-(defn- <find-file-data
+(defn- <file-data [file-id]
+  (go? (<p! (file-data file-id))))
+
+(defn- find-file-data
   "Find latest file metadata for doc-id. Return file data or false"
   [doc-id]
-  (go?
-   (let [files-data (<? (<list-app-drive-files {:doc-id  doc-id
-                                                :fields  "files(id, name, modifiedTime, trashed, appProperties)"
-                                                :trashed false}))]
-     (if (empty? files-data)
-       false
-       (file-meta>data (first (sort-by :modifiedTime files-data)))))))
+  (p/let [files-data (list-app-drive-files {:doc-id  doc-id
+                                            :fields  "files(id, name, modifiedTime, trashed, appProperties)"
+                                            :trashed false})]
+    (if (empty? files-data)
+      false
+      (file-meta>data (first (sort-by :modifiedTime files-data))))))
 
-(defn- <rename-file [doc-id {:keys [doc-title doc-subtitle] :as params}]
-  (trace log '<rename-file doc-id params)
+(defn- <find-file-data [doc-id]
+  (go? (<p! (find-file-data doc-id))))
+
+(defn- rename-file [doc-id {:keys [doc-title doc-subtitle] :as params}]
+  (trace log 'rename-file doc-id params)
   (assert (and doc-id doc-title) [doc-id doc-title])
-  (go?
-   (when-let [file-id (get-in (<p! (read-local-index)) [doc-id :file-id])]
-     (let [file-data (file-meta>data (<p! (drive/update-file file-id
-                                                             {:name        (str doc-title ".ydn")
-                                                              :description (str "YetiPad Document:"
+  (p/let [idx (read-local-index)]
+    (when-let [file-id (get-in idx [doc-id :file-id])]
+      (p/let [file-meta (drive/update-file file-id
+                                           {:name        (str doc-title ".ydn")
+                                            :description (str "YetiPad Document:"
                                                                                  ;"\nTitle: " title
-                                                                                (when doc-subtitle
-                                                                                  (str "\nSubtitle: " doc-subtitle))
-                                                                                "\ndoc-id: " doc-id
-                                                                                "\nfile-id: " file-id)
+                                                              (when doc-subtitle
+                                                                (str "\nSubtitle: " doc-subtitle))
+                                                              "\ndoc-id: " doc-id
+                                                              "\nfile-id: " file-id)
                                                                ;:mime-type   "text/plain"
-                                                              :fields      [:modifiedTime :name :description :mimeType :appProperties :fileExtension]})))]
-       (<? (<index-entry-merge doc-id (merge {:title doc-title :subtitle doc-subtitle}
-                                             (select-keys file-data [:file-change
-                                                                     :file-id]))))
-       file-data))))
+                                            :fields      [:modifiedTime :name :description :mimeType :appProperties :fileExtension]})
+              file-data (file-meta>data file-meta)
+              _ (index-entry-merge doc-id (merge {:title doc-title :subtitle doc-subtitle}
+                                                 (select-keys file-data [:file-change
+                                                                         :file-id])))]
+        file-data))))
+
+(defn- <rename-file [doc-id params]
+  (go? (<p! (rename-file doc-id params))))
 
 (defn refresh-drive-token! [listeners]
   (warn log 'refresh-drive-token! 'unimplemented))
@@ -244,67 +276,82 @@
 (defn rename-file! [doc-id params & [listeners]]
   (do-sync! #(<rename-file doc-id params) listeners))
 
-(defn <read-file-data-list
+(defn read-file-data-list
   "Get app-file metadata by doc-id.
   Files that aren't in the local index are allocated a new doc-id."
   []
-  (go?
-   (let [files (<? (<list-app-drive-files
-                    {:fields "files(id, name, description, modifiedTime, trashed, appProperties)"}))]
-     (into {} (for [file-meta files
-                    :let [{:keys [doc-id] :as data} (file-meta>data file-meta)]
-                    :when doc-id]
-                [doc-id data])))))
+  (p/let [files (list-app-drive-files
+                 {:fields "files(id, name, description, modifiedTime, trashed, appProperties)"})]
+    (into {} (for [file-meta files
+                   :let [{:keys [doc-id] :as data} (file-meta>data file-meta)]
+                   :when doc-id]
+               [doc-id data]))))
 
-(defn- <write-app-data
+(defn <read-file-data-list []
+  (go? (<p! (read-file-data-list))))
+
+(defn- write-app-data
   "Writes data to the hidden app Drive data-file.
   Not in use"
   [index]
-  (go? (<p! (drive/write-file-content @drive-file-id* index {:content-type :edn}))))
+  (drive/write-file-content @drive-file-id* index {:content-type :edn}))
 
-(defn- <write-file-content
+(defn- <write-app-data [index]
+  (go? (<p! (write-app-data index))))
+
+(defn- write-file-content
   "Write the file content to file with file-id"
   [file-id {:keys [doc-id] :as doc} & [{:keys [update-index]}]]
   (assert doc)
-  (go?
-   (let [file-data (file-meta>data (<p! (drive/write-file-content file-id
-                                                                  (encode doc (when (get-in doc [:options :compress-file?])
-                                                                                :lz))
-                                                                  {:content-type :edn
-                                                                   :fields       "id, modifiedTime"})))]
-     (when update-index
-        ;(debug log '<write-file-content 'file-data file-data)
-       (let [idx-updates (select-keys file-data [:file-change :file-id])]
-         (<? (<index-entry-merge doc-id (assoc idx-updates :doc-changes nil)))))
-     file-data)))
+  (p/let [file-meta (drive/write-file-content file-id
+                                              (encode doc (when (get-in doc [:options :compress-file?])
+                                                            :lz))
+                                              {:content-type :edn
+                                               :fields       "id, modifiedTime"})
+          file-data (file-meta>data file-meta)
+          _  (when update-index
+               ;(debug log '<write-file-content 'file-data file-data)
+               (let [idx-updates (select-keys file-data [:file-change :file-id])]
+                 (index-entry-merge doc-id (assoc idx-updates :doc-changes nil))))]
+    file-data))
 
-(defn- <read-file-content
+(defn- <write-file-content [file-id doc & [options]]
+  (go? (<p! (write-file-content file-id doc options))))
+
+(defn- read-file-content
   "Read the document from a file. If the document is used to overwrite the current document the
   update-index option will update the index entry for the doc-id with the files timestamp.
   "
   [file-id & [{:keys [update-index]}]]
-  (go?
-    ;todo can <read-file-content also read meta-data
-   (let [doc (or (decode (<p! (drive/read-file-edn file-id))) {})]
-     (when update-index
-       (let [file-data (file-meta>data (<p! (drive/get-file-meta file-id {:fields "id, modifiedTime, appProperties"})))
-              ;file-id this isn't set by create-file so include
-             idx-updates (select-keys file-data [:file-change :file-id :doc-id])]
-         (<? (<index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil
-                                                              :doc-change (:change doc))))))
-     doc)))
+  ;todo can <read-file-content also read meta-data
+  (p/let [edn (drive/read-file-edn file-id)
+          doc (or (decode edn) {})
+          _ (when update-index
+              (p/let [file-meta (drive/get-file-meta file-id {:fields "id, modifiedTime, appProperties"})
+                      file-data (file-meta>data file-meta)
+                      ;file-id this isn't set by create-file so include
+                      idx-updates (select-keys file-data [:file-change :file-id :doc-id])
+                      _ (index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil
+                                                                        :doc-change (:change doc)))]))]
+    doc))
 
-(defn old-signed-in? []
-  (boolean @signed-in?*))
+(defn- <read-file-content [file-id & [options]]
+  (go? (<p! (read-file-content file-id options))))
 
 (defn signed-in? []
   (drive/signed-in?))
+
+(defn file-meta
+  "Returns a map of file metadata. Defaults to all metadata or specify fields,
+  a list of keys or strings selecting metadata eg [:modifiedTime :mimeType]."
+  [file-id & [fields]]
+  (drive/get-file-meta file-id {:fields fields}))
 
 (defn <file-meta
   "Returns a map of file metadata. Defaults to all metadata or specify fields,
   a list of keys or strings selecting metadata eg [:modifiedTime :mimeType]."
   [file-id & [fields]]
-  (go? (<p! (drive/get-file-meta file-id {:fields fields}))))
+  (go? (<p! (file-meta file-id fields))))
 
 (defn update-timestamps!
   "Registers a document item change in the index to support file syncing.
@@ -341,37 +388,51 @@
 (defn <add-properties [file-id property-map]
   (go? (<p! (drive/add-properties file-id property-map))))
 
+(defn- get-trashed []
+  (ls/get-data :trashed []))
+
 (defn- <get-trashed []
-  (go? (<p! (ls/get-data :trashed []))))
+  (go? (<p! (get-trashed))))
+
+(defn- put-trashed [data]
+  (ls/put-data :trashed data))
 
 (defn- <put-trashed [data]
-  (go? (<p! (ls/put-data :trashed data))))
+  (go? (<p! (put-trashed data))))
 
-(defn delete-doc! [doc-id {:keys [keep-file] :as listeners}]
+;(go? (<p! ()))
+
+(defn- delete-doc [doc-id {:keys [keep-file]}]
+  (p/let [local-index (read-local-index)
+          _ (write-local-index (dissoc local-index doc-id))
+          _ (ls/remove-item doc-id)
+          _ (when-not keep-file
+              (if (signed-in?)
+                (when-let [file-id (get-in local-index [doc-id :file-id])]
+                  ;file may me local only
+                  (drive/trash-file file-id))
+                (put-trashed (conj (<? (<get-trashed)) doc-id))))]
+    nil))
+
+(defn delete-doc! [doc-id options listeners]
   ;todo test offline
   (do-sync!
    #(go?
-     (let [local-index (<p! (read-local-index))]
-       (<p! (write-local-index (dissoc local-index doc-id)))
-       (<p! (ls/remove-item doc-id))
-       (when-not keep-file
-         (if (signed-in?)
-           (when-let [file-id (get-in local-index [doc-id :file-id])]
-               ;file may me local only
-             (<? (<trash-file file-id)))
-           (<? (<put-trashed (conj (<? (<get-trashed)) doc-id)))))
-       nil)) listeners))
+     (<p! (delete-doc doc-id options))) listeners))
+
+(defn trash-files-pending []
+  (p/let [trashed (get-trashed)
+          _  (when (not-empty trashed)
+               (p/let [idx (read-local-index)
+                       _ (p/all
+                          (for [doc-id trashed]
+                            (drive/trash-file (get-in idx [doc-id :file-id]))))]
+                 (put-trashed nil)
+                 nil))]))
 
 (defn trash-files-pending! [listeners]
   (do-sync!
-   #(go?
-     (let [trashed (<? (<get-trashed))]
-       (when (not-empty trashed)
-         (let [idx (<p! (read-local-index))]
-           (doseq [doc-id trashed]
-             (<? (<trash-file (get-in idx [doc-id :file-id]))))
-           (<? (<put-trashed nil))
-           nil)))) listeners))
+   #(go? (<p! (trash-files-pending))) listeners))
 
 (defn- doc-item-change-status [file-change change root-change]
   (cond
@@ -551,7 +612,7 @@
         change-ids (vals id-map)]
     [target-doc change-ids]))
 
-(defn- copy-items
+(defn- copy-items-
   "copy items with item-ids from source-doc to target-doc. The item ids are remapped to new ids.
   References between items in item-ids like included tags are maintained.
   References to tags not include in item-ids are added as a child of the tag named 'imported' retaining only their name,
@@ -562,17 +623,21 @@
   ;(copy-items-to-imported source-doc target-doc item-ids)
   (copy-items-to-root source-doc target-doc item-ids))
 
+(defn copy-items [source-doc target-doc-or-id item-ids]
+  (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])
+  (p/let [target-doc (if (map? target-doc-or-id)
+                       target-doc-or-id
+                       (p/let [local-doc (read-local-doc target-doc-or-id)]
+                         (or local-doc {:doc-id target-doc-or-id})))
+          [target-doc target-change-ids] (copy-items- source-doc target-doc item-ids)
+          target-doc (update-timestamps! target-doc target-change-ids)
+          _  (write-local-doc target-doc)]
+    target-doc))
+
 (defn copy-items! [source-doc target-doc-or-id item-ids listeners]
   (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])
   (do-sync!
-   #(go?
-     (let [target-doc (if (map? target-doc-or-id)
-                        target-doc-or-id
-                        (or (<p! (read-local-doc target-doc-or-id)) {:doc-id target-doc-or-id}))
-           [target-doc target-change-ids] (copy-items source-doc target-doc item-ids)
-           target-doc (update-timestamps! target-doc target-change-ids)]
-       (<? (<write-local-doc target-doc))
-       target-doc)) listeners))
+   #(go? (<p! (copy-items source-doc target-doc-or-id item-ids))) listeners))
 
 (defn- sync-doc-content
   "Merge drive doc-file and app doc changes."
@@ -641,98 +706,114 @@
                  (and (not= file-change idx-file-change) doc-changes) [:resolve-conflicts :both-changed debug-data])]
     status))
 
-(defn open-local-file! [db {:keys [doc-id] :as doc} {:keys [on-show-dialog on-open-doc] :as listeners}]
+(defn open-local-file [db {:keys [doc-id] :as doc} {:keys [on-show-dialog on-open-doc]}]
+  (p/let [index (read-local-index)
+          doc-id-exists? (some (partial = doc-id) (keys index))]
+    (if doc-id-exists?
+      (and on-show-dialog (on-show-dialog doc))
+      (and on-open-doc (on-open-doc doc)))))
+
+(defn open-local-file! [db doc listeners]
   (do-sync!
    (fn []
      (go?
-      (let [index (<p! (read-local-index))
-            doc-id-exists? (some (partial = doc-id) (keys index))]
-        (if doc-id-exists?
-          #(on-show-dialog doc)
-          #(on-open-doc doc))))) listeners))
+      (<p! (open-local-file db doc listeners)))) listeners))
 
-(defn sync-doc-index!
+(defn sync-doc-index
   "Reads the Drive file list and updates the
   "
-  [{:keys [on-doc-status] :as listeners}]
-  (do-sync!
-   #(go?
-     (if (signed-in?)
-       (let [local-index (<p! (read-local-index))
-             files-data (<? (<read-file-data-list))
-             doc-status (into {} (for [doc-id (distinct (concat (keys local-index) (keys files-data)))
-                                       :let [index-entry (get local-index doc-id)
-                                             file-data (get files-data doc-id)
-                                             not-trashed-file? (and file-data
-                                                                    (-> file-data :file-trashed not))]
+  [{:keys [on-doc-status]}]
+  (if (signed-in?)
+    (p/let [local-index (read-local-index)
+            files-data (read-file-data-list)
+            doc-status (into {} (for [doc-id (distinct (concat (keys local-index) (keys files-data)))
+                                      :let [index-entry (get local-index doc-id)
+                                            file-data (get files-data doc-id)
+                                            not-trashed-file? (and file-data
+                                                                   (-> file-data :file-trashed not))]
                                          ;Skip entry if file is trashed and there are not local changes
                                          ;See below for removal of trashed-file index entry
-                                       :when (or not-trashed-file?
-                                                 (and index-entry
-                                                      (or not-trashed-file?
+                                      :when (or not-trashed-file?
+                                                (and index-entry
+                                                     (or not-trashed-file?
                                                             ;local file has changes:
-                                                          (not= (:file-change index-entry) (:file-change file-data)))))]
+                                                         (not= (:file-change index-entry) (:file-change file-data)))))]
                                      ;:synched is the file changed date when the file was synched
                                      ;for a particular doc-id there could be a missing file or localstore entry
-                                   (let [{:keys [file-id file-name file-description]} file-data
-                                         [_ file-name-part _ext] (and file-name (re-find #"(^.*)\.(.*$)" file-name))
-                                         [_ status _debug-data] (drive-change-status file-data index-entry)]
+                                  (let [{:keys [file-id file-name file-description]} file-data
+                                        [_ file-name-part _ext] (and file-name (re-find #"(^.*)\.(.*$)" file-name))
+                                        [_ status _debug-data] (drive-change-status file-data index-entry)]
                                        ;(debug log 'sync-doc-index! doc-id [status debug-data])
                                        ;(debug log 'doc-status-index! 'files-data (pprintl files-data))
                                        ;(debug log 'doc-status-index! 'local-index (pprintl local-index))
-                                     [doc-id {:doc-id           doc-id
-                                              :title            (get index-entry :title)
-                                              :subtitle         (get index-entry :subtitle)
-                                              :full-file-name   file-name
-                                              :file-name        (not-empty file-name-part)
-                                              :file-description file-description
-                                              :status           status
-                                              :file-id          file-id}])))]
-         (on-doc-status doc-status)
-           ;If a file has been trashed by another device it needs removing from this devices localstore
-         (when-let [remove-doc-ids (not-empty
-                                    (for [{trashed-doc-id :doc-id :as trashed-file-data} (filter :trashed (vals files-data))
-                                          :let [idx-entry (get local-index trashed-doc-id)]
+                                    [doc-id {:doc-id           doc-id
+                                             :title            (get index-entry :title)
+                                             :subtitle         (get index-entry :subtitle)
+                                             :full-file-name   file-name
+                                             :file-name        (not-empty file-name-part)
+                                             :file-description file-description
+                                             :status           status
+                                             :file-id          file-id}])))
+            ;If a file has been trashed by another device it needs removing from this devices localstore
+            _  (on-doc-status doc-status)
+            _  (when-let [remove-doc-ids (not-empty
+                                          (for [{trashed-doc-id :doc-id :as trashed-file-data} (filter :trashed (vals files-data))
+                                                :let [idx-entry (get local-index trashed-doc-id)]
                                              ;Don't remove if an un-synched local change has been made
-                                          :when (and idx-entry (not= (:file-change trashed-file-data) (:file-change idx-entry)))]
-                                      trashed-doc-id))]
-           (trace log 'sync-doc-index! 'remove-trashed-docs-locally remove-doc-ids)
-           (doseq [doc-id remove-doc-ids]
-             (<p! (ls/remove-item doc-id)))
-           (<p! (write-local-index (apply dissoc local-index remove-doc-ids))))
-         nil)
-       (let [local-index (<p! (read-local-index))
-             doc-status (into {} (for [doc-id (keys local-index)]
-                                   [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])
-                                                  :status :offline)]))]
-         (on-doc-status doc-status)
-         nil))) listeners))
+                                                :when (and idx-entry (not= (:file-change trashed-file-data) (:file-change idx-entry)))]
+                                            trashed-doc-id))]
+                 (trace log 'sync-doc-index! 'remove-trashed-docs-locally remove-doc-ids)
+                 (p/let [_ (p/all
+                            (for [doc-id remove-doc-ids]
+                              (ls/remove-item doc-id)))
+                         _ (write-local-index (apply dissoc local-index remove-doc-ids))]))]
+      nil)
+    (p/let [local-index (read-local-index)
+            doc-status (into {} (for [doc-id (keys local-index)]
+                                  [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])
+                                                 :status :offline)]))]
+      (on-doc-status doc-status)
+      nil)))
+
+(defn sync-doc-index! [listeners]
+  (do-sync!
+   #(go? (<p! (sync-doc-index listeners))) listeners))
+
+(defn- create-file [file-name doc-id]
+  (p/let [file-name (str file-name ".ydn")
+          _ (trace log 'create-file file-name)
+          file-meta (drive/create-file {:file-name  file-name
+                                        :properties (when doc-id {:doc-id doc-id})})]
+    (:id file-meta)))
 
 (defn- <create-file [file-name doc-id]
-  (go?
-   (let [file-name (str file-name ".ydn")
-         _ (trace log '<create-file file-name)
-         {id :id} (<p! (drive/create-file {:file-name  file-name
-                                           :properties (when doc-id {:doc-id doc-id})}))]
-     id)))
+  (go? (<p! (create-file file-name doc-id))))
+
+(defn sync-localstore
+  "Checks for external localstore changes (from another browser instance).
+  Reads localstore doc compares with specified doc change date.
+  "
+  [{:keys [doc-id change]} {:keys [on-ls-change on-in-sync on-virgin-doc]}]
+  (if (not change)
+    (p/resolved (and on-virgin-doc (on-virgin-doc)));new unchanged doc (only save after change)
+    (p/let [idx (read-local-index)
+            {:keys [doc-change] :as idx-entry} (get idx doc-id)]
+      (trace log 'sync-localstore 'idx-entry idx-entry)
+      (trace log 'sync-localstore 'change change)
+      (if (and doc-change (> doc-change change))
+        (p/let [local-doc (read-local-doc doc-id)]
+          (and on-ls-change (on-ls-change local-doc)))
+        (and on-in-sync (on-in-sync))))))
 
 (defn sync-localstore!
   "Checks for external localstore changes (from another browser instance).
   Reads localstore doc compares with specified doc change date.
   "
-  [{:keys [doc-id change]} {:keys [on-ls-change on-in-sync on-virgin-doc]}]
+  [doc listeners]
   (do-sync!
-   #(go?
-     (if (not change)
-       (and on-virgin-doc (on-virgin-doc))                ;new unchanged doc (only save after change)
-       (let [{:keys [doc-change] :as idx} (get (<p! (read-local-index)) doc-id)]
-         (trace log 'sync-localstore! 'idx idx)
-         (trace log 'sync-localstore! 'change change)
-         (if (and doc-change (> doc-change change))
-           (and on-ls-change (on-ls-change (<p! (read-local-doc doc-id))))
-           (and on-in-sync (on-in-sync))))))))
+   #(go? (<p! (sync-localstore doc listeners)))))
 
-(defn- <sync-drive-file
+(defn- sync-drive-file-
   "Sync doc with its drive file and updates localstore and drive accordingly."
   ;Drive file could have been updated from another device.
   ;index-entry provides the file-change timestamp of the previous sync so it can be compared with the current
@@ -751,7 +832,7 @@
          {:keys [doc-changes]} index-entry
          [status _ :as change-status] (drive-change-status file-metadata index-entry)]
       ;(debug log '<sync-drive-file!- 'file-metadata file-metadata)
-     (info log '<sync-drive-file src 'sync-status doc-id change-status)
+     (info log 'sync-drive-file src 'sync-status doc-id change-status)
      (and on-sync-status (on-sync-status status))
      (case status
        :in-sync
@@ -760,33 +841,62 @@
          (and on-synced-file (on-synced-file doc))
          nil)
        :overwrite-from-file
-       (let [drive-doc (<? (<read-file-content file-id #{:update-index}))
-             <c (<write-local-doc drive-doc)]
-         (and on-synced-file (on-synced-file drive-doc))
-         (<? <c)                                           ;wait for completion
+       (p/let [drive-doc (read-file-content file-id #{:update-index})
+               _ (and on-synced-file (on-synced-file drive-doc))
+               _ (write-local-doc drive-doc) ;wait for completion 
+               ]
          (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
          nil)
        :overwrite-file
-       (let [file-id (or file-id (<? (<create-file (or doc-title doc-subtitle doc-id) doc-id)))
-             <c1 (<write-local-doc doc)
-             <c2 (<write-file-content file-id doc {:update-index true})]
-         (and on-synced-file (on-synced-file doc))
-         (<? <c1)
-         (<? <c2)
+       (p/let [created-file-id (create-file (or doc-title doc-subtitle doc-id) doc-id)
+               file-id (or file-id created-file-id)
+               _ (and on-synced-file (on-synced-file doc))
+               _ (p/all [(write-local-doc doc)
+                         (write-file-content file-id doc {:update-index true})])]
          (and on-overwrite-file (on-overwrite-file))
          nil)
        :resolve-conflicts
-       (let [drive-doc (<? (<read-file-content file-id))
-             content-changed? (not= (get drive-doc :change) (get doc :change))
+       (p/let [drive-doc (read-file-content file-id)
+               content-changed? (not= (get drive-doc :change) (get doc :change))
               ;verify doc content has changed rather than just file modifiedTime
-             synched-doc (if content-changed? (sync-doc-content doc-changes drive-doc doc) doc)
-             <c1 (<write-local-doc synched-doc)
-             <c2 (<write-file-content file-id synched-doc {:update-index true})]
-         (and on-synced-file (on-synced-file synched-doc))
-         (<? <c1)
-         (<? <c2)
+               synched-doc (if content-changed? (sync-doc-content doc-changes drive-doc doc) doc)
+               _ (and on-synced-file (on-synced-file synched-doc))
+               _ (p/all [(write-local-doc synched-doc)
+                         (write-file-content file-id synched-doc {:update-index true})])]
          (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
          nil)))))
+
+(defn- <sync-drive-file-
+  "Sync doc with its drive file and updates localstore and drive accordingly."
+  ;Drive file could have been updated from another device.
+  ;index-entry provides the file-change timestamp of the previous sync so it can be compared with the current
+  ;file-change timestamp from the drive file-meta.
+  ;If there is a mismatch local doc and Drive doc need to be synchronised.
+  [index-entry file-metadata doc options]
+  (go? (<p! (sync-drive-file- index-entry file-metadata doc options))))
+
+(defn sync-drive-file
+  "Synchronises local doc with its Drive file doc.
+  If doc-or-id is a doc-id then doc is read from localstore.
+  "
+  ;To perform the sync we need the local doc index-entry & file-metadata doc to check the sync status.
+  ;index-entry provides the file-meta of the previous sync so it can be compared with the current file-meta
+  ;to check if the Drive file has been updated from another device.
+  ;If there is a mismatch local doc and Drive doc need to be synchronised.
+  [doc-or-id listeners]
+  (assert (or (string? doc-or-id) (map? doc-or-id)) {:doc-or-id doc-or-id :src (:src listeners)})
+  (p/let [local-doc (when-not (map? doc-or-id)
+                      (read-local-doc doc-or-id))
+          [doc doc-id] (if (map? doc-or-id)
+                         [doc-or-id (:doc-id doc-or-id)]
+                         [(or local-doc nil) doc-or-id])
+          index-entry (read-local-index)
+          {:keys [file-id] :as index-entry} (get index-entry doc-id)
+             ;If this device has seen the file before it will be in the index otherwise search Drive
+          file-metadata (and file-id (file-data file-id))
+          file-metadata (or file-metadata (and doc-id (find-file-data doc-id)) nil)]
+         ;(debug log 'sync-drive-file! 'file-data (pprintl file-data))
+    (sync-drive-file- index-entry file-metadata doc listeners)))
 
 (defn sync-drive-file!
   "Synchronises local doc with its Drive file doc.
@@ -799,28 +909,20 @@
   [doc-or-id listeners]
   (assert (or (string? doc-or-id) (map? doc-or-id)) {:doc-or-id doc-or-id :src (:src listeners)})
   (do-sync!
-   #(go?
-     (let [[doc doc-id] (if (map? doc-or-id)
-                          [doc-or-id (:doc-id doc-or-id)]
-                          [(or (<p! (read-local-doc doc-or-id)) nil) doc-or-id])
-           {:keys [file-id] :as index-entry} (get (<p! (read-local-index)) doc-id)
-             ;If this device has seen the file before it will be in the index otherwise search Drive
-           file-metadata (or (and file-id (<? (<file-data file-id)))
-                             (and doc-id (<? (<find-file-data doc-id)))
-                             nil)]
-         ;(debug log 'sync-drive-file! 'file-data (pprintl file-data))
-       (<! (<sync-drive-file index-entry file-metadata doc listeners)))) listeners))
+   #(go? (<p! (sync-drive-file doc-or-id listeners))) listeners))
 
-(defn- <drive-data-file-id
+(defn- drive-data-file-id
   "Searches for the apps drive-data-file and returns its id.
   Creates the file if it doesn't exist.
   "
   []
-  (go?
-   (let [data-file-name "yetipad-data.edn"
-         {app-data-files :files} (<p! (drive/list-app-data-files {:query (str "name='" data-file-name "'")}))
+  (p/let [data-file-name "yetipad-data.edn"
+          meta (drive/list-app-data-files {:query (str "name='" data-file-name "'")})
+          {app-data-files :files} meta
           ;Assume many files with data-file-name, use latest.
-         {drive-data-file-id :id} (first (sort-by :modifiedTime app-data-files))]
-     (or
-      drive-data-file-id
-      (:id (<p! (drive/create-file {:file-name data-file-name :app-data? true})))))))
+          {drive-data-file-id :id} (first (sort-by :modifiedTime app-data-files))
+          file-meta (when-not drive-data-file-id
+                      (drive/create-file {:file-name data-file-name :app-data? true}))]
+    (or
+     drive-data-file-id
+     (:id file-meta))))

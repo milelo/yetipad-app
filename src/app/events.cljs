@@ -359,7 +359,7 @@
 (defn delete-doc [options]
   (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
-     (store/delete-doc! doc-id (merge {:on-success sync-doc-index!} options))
+     (store/delete-doc! doc-id options {:on-success sync-doc-index!})
     ;Replace deleted doc with a new one:
      (new-local-doc-)
      (merge db new-doc))
