@@ -2,7 +2,7 @@
 
  :deps    {;CLJS included version of google-closure-library-third-party
            ; doesn't include LoremIpsum so use oldernp
-           funcool/promesa                                {:mvn/version "10.0.582"}
+           funcool/promesa                                {:mvn/version "10.0.594"}
            org.clojure/google-closure-library-third-party {:mvn/version "0.0-20190213-2033d5d9"}
            reagent/reagent                                {:mvn/version "1.1.1"}
            venantius/accountant                           {:mvn/version "0.2.5"}
