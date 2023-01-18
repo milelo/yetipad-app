@@ -59,8 +59,8 @@
      p))
   ([?f {:keys [on-success on-error]}]
    (-> (do-sync ?f)
-       (p/then on-success)
-       (p/catch on-error))))
+       (p/then #(and on-success (on-success)))
+       (p/catch #(and on-error (on-error))))))
 
 (comment
   (let [[p f] (defer (fn [_db] :x))]
