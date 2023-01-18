@@ -3,15 +3,13 @@
    [lib.log :as log :refer [trace debug info warn fatal error pprintl]]
    [lib.debug :as debug :refer [we wd]]
    [lib.localstore :as ls]
-   [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
-   [lib.asyncutils :as au :refer [put-last!] :refer-macros [<? go? go-try goc go-let]]
-   [cljs.core.async.interop :refer-macros [<p!]]
    [lib.goog-drive :as drive]
    [lib.utils :as utils :refer [only] :refer-macros [for-all]]
    [cljs.pprint :refer [cl-format]]
    [app.ui.utils :as ui-utils]
    [clojure.string :as str]
    [promesa.core :as p]
+   [lib.db :as db]
    [app.credentials]
    ["lz-string" :as lz-string]))
 
@@ -25,46 +23,6 @@
 (def index-key :yetipad)
 (def index-format :object)
 
-(defonce <task-queue (chan 20))                             ;go-block queue
-
-(defn start-task-runner []
-  ;execute queued go-block functions
-  (trace log 'task-runner-started)
-  (go-loop []
-    (when-let [[<fn <c] (<! <task-queue)]
-      (when-let [v (try (<! (<fn)) (catch :default e e))]
-        (put! <c v))
-      (close! <c)
-      (recur))
-    (warn log 'task-runner-stopped)))
-
-(defonce _ (start-task-runner))
-
-(defn- <do-sync-
-  "Add go-block function to queue for synchronous execution.
-   Returns a channel with the result.
-   Go blocks called from event handlers return immediately so they can potentially
-   execute out of order. Wrapping them with <do-sync adds them to a queue to execute sequentially.
-  "
-  [<fn]
-  (let [<c (chan)]
-    (put! <task-queue [<fn <c])
-    <c))
-
-(defn do-sync!
-  "Adds a function returning a channel yielding a single result (usually a go block) to a task queue.
-  Sequences calls to go-blocks submitted from concurrent processes.
-  Required to support external async calls.
-  <fn is a function that returns a channel yielding a single value.
-  Listeners: on-success & on-error notify of completion or error respectively.
-  "
-  ([<fn {:keys [on-success on-error]}]
-   (go-let [v (<! (<do-sync- <fn))]
-           (if (utils/error? v)
-             (if on-error (on-error v) (warn log 'do-sync! v))
-             (when on-success (on-success v)))) nil)
-  ([<fn]
-   (do-sync! <fn nil)))
 
 (defn compress [s]
   (assert (string? s))
@@ -96,7 +54,6 @@
   (trace log 'read-local-index)
   (ls/get-data index-key {}))
 
-
 (defn- write-local-index [index]
   (trace log 'write-local-index)
   (ls/put-data index-key index))
@@ -114,8 +71,8 @@
       nil)))
 
 (defn- index-entry-merge! [doc-id updates]
-  (do-sync! 
-   #(go? (<p! (index-entry-merge doc-id updates)))))
+  (db/do-sync
+   #(index-entry-merge doc-id updates)))
 
 (defn read-local-doc
   "Return the doc or false"
@@ -161,8 +118,8 @@
 (defn write-local-doc!
   "Write doc to localstore and update the localstore index."
   [doc & [options]]
-  (do-sync!
-   #(go? (<p! (write-local-doc doc)))
+  (db/do-sync
+   #(write-local-doc doc)
    options))
 
 (let [queryfn (fn [qstr]
@@ -241,7 +198,7 @@
   (warn log 'refresh-drive-token! 'unimplemented))
 
 (defn rename-file! [doc-id params & [listeners]]
-  (do-sync! #(go? (<p! (rename-file doc-id params))) listeners))
+  (db/do-sync #(rename-file doc-id params) listeners))
 
 (defn read-file-data-list
   "Get app-file metadata by doc-id.
@@ -367,9 +324,8 @@
 
 (defn delete-doc! [doc-id options listeners]
   ;todo test offline
-  (do-sync!
-   #(go?
-     (<p! (delete-doc doc-id options))) listeners))
+  (db/do-sync
+   #(delete-doc doc-id options) listeners))
 
 (defn trash-files-pending []
   (p/let [trashed (get-trashed)
@@ -382,8 +338,8 @@
                  nil))]))
 
 (defn trash-files-pending! [listeners]
-  (do-sync!
-   #(go? (<p! (trash-files-pending))) listeners))
+  (db/do-sync
+   #(trash-files-pending) listeners))
 
 (defn- doc-item-change-status [file-change change root-change]
   (cond
@@ -587,8 +543,8 @@
 
 (defn copy-items! [source-doc target-doc-or-id item-ids listeners]
   (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])
-  (do-sync!
-   #(go? (<p! (copy-items source-doc target-doc-or-id item-ids))) listeners))
+  (db/do-sync
+   #(copy-items source-doc target-doc-or-id item-ids) listeners))
 
 (defn- sync-doc-content
   "Merge drive doc-file and app doc changes."
@@ -665,8 +621,8 @@
       (and on-open-doc (on-open-doc doc)))))
 
 (defn open-local-file! [db doc listeners]
-  (do-sync!
-   #(go? (<p! (open-local-file db doc listeners))) listeners))
+  (db/do-sync
+   #(open-local-file db doc listeners) listeners))
 
 (defn sync-doc-index
   "Reads the Drive file list and updates the
@@ -725,8 +681,8 @@
       nil)))
 
 (defn sync-doc-index! [listeners]
-  (do-sync!
-   #(go? (<p! (sync-doc-index listeners))) listeners))
+  (db/do-sync
+   #(sync-doc-index listeners) listeners))
 
 (defn- create-file [file-name doc-id]
   (p/let [file-name (str file-name ".ydn")
@@ -756,8 +712,8 @@
   Reads localstore doc compares with specified doc change date.
   "
   [doc listeners]
-  (do-sync!
-   #(go? (<p! (sync-localstore doc listeners)))))
+  (db/do-sync
+   #(sync-localstore doc listeners)))
 
 (defn- sync-drive-file-
   "Sync doc with its drive file and updates localstore and drive accordingly."
@@ -772,45 +728,44 @@
                                                                       on-conflicts-resolved
                                                                       on-synced-file
                                                                       src]}]
-  (go?
-   (let [{:keys [doc-title doc-subtitle]} options
-         file-id (:file-id file-metadata)
-         {:keys [doc-changes]} index-entry
-         [status _ :as change-status] (drive-change-status file-metadata index-entry)]
+  (let [{:keys [doc-title doc-subtitle]} options
+        file-id (:file-id file-metadata)
+        {:keys [doc-changes]} index-entry
+        [status _ :as change-status] (drive-change-status file-metadata index-entry)]
       ;(debug log '<sync-drive-file!- 'file-metadata file-metadata)
-     (info log 'sync-drive-file src 'sync-status doc-id change-status)
-     (and on-sync-status (on-sync-status status))
-     (case status
-       :in-sync
-       (do
-         (and on-in-sync (on-in-sync))
-         (and on-synced-file (on-synced-file doc))
-         nil)
-       :overwrite-from-file
-       (p/let [drive-doc (read-file-content file-id #{:update-index})
-               _ (and on-synced-file (on-synced-file drive-doc))
-               _ (write-local-doc drive-doc) ;wait for completion 
-               ]
-         (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
-         nil)
-       :overwrite-file
-       (p/let [created-file-id (create-file (or doc-title doc-subtitle doc-id) doc-id)
-               file-id (or file-id created-file-id)
-               _ (and on-synced-file (on-synced-file doc))
-               _ (p/all [(write-local-doc doc)
-                         (write-file-content file-id doc {:update-index true})])]
-         (and on-overwrite-file (on-overwrite-file))
-         nil)
-       :resolve-conflicts
-       (p/let [drive-doc (read-file-content file-id)
-               content-changed? (not= (get drive-doc :change) (get doc :change))
+    (info log 'sync-drive-file src 'sync-status doc-id change-status)
+    (and on-sync-status (on-sync-status status))
+    (case status
+      :in-sync
+      (do
+        (and on-in-sync (on-in-sync))
+        (and on-synced-file (on-synced-file doc))
+        nil)
+      :overwrite-from-file
+      (p/let [drive-doc (read-file-content file-id #{:update-index})
+              _ (and on-synced-file (on-synced-file drive-doc))
+              _ (write-local-doc drive-doc) ;wait for completion 
+              ]
+        (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
+        nil)
+      :overwrite-file
+      (p/let [created-file-id (create-file (or doc-title doc-subtitle doc-id) doc-id)
+              file-id (or file-id created-file-id)
+              _ (and on-synced-file (on-synced-file doc))
+              _ (p/all [(write-local-doc doc)
+                        (write-file-content file-id doc {:update-index true})])]
+        (and on-overwrite-file (on-overwrite-file))
+        nil)
+      :resolve-conflicts
+      (p/let [drive-doc (read-file-content file-id)
+              content-changed? (not= (get drive-doc :change) (get doc :change))
               ;verify doc content has changed rather than just file modifiedTime
-               synched-doc (if content-changed? (sync-doc-content doc-changes drive-doc doc) doc)
-               _ (and on-synced-file (on-synced-file synched-doc))
-               _ (p/all [(write-local-doc synched-doc)
-                         (write-file-content file-id synched-doc {:update-index true})])]
-         (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
-         nil)))))
+              synched-doc (if content-changed? (sync-doc-content doc-changes drive-doc doc) doc)
+              _ (and on-synced-file (on-synced-file synched-doc))
+              _ (p/all [(write-local-doc synched-doc)
+                        (write-file-content file-id synched-doc {:update-index true})])]
+        (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
+        nil))))
 
 (defn sync-drive-file
   "Synchronises local doc with its Drive file doc.
@@ -845,8 +800,8 @@
   ;If there is a mismatch local doc and Drive doc need to be synchronised.
   [doc-or-id listeners]
   (assert (or (string? doc-or-id) (map? doc-or-id)) {:doc-or-id doc-or-id :src (:src listeners)})
-  (do-sync!
-   #(go? (<p! (sync-drive-file doc-or-id listeners))) listeners))
+  (db/do-sync
+   #(sync-drive-file doc-or-id listeners) listeners))
 
 (defn- drive-data-file-id
   "Searches for the apps drive-data-file and returns its id.
