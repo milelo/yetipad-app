@@ -13,6 +13,8 @@
 
 (def log (log/logger 'lib.db))
 
+(defonce db* (r/atom {::db? true}))
+
 ;====================================task queue=================================================
 
 (defonce <task-queue (chan 20))                             ;go-block queue
@@ -24,56 +26,59 @@
   [?f]
   (let [p (p/deferred)
         f (fn []
-            (-> (p/do (?f));use do to convert all return types and exceptions to a promise
+            (-> (p/do (?f @db*));use 'do' to convert all return types and exceptions to a promise
                 (p/then (partial p/resolve! p))
                 (p/catch (partial p/reject! p)))
             p)]
     [p f]))
 
+(def task-runner-ctrl* (core/atom {}))
+
 (defn start-task-runner []
   ;execute queued go-block functions
   (trace log 'task-runner-started)
   (go (loop []
-        (let [_ (<p! ((<! <task-queue)))]
+        (try (<p! ((<! <task-queue)))
+             ;ignore exception; value is also returned in promise
+             (catch :default _e))
+        (when-not (:stop @task-runner-ctrl*) 
           (recur)))
       (warn log 'task-runner-stopped)))
 
+(comment
+  (swap! task-runner-ctrl* assoc :stop true)
+  (swap! task-runner-ctrl* dissoc :stop)
+  (start-task-runner)
+  )
+
 (defonce _ (start-task-runner))
 
-(defn  do-sync!
+(defn  do-sync
   ([?f]
    (let [[p f] (defer ?f)]
      (put! <task-queue f)
      p))
   ([?f {:keys [on-success on-error]}]
-   (-> (do-sync! ?f)
+   (-> (do-sync ?f)
        (p/then on-success)
        (p/catch on-error))))
 
 (comment 
-  (let [[p f] (defer (fn [] :x))]
+  (let [[p f] (defer (fn [_db] :x))]
     (-> p (p/then (partial prn :then)))
-    (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
-
-  (let [<task-queue (chan 20)
-        [p f] (defer (fn [] :x))
-        _ (put! <task-queue f)]
-    (-> p (p/then (partial prn :then)))
-    (go
-      (let [_ (<p! ((<! <task-queue)))]
-        (prn :go))) 
     (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
 
   (let [d (p/deferred)]
     (prn :start)
-    (p/then (do-sync! (fn [] d)) prn)
-    (p/then (do-sync! (fn [] :b)) prn)
+    (p/then (do-sync (fn [_db] d)) prn) 
+    (p/catch (do-sync (fn [_db] (throw :error))) prn)
+    (p/then (do-sync (fn [_db] :b)) prn)
+    (p/then (do-sync (fn [db] (keys db))) prn)
     (js/setTimeout #(p/resolve! d :a) 5000)))
 
 
 ;====================================task queue=================================================
 
-(defonce db* (r/atom {::db? true}))
 
 (defn fire [fsync f])
 
