@@ -86,6 +86,7 @@
 
 (defn update-db!
   ([{:keys [label]} f]
+   (assert (fn? f))
    (trace log 'update-db label)
    (let [old-db @db*
          new-db (swap! db* (fn [db]

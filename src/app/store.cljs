@@ -197,9 +197,6 @@
 (defn refresh-drive-token! [listeners]
   (warn log 'refresh-drive-token! 'unimplemented))
 
-(defn rename-file! [doc-id params & [listeners]]
-  (db/do-sync #(rename-file doc-id params) listeners))
-
 (defn read-file-data-list
   "Get app-file metadata by doc-id.
   Files that aren't in the local index are allocated a new doc-id."

@@ -336,7 +336,7 @@
      (let [{:keys [doc-id doc persist-doc open-items]} loaded
            doc (or doc {:doc-id doc-id})]
        (sync-drive-file doc {:src ::read-doc-by-id-handler-})
-       (assoc db 
+       (assoc db
               :doc doc
               :persist-doc (or persist-doc {})
               :open-items (verified-open-items doc open-items))))
@@ -471,9 +471,9 @@
      (let [item-id (new-item-id doc)
            iso-date-time (utils/iso-time-now)]
        (db/update-db! (fn [db]
-                     (assoc-in db [:doc item-id] {:id     item-id
-                                                  :kind   kind
-                                                  :create iso-date-time})))
+                        (assoc-in db [:doc item-id] {:id     item-id
+                                                     :kind   kind
+                                                     :create iso-date-time})))
        (open-item item-id)
        (start-edit item-id)))))
 
@@ -532,24 +532,23 @@
        db))))
 
 (defn trash-item [item-id]
-  (firex
+  (db/update-db!
    (fn [{:keys [doc] :as db}]
      (if (string? item-id)
        (let [doc (update doc item-id assoc :trashed true)]
-         (run-later (fn []
-                      (cancel-edit item-id)
-                      (close-item item-id)))
          (assoc db :doc (store/update-timestamps! doc [item-id])))
-       db))))
+       db)))
+  (cancel-edit item-id)
+  (close-item item-id))
 
 (defn restore-item [item-id]
-  (firex
+  (db/update-db!
    (fn [{:keys [doc] :as db}]
      (let [doc (update doc item-id dissoc :trashed)]
        (assoc db :doc (store/update-timestamps! doc [item-id]))))))
 
 (defn restore-all-trashed []
-  (firex
+  (db/update-db!
    (fn [{:keys [doc] :as db}]
      (let [trashed-ids (map :id (filter :trashed (vals doc)))
            doc (reduce (fn [doc id]
@@ -558,7 +557,7 @@
 
 (defn new-content [item-id content]
   ;write content only after accept-edit
-  (firex
+  (db/update-db!
    (fn [db]
      ;potentially saves to new-id if original has external change.
      (if-let [item-id (get-in db [:editing item-id :accept-as])]
@@ -572,7 +571,7 @@
 
 (defn new-title [item-id title]
   ;write content only after accept-edit
-  (firex
+  (db/update-db!
    (fn [db]
      ;potentially saves to new-id if original has external change.
      (if-let [item-id (get-in db [:editing item-id :accept-as])]
@@ -583,11 +582,10 @@
                                           (assoc item :title title)))))
        db))))
 
-(defn rename-file [options]
-  (firex
+(defn rename-file [params]
+  (db/do-sync
    (fn [db]
-     (store/rename-file! (get-in db [:doc :doc-id]) options {:on-success sync-doc-index!})
-     db)))
+     (store/rename-file (get-in db [:doc :doc-id]) params)) {:on-success sync-doc-index!}))
 
 (defn options [options-update]
   ;write options only after accept-edit
@@ -926,8 +924,8 @@
      db)))
 
 (defn debug-rename-file []
-  (store/rename-file! "klhurigk" {:title "My File Name"}
-                      {:on-success #(debug log ::debug-rename-file 'response %)}))
+  (db/do-sync (fn [] (store/rename-file "klhurigk" {:title "My File Name"}))
+              {:on-success #(debug log ::debug-rename-file 'response %)}))
 
 (defn debug-add-properties []
   (p/let [file-id "1R8JZWxzjLAWYCXIb5Y493AemAoj9G-8W"     ;"kgrsc300.ydn"
