@@ -114,9 +114,9 @@
          (save-on-doc-change-interceptor! old-db db)
          (navbar-interceptor! old-db db)
          (when-let [persist-doc (on-change [:persist-doc])]
-           (store/<write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
+           (store/write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
          (when-let [persist-device (on-change [:persist-device])]
-           (store/<write-persist-device persist-device)))))))
+           (store/write-persist-device persist-device)))))))
 
 (defn firex
   ([f]
@@ -165,12 +165,12 @@
       (assert (string? doc-id))
       (if (= old-doc-id doc-id)
         (assoc db :open-items (verified-open-items doc open-items))
-        (do
-          (go
-            (read-doc-by-id-handler- {:doc-id      doc-id
-                                      :doc         (or (<p! (store/read-local-doc doc-id)) nil)
-                                      :persist-doc (or (<? (store/<read-persist-doc doc-id)) nil)
-                                      :open-items  open-items}))
+        (p/let [local-doc (store/read-local-doc doc-id)
+                p-doc (store/read-persist-doc doc-id)]
+          (read-doc-by-id-handler- {:doc-id      doc-id
+                                    :doc         (or local-doc nil)
+                                    :persist-doc (or p-doc nil)
+                                    :open-items  open-items})
           db))) {:label 'read-doc-by-id-}))
   ([doc-id] (read-doc-by-id- doc-id nil)))
 
@@ -840,23 +840,22 @@
 (defn dump-file-meta []
   (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
-     (go
-       (let [{:keys [file-id] :as idx} (get (<p! (store/read-local-index)) doc-id)
-             _ (println ::dump-file-meta :doc-d doc-id :file-id file-id :idx idx)
-            ;meta (<? (store/<file-meta file-id [:modifiedTime]))
-            ;meta (<? (store/<file-meta file-id))
-             meta (<? (store/<find-file-data doc-id))]
-         (println "File meta:")
-         (pprint meta)))
+     (p/let [idx (store/read-local-index)
+             {:keys [file-id] :as idxe} (get idx doc-id)
+             _ (println ::dump-file-meta :doc-d doc-id :file-id file-id :idxe idxe)
+             ;meta (store/file-meta file-id [:modifiedTime])
+             ;meta (store/file-meta file-id)
+             meta (store/find-file-data doc-id)]
+       (println "File meta:")
+       (pprint meta))
      db)))
 
 (defn debug-find-file []
-  (go
-    (let [files (<? (store/<list-app-drive-files {:fields  "files(id, name, modifiedTime, trashed, appProperties)"
+  (p/let [files (store/list-app-drive-files {:fields  "files(id, name, modifiedTime, trashed, appProperties)"
                                                     ;:name    "kgrsc300.ydn"
-                                                  :trashed false
-                                                  :doc-id  "kgrsc300"}))]
-      (pprint files))))
+                                             :trashed false
+                                             :doc-id  "kgrsc300"})]
+    (pprint files)))
 
 (defn dump-item-content [item-id]
   (firex
@@ -869,33 +868,32 @@
 (defn dump-index []
   (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
-     (go
-       (let [local-index (<p! (store/read-local-index))]
-         (println "\nlocal index entry:")
-         (pprint local-index)
-         (println "\nfiles data:")
-         (pprint (<? (store/<read-file-data-list)))
-         (println "this local index entry: " doc-id)
-         (pprint (get local-index doc-id))
-         (println)))
+     (p/let [local-index (store/read-local-index)
+             file-data-list (store/read-file-data-list)]
+       (println "\nlocal index entry:")
+       (pprint local-index)
+       (println "\nfiles data:")
+       (pprint file-data-list)
+       (println "this local index entry: " doc-id)
+       (pprint (get local-index doc-id))
+       (println))
      db)))
 
 (defn debug-list-app-drive-files []
-  (go
-    (let [files (<? (store/<list-app-drive-files {:fields "files(id, name, modifiedTime, trashed, appProperties)"
+  (p/let [files (store/list-app-drive-files {:fields "files(id, name, modifiedTime, trashed, appProperties)"
                                                     ;:name    "kgrsc300.ydn"
                                                     ;:trashed false
-                                                  }))]
-      (pprint files))))
+                                             })]
+    (pprint files)))
 
 (defn debug-trash-file []
-  (go
-    (let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
+  (p/let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
           file-id "1ZYqrs1QLvoB5P4GhV8Q9Hz0FsyDDPSIR"     ;"kgrsc300.ydn"
-          response (<? (store/<trash-file file-id))]
-      (println "Trash file")
-      (pprint (-> response js->clj))
-      (pprint (<? (store/<file-meta file-id))))))
+          response (drive/trash-file file-id)
+          file-meta (store/file-meta file-id)]
+    (println "Trash file")
+    (pprint (-> response js->clj))
+    (pprint file-meta)))
 
 (defn debug-file-content []
   (let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
@@ -942,12 +940,12 @@
                       {:on-success #(debug log ::debug-rename-file 'response %)}))
 
 (defn debug-add-properties []
-  (go
-    (let [file-id "1R8JZWxzjLAWYCXIb5Y493AemAoj9G-8W"     ;"kgrsc300.ydn"
+  (p/let [file-id "1R8JZWxzjLAWYCXIb5Y493AemAoj9G-8W"     ;"kgrsc300.ydn"
           file-id "1CQXBtftHN-cUxgC-Au9-VpuWKyJbLxjc"     ;
-          response (<? (store/<add-properties file-id {:doc-id "kgtbg5v1"}))]
-      (println "Add property")
-      (pprint (get-in response [:appProperties :doc-id]))
-      (pprint response)
-      (pprint (<? (store/<file-meta file-id))))))
+          response (drive/add-properties file-id {:doc-id "kgtbg5v1"})
+          file-meta (store/file-meta file-id)]
+    (println "Add property")
+    (pprint (get-in response [:appProperties :doc-id]))
+    (pprint response)
+    (pprint file-meta)))
 

@@ -80,7 +80,7 @@
 
 (defn update-db
   ([{:keys [label]} f]
-   (trace log 'update-db update-db)
+   (trace log 'update-db label)
    (swap! db* f))
   ([f] (update-db nil f)))
 
