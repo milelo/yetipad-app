@@ -64,11 +64,11 @@
   (when (not-empty updates)
     (p/let [idx (read-local-index)
             entry (get (or idx nil) doc-id)
-            updated (utils/map-remove nil? (merge entry updates))
-            _  (when (not= entry updated)
-                 (trace log 'index-entry-merge 'write-entry updated)
-                 (write-local-index (assoc idx doc-id updated)))]
-      nil)))
+            updated (utils/map-remove nil? (merge entry updates))]
+      (when (not= entry updated)
+        (trace log 'index-entry-merge 'write-entry updated)
+        (write-local-index (assoc idx doc-id updated))))
+    nil))
 
 (defn- index-entry-merge! [doc-id updates]
   (db/do-sync
@@ -241,13 +241,14 @@
   ;todo can <read-file-content also read meta-data
   (p/let [edn (drive/read-file-edn file-id)
           doc (or (decode edn) {})
-          _ (when update-index
-              (p/let [file-meta (drive/get-file-meta file-id {:fields "id, modifiedTime, appProperties"})
-                      file-data (file-meta>data file-meta)
+          ]
+    (when update-index
+      (p/let [file-meta (drive/get-file-meta file-id {:fields "id, modifiedTime, appProperties"})
+              file-data (file-meta>data file-meta)
                       ;file-id this isn't set by create-file so include
-                      idx-updates (select-keys file-data [:file-change :file-id :doc-id])
-                      _ (index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil
-                                                                        :doc-change (:change doc)))]))]
+              idx-updates (select-keys file-data [:file-change :file-id :doc-id])
+              _ (index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil
+                                                                :doc-change (:change doc)))]))
     doc))
 
 (defn signed-in? []

@@ -1,13 +1,13 @@
 (ns app.events
   (:require
-   [lib.db :as db :refer [update-db]]
+   [lib.db :as db]
     ;[cljs-uuid-utils.core :as uuid]
    [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
    [lib.debug :as debug :refer [we wd]]
    [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
    [lib.goog-drive :as drive]
    [lib.html-parse :as html-parse]
-   [clojure.pprint :refer [pprint cl-format]] 
+   [clojure.pprint :refer [pprint cl-format]]
    [app.store :as store]
    [app.ui.utils :as ui-utils]
    [accountant.core :refer [configure-navigation! navigate! dispatch-current!]]
@@ -121,7 +121,7 @@
                                         (after-db-change! old-db db))))))
 
 (defn set-app-status [status & [type]]
-  (update-db
+  (db/update!
    {:label 'set-app-status}
    (fn [db]
      ;(debug log ::set-app-status status)
@@ -134,7 +134,7 @@
                           :time-ms (time-now-ms)))))))
 
 (defn clear-app-status []
-  (update-db
+  (db/update!
    {:label 'clear-app-status}
    (fn [db]
      (assoc db :status {}))))
@@ -159,12 +159,13 @@
       (assert (string? doc-id))
       (if (= old-doc-id doc-id)
         (assoc db :open-items (verified-open-items doc open-items))
-        (p/let [local-doc (store/read-local-doc doc-id)
-                p-doc (store/read-persist-doc doc-id)]
-          (read-doc-by-id-handler- {:doc-id      doc-id
-                                    :doc         (or local-doc nil)
-                                    :persist-doc (or p-doc nil)
-                                    :open-items  open-items})
+        (do
+          (p/let [local-doc (store/read-local-doc doc-id)
+                  p-doc (store/read-persist-doc doc-id)]
+            (read-doc-by-id-handler- {:doc-id      doc-id
+                                      :doc         (or local-doc nil)
+                                      :persist-doc (or p-doc nil)
+                                      :open-items  open-items}))
           db))) {:label 'read-doc-by-id-}))
   ([doc-id] (read-doc-by-id- doc-id nil)))
 
@@ -229,19 +230,13 @@
                                            (set-doc-status-index- status-index))}))
 
 (defn online-status [status]
-  (firex (fn [{:keys [online-status] :as db}]
-           (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
-           (let [status (and online-status status)]
-             (trace log ::online-status status)
-             (assoc db :online-status status)))
-         {:label 'online-status}))
-
-(defn- online-status- [status]
-  (fn [{:keys [online-status] :as db}]
-    (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
-    (let [status (and online-status status)]
-      (trace log ::online-status status)
-      (assoc db :online-status status))))
+  (db/update!
+   {:label 'online-status}
+   (fn [{:keys [online-status] :as db}]
+     (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
+     (let [status (and online-status status)]
+       (trace log ::online-status status)
+       (assoc db :online-status status)))))
 
 (defn- update-doc- [updated-doc old-doc status-message]
   (firex
@@ -466,19 +461,17 @@
                                 (assoc (into {} (filter #(-> % second :accept-as not) editing))
                                        item-id {:source (or (get-in db [:doc item-id]) {})}))))))
 
-
 (defn start-edit-new- [kind]
-  (firex
-   (fn [{doc :doc :as db}]
+  (db/do-async
+   (fn [{doc :doc}]
      (let [item-id (new-item-id doc)
-           iso-date-time (utils/iso-time-now)
-           db (assoc-in db [:doc item-id] {:id     item-id
-                                           :kind   kind
-                                           :create iso-date-time})]
-       {:db db
-        :on-updated (fn []
-                      (open-item item-id)
-                      (start-edit item-id))}))))
+           iso-date-time (utils/iso-time-now)]
+       (db/update! (fn [db]
+                    (assoc-in db [:doc item-id] {:id     item-id
+                                                 :kind   kind
+                                                 :create iso-date-time})))
+       (open-item item-id)
+       (start-edit item-id)))))
 
 (defn start-edit-new-note []
   (println :start-edit-new-note)
