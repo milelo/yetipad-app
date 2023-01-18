@@ -30,7 +30,7 @@
                 (p/then (partial p/resolve! p))
                 (p/catch (partial p/reject! p))) 
             p)]
-    (p/catch p (partial log/error log 'do-sync))
+    (p/catch p (partial log/warn log 'defer "task rejected: "))
     [p f]))
 
 (def task-runner-ctrl* (core/atom {}))
@@ -38,18 +38,16 @@
 (defn start-task-runner []
   ;execute queued go-block functions
   (trace log 'task-runner-started)
+  (swap! task-runner-ctrl* dissoc :stop)
   (go (loop []
-        (try (<p! ((<! <task-queue)))
-             (trace log 'start-task-runner 'done-task)
-             ;ignore exception; value is also returned in promise
-             (catch :default e (log/error log 'start-task-runner e)))
+        ((<! <task-queue))
+        (trace log 'start-task-runner 'started-task)
         (when-not (:stop @task-runner-ctrl*)
           (recur)))
-      (warn log 'task-runner-stopped)))
+      (log/error log 'task-runner 'stopped)))
 
 (comment
-  (swap! task-runner-ctrl* assoc :stop true)
-  (swap! task-runner-ctrl* dissoc :stop)
+  (swap! task-runner-ctrl* assoc :stop true) 
   (start-task-runner))
 
 (defonce _ (start-task-runner))
