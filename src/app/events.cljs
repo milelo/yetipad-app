@@ -7,11 +7,7 @@
    [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
    [lib.goog-drive :as drive]
    [lib.html-parse :as html-parse]
-   [clojure.pprint :refer [pprint cl-format]]
-   [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
-    ;exceptions are reported by handlers
-   [lib.asyncutils :refer [put-last!] :refer-macros [<? go-try]]
-    ;[app.localstore :as ls :refer [<write-doc]]
+   [clojure.pprint :refer [pprint cl-format]] 
    [app.store :as store]
    [app.ui.utils :as ui-utils]
    [accountant.core :refer [configure-navigation! navigate! dispatch-current!]]
@@ -21,8 +17,6 @@
    [clojure.string :as str]
    [clojure.walk :as walk]
    [app.ui.registry :as reg]
-   [cljs.core.async.interop :refer-macros [<p!]]
-   [cljs.core.async :refer [go]]
    [cljs-bean.core :refer [bean ->clj ->js]]
    [promesa.core :as p]
    ["react-device-detect" :refer [browserName browserVersion fullBrowserVersion osVersion
@@ -905,17 +899,16 @@
 (defn debug-file-compress []
   (firex
    (fn [db]
-     (go
-       (let [;file-id (<? (store/<create-file "compress-test" nil))
+     (p/let [;file-id (store/create-file "compress-test" nil)
              value (fn [c] (.charCodeAt c 0))
              file-id "1QDGeNA9aIWD7KDN60wVKv9r-FY5gZK8y"
-             read (<p! (drive/read-file-edn file-id))
-             read (or read (let [content {:en :lz
-                                          :d (-> db :doc pr-str store/compress)
-                                          :r (-> db :doc pr-str)}
-                                 fields (<p! (drive/write-file-content file-id content {:content-type :edn}))]
+             read (drive/read-file-edn file-id)
+             read (or read (p/let [content {:en :lz
+                                            :d (-> db :doc pr-str store/compress)
+                                            :r (-> db :doc pr-str)}
+                                   fields (drive/write-file-content file-id content {:content-type :edn})]
                              (debug log ::debug-file-compress 'write-fields fields)
-                             (<p! (drive/read-file-edn file-id))))
+                             (drive/read-file-edn file-id)))
              {:keys [d r]} read
              good (-> r store/compress)
              compare (filter identity (map (fn [dc rc]
@@ -926,13 +919,13 @@
 
                 ;(debug log ::debug-file-compress 'file-id file-id)
                 ;(info log ::debug-file-compress  'read read)
-         (info log ::debug-file-compress  'equal (= good d))
-         (info log ::debug-file-compress  'equal (pprintl {:d d :g good}))
-         (info log ::debug-file-compress {:d-count (-> d count)
-                                          :r-count (-> good count)})
-         (info log ::debug-file-compress  'decompress-file (-> d store/decompress))
-         (info log ::debug-file-compress  'decompress-local (-> r store/compress store/decompress))
-         (info log ::debug-file-compress  'compare (pprintl compare))))
+       (info log ::debug-file-compress  'equal (= good d))
+       (info log ::debug-file-compress  'equal (pprintl {:d d :g good}))
+       (info log ::debug-file-compress {:d-count (-> d count)
+                                        :r-count (-> good count)})
+       (info log ::debug-file-compress  'decompress-file (-> d store/decompress))
+       (info log ::debug-file-compress  'decompress-local (-> r store/compress store/decompress))
+       (info log ::debug-file-compress  'compare (pprintl compare)))
      db)))
 
 (defn debug-rename-file []
