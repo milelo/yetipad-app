@@ -1,6 +1,6 @@
 (ns app.events
   (:require
-   [lib.db :as db]
+   [lib.db :as db :refer [update-db]]
     ;[cljs-uuid-utils.core :as uuid]
    [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
    [lib.debug :as debug :refer [we wd]]
@@ -123,11 +123,12 @@
    (db/firex f {:after! after-db-change!}))
   ([f {:keys [after!] :as options}]
    (db/firex f (assoc options :after! (fn [old-db db]
-                                       (and after! (after! old-db db))
-                                       (after-db-change! old-db db))))))
+                                        (and after! (after! old-db db))
+                                        (after-db-change! old-db db))))))
 
 (defn set-app-status [status & [type]]
-  (firex
+  (update-db
+   {:label 'set-app-status}
    (fn [db]
      ;(debug log ::set-app-status status)
      (let [default-type :info]
@@ -136,12 +137,13 @@
                             (map? status) (let [{:keys [type]} status] (assoc status :type (or type default-type)))
                             (utils/error? status) {:text (str status) :type :error}
                             :else {:text (str status) :type (or type default-type)})
-                          :time-ms (time-now-ms))))) {:label 'set-app-status}))
+                          :time-ms (time-now-ms)))))))
 
 (defn clear-app-status []
-  (firex (fn [db]
-          (assoc db :status {}))
-        {:label 'clear-app-status}))
+  (update-db
+   {:label 'clear-app-status}
+   (fn [db]
+     (assoc db :status {}))))
 
 (defn verified-open-items
   "return only item (ids) that are present in the document"
@@ -234,11 +236,11 @@
 
 (defn online-status [status]
   (firex (fn [{:keys [online-status] :as db}]
-          (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
-          (let [status (and online-status status)]
-            (trace log ::online-status status)
-            (assoc db :online-status status)))
-        {:label 'online-status}))
+           (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
+           (let [status (and online-status status)]
+             (trace log ::online-status status)
+             (assoc db :online-status status)))
+         {:label 'online-status}))
 
 (defn- online-status- [status]
   (fn [{:keys [online-status] :as db}]
@@ -293,32 +295,31 @@
    {:label 'sync-drive-file}))
 
 #_(defn sync-drive-file [updated-doc {:keys [src]}]
-       (if (store/signed-in?)
-         (store/sync-drive-file! updated-doc
-                                 {:src                    src
-                                  :on-sync-status         (fn [sync-status]
-                                                            (when-let [status ({:overwrite-from-file :downloading
-                                                                                :overwrite-file      :uploading
-                                                                                :resolve-conflicts   :syncing} sync-status)]
-                                                              (online-status status)))
-                                  :on-success             (fn []
+    (if (store/signed-in?)
+      (store/sync-drive-file! updated-doc
+                              {:src                    src
+                               :on-sync-status         (fn [sync-status]
+                                                         (when-let [status ({:overwrite-from-file :downloading
+                                                                             :overwrite-file      :uploading
+                                                                             :resolve-conflicts   :syncing} sync-status)]
+                                                           (online-status status)))
+                               :on-success             (fn []
                                                          ;(:keep-doc-in-sync? db)
                                                          ;(dispatch! [::sync-drive-docs {:exclude-docs [(:doc-id updated-doc)]}])
-                                                            (online-status :synced))
-                                  :on-in-sync             sync-doc-index!
-                                  :on-overwrite-from-file (fn [drive-doc]
-                                                            (update-doc- drive-doc doc "Updated from Drive"))
-                                  :on-overwrite-file      (fn []
-                                                            (set-app-status "Drive updated" :info)
-                                                            (sync-doc-index!))
-                                  :on-conflicts-resolved  (fn [synched-doc]
-                                                            (update-doc- synched-doc doc "Synched with Drive"))
-                                  :on-error               (fn [error]
-                                                            (warn log ::sync-drive-file 'sync error)
-                                                            (online-status :error)
-                                                            (set-app-status error))})
-         (sync-doc-index!))
-  )
+                                                         (online-status :synced))
+                               :on-in-sync             sync-doc-index!
+                               :on-overwrite-from-file (fn [drive-doc]
+                                                         (update-doc- drive-doc doc "Updated from Drive"))
+                               :on-overwrite-file      (fn []
+                                                         (set-app-status "Drive updated" :info)
+                                                         (sync-doc-index!))
+                               :on-conflicts-resolved  (fn [synched-doc]
+                                                         (update-doc- synched-doc doc "Synched with Drive"))
+                               :on-error               (fn [error]
+                                                         (warn log ::sync-drive-file 'sync error)
+                                                         (online-status :error)
+                                                         (set-app-status error))})
+      (sync-doc-index!)))
 
 ;(def sign-in store/sign-in)
 ;(def sign-out store/sign-out)
@@ -400,7 +401,7 @@
 
 (defn open-tag-drawer [open?]
   (firex (fn [db]
-          (assoc db :tag-drawer-open? open?))))
+           (assoc db :tag-drawer-open? open?))))
 
 (defn open-index-drawer [open?]
   (firex
@@ -443,18 +444,18 @@
 
 (defn close-item [item-id]
   (firex (fn [{:keys [open-items editing] :as db}]
-          (assoc db :open-items (filter #(or (not= item-id %) (editing? db %))
-                                        open-items)))))
+           (assoc db :open-items (filter #(or (not= item-id %) (editing? db %))
+                                         open-items)))))
 
 (defn close-other-items [item-id]
   (firex (fn [{:keys [open-items] :as db}]
-          (assoc db :open-items (filter #(or (= item-id %) (editing? db %))
-                                        open-items)))))
+           (assoc db :open-items (filter #(or (= item-id %) (editing? db %))
+                                         open-items)))))
 
 (defn close-all-items []
   (firex (fn [{:keys [open-items] :as db}]
-          (assoc db :open-items (filter #(editing? db %)
-                                        open-items)))))
+           (assoc db :open-items (filter #(editing? db %)
+                                         open-items)))))
 
 (defn close-trashed []
   (firex

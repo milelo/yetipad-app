@@ -41,15 +41,14 @@
         (try (<p! ((<! <task-queue)))
              ;ignore exception; value is also returned in promise
              (catch :default _e))
-        (when-not (:stop @task-runner-ctrl*) 
+        (when-not (:stop @task-runner-ctrl*)
           (recur)))
       (warn log 'task-runner-stopped)))
 
 (comment
   (swap! task-runner-ctrl* assoc :stop true)
   (swap! task-runner-ctrl* dissoc :stop)
-  (start-task-runner)
-  )
+  (start-task-runner))
 
 (defonce _ (start-task-runner))
 
@@ -63,14 +62,14 @@
        (p/then on-success)
        (p/catch on-error))))
 
-(comment 
+(comment
   (let [[p f] (defer (fn [_db] :x))]
     (-> p (p/then (partial prn :then)))
     (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
 
   (let [d (p/deferred)]
     (prn :start)
-    (p/then (do-sync (fn [_db] d)) prn) 
+    (p/then (do-sync (fn [_db] d)) prn)
     (p/catch (do-sync (fn [_db] (throw :error))) prn)
     (p/then (do-sync (fn [_db] :b)) prn)
     (p/then (do-sync (fn [db] (keys db))) prn)
@@ -79,8 +78,11 @@
 
 ;====================================task queue=================================================
 
-
-(defn fire [fsync f])
+(defn update-db
+  ([{:keys [label]} f]
+   (trace log 'update-db update-db)
+   (swap! db* f))
+  ([f] (update-db nil f)))
 
 (defn firex
   "Update the db, optionally with a promise."

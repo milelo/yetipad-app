@@ -136,14 +136,8 @@
 (defn- write-localstore [k v]
   (ls/put-data k v))
 
-(defn- <write-localstore [k v]
-  (go? (<p! (write-localstore k v))))
-
 (defn- read-localstore [k]
   (ls/get-data k))
-
-(defn- <read-localstore [k]
-  (go? (<p! (read-localstore k))))
 
 (defn- ldb-doc-data-key [doc-id]
   (str doc-id \*))
@@ -230,9 +224,6 @@
   (p/let [file-meta (drive/get-file-meta file-id {:fields "id, name, modifiedTime, trashed, appProperties"})]
     (file-meta>data file-meta)))
 
-(defn- <file-data [file-id]
-  (go? (<p! (file-data file-id))))
-
 (defn- find-file-data
   "Find latest file metadata for doc-id. Return file data or false"
   [doc-id]
@@ -243,7 +234,7 @@
       false
       (file-meta>data (first (sort-by :modifiedTime files-data))))))
 
-(defn- <find-file-data [doc-id]
+(defn <find-file-data [doc-id]
   (go? (<p! (find-file-data doc-id))))
 
 (defn- rename-file [doc-id {:keys [doc-title doc-subtitle] :as params}]
@@ -296,9 +287,6 @@
   [index]
   (drive/write-file-content @drive-file-id* index {:content-type :edn}))
 
-(defn- <write-app-data [index]
-  (go? (<p! (write-app-data index))))
-
 (defn- write-file-content
   "Write the file content to file with file-id"
   [file-id {:keys [doc-id] :as doc} & [{:keys [update-index]}]]
@@ -314,9 +302,6 @@
                (let [idx-updates (select-keys file-data [:file-change :file-id])]
                  (index-entry-merge doc-id (assoc idx-updates :doc-changes nil))))]
     file-data))
-
-(defn- <write-file-content [file-id doc & [options]]
-  (go? (<p! (write-file-content file-id doc options))))
 
 (defn- read-file-content
   "Read the document from a file. If the document is used to overwrite the current document the
@@ -334,9 +319,6 @@
                       _ (index-entry-merge (:doc-id idx-updates) (assoc idx-updates :doc-changes nil
                                                                         :doc-change (:change doc)))]))]
     doc))
-
-(defn- <read-file-content [file-id & [options]]
-  (go? (<p! (read-file-content file-id options))))
 
 (defn signed-in? []
   (drive/signed-in?))
@@ -396,11 +378,6 @@
 
 (defn- put-trashed [data]
   (ls/put-data :trashed data))
-
-(defn- <put-trashed [data]
-  (go? (<p! (put-trashed data))))
-
-;(go? (<p! ()))
 
 (defn- delete-doc [doc-id {:keys [keep-file]}]
   (p/let [local-index (read-local-index)
