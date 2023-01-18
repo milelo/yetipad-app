@@ -48,7 +48,8 @@
    :saving?        false})
 
 (defn initialize-db []
-  (db/firex
+  (db/update-db!
+   {:label 'initialize-db}
    (fn [db]
      (merge db {:tag-drawer-open?   false
                 :index-drawer-open? false
@@ -60,8 +61,7 @@
                 :online-status      false
                 :keep-doc-in-sync?  true
                 :platform           platform}
-            new-doc))
-   {:label 'initialize-db}))
+            new-doc))))
 
 ;----------app-status----------------
 
@@ -112,6 +112,9 @@
          (when-let [persist-device (on-change [:persist-device])]
            (store/write-persist-device persist-device)))))))
 
+;;Eliminate ASAP
+(reset! db/after-db-change* after-db-change!)
+
 (defn firex
   ([f]
    (db/firex f {:after! after-db-change!}))
@@ -121,7 +124,7 @@
                                         (after-db-change! old-db db))))))
 
 (defn set-app-status [status & [type]]
-  (db/update!
+  (db/update-db!
    {:label 'set-app-status}
    (fn [db]
      ;(debug log ::set-app-status status)
@@ -134,12 +137,12 @@
                           :time-ms (time-now-ms)))))))
 
 (defn clear-app-status []
-  (db/update!
+  (db/update-db!
    {:label 'clear-app-status}
    (fn [db]
      (assoc db :status {}))))
 
-(defn verified-open-items
+(defn- verified-open-items
   "return only item (ids) that are present in the document"
   [doc items]
   (if (not-empty items)
@@ -230,7 +233,7 @@
                                            (set-doc-status-index- status-index))}))
 
 (defn online-status [status]
-  (db/update!
+  (db/update-db!
    {:label 'online-status}
    (fn [{:keys [online-status] :as db}]
      (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
@@ -333,7 +336,8 @@
      (let [{:keys [doc-id doc persist-doc open-items]} loaded
            doc (or doc {:doc-id doc-id})]
        (sync-drive-file doc {:src ::read-doc-by-id-handler-})
-       (assoc db :doc doc
+       (assoc db 
+              :doc doc
               :persist-doc (or persist-doc {})
               :open-items (verified-open-items doc open-items))))
    {:label 'read-doc-by-id-handler-}))
@@ -466,10 +470,10 @@
    (fn [{doc :doc}]
      (let [item-id (new-item-id doc)
            iso-date-time (utils/iso-time-now)]
-       (db/update! (fn [db]
-                    (assoc-in db [:doc item-id] {:id     item-id
-                                                 :kind   kind
-                                                 :create iso-date-time})))
+       (db/update-db! (fn [db]
+                     (assoc-in db [:doc item-id] {:id     item-id
+                                                  :kind   kind
+                                                  :create iso-date-time})))
        (open-item item-id)
        (start-edit item-id)))))
 

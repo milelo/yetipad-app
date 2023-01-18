@@ -28,7 +28,7 @@
         f (fn []
             (-> (p/do (?f @db*));use 'do' to convert all return types and exceptions to a promise
                 (p/then (partial p/resolve! p))
-                (p/catch (partial p/reject! p))) 
+                (p/catch (partial p/reject! p)))
             p)]
     (p/catch p (partial log/warn log 'defer "task rejected: "))
     [p f]))
@@ -47,10 +47,13 @@
       (log/error log 'task-runner 'stopped)))
 
 (comment
-  (swap! task-runner-ctrl* assoc :stop true) 
+  (swap! task-runner-ctrl* assoc :stop true)
   (start-task-runner))
 
 (defonce _ (start-task-runner))
+
+;Eliminate ASAP
+(def after-db-change* (core/atom nil))
 
 (defn  do-sync
   ([?f]
@@ -81,13 +84,17 @@
 
 ;====================================task queue=================================================
 
-(defn update!
+(defn update-db!
   ([{:keys [label]} f]
    (trace log 'update-db label)
-   (swap! db* (fn [db]
-                (assert (::db? db) "Attempted db overwrite.")
-                (f db))))
-  ([f] (update! nil f)))
+   (let [old-db @db*
+         new-db (swap! db* (fn [db]
+                             (assert (::db? db) "Attempted db overwrite.")
+                             (f db)))]
+     (when-let [after! @after-db-change*]
+       (after! old-db new-db))
+     new-db))
+  ([f] (update-db! nil f)))
 
 (defn firex
   "Update the db, optionally with a promise."
