@@ -34,28 +34,32 @@
 
 (def task-runner-ctrl* (core/atom {}))
 
-(defn start-task-runner []
-  ;execute queued do-sync functions
-  (trace log 'task-runner-started)
+(defn task-runner 
+  "Start the task-runner to execute queued do-sync functions"
+  []
+  (trace log 'task-runner 'started)
   (swap! task-runner-ctrl* dissoc :stop)
   (go (loop []
         (try (let [p ((<! <task-queue))]
-               (trace log 'start-task-runner 'task-started)
+               (trace log 'task-runner 'task-started)
                (<p! p) ;wait for task to complete
                )
              ;ignore exceptions thrown by <p!; they are handled by do-sync default handler
              (catch :default _e))
-        (trace log 'start-task-runner 'task-complete)
+        (trace log 'task-runner 'task-complete)
         (when-not (:stop @task-runner-ctrl*)
           (recur)))
-      (log/error log 'task-runner-stopped)))
+      (log/error log 'task-runner 'stopped)))
 
-(comment
+(defn- restart-task-runner []
   (swap! task-runner-ctrl* assoc :stop true)
   (put! <task-queue (fn [] (prn :stop-task-queue)))
-  (start-task-runner))
+  (task-runner))
 
-(defonce _ (start-task-runner))
+(comment
+  (restart-task-runner))
+
+(defonce _ (task-runner))
 
 ;Eliminate ASAP
 (def after-db-change* (core/atom nil))
@@ -104,8 +108,13 @@
    (trace log 'update-db label)
    (let [old-db @db*
          new-db (swap! db* (fn [db]
-                             (assert (::db? db) "Attempted db overwrite.")
-                             (f db)))]
+                             (let [new-db (f db)]
+                               (cond
+                                 (nil? new-db) db
+                                 (and (map? new-db) (::db? new-db)) new-db
+                                 :else (do
+                                         (log/error log 'update-db! "Attempted db overwrite.")
+                                         db)))))]
      (when-let [after! @after-db-change*]
        (after! old-db new-db))
      new-db))
