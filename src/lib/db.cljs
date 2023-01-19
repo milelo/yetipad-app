@@ -15,6 +15,10 @@
 
 (defonce db* (r/atom {::db? true}))
 
+;provide db binding to enable update-db to guard against db changes.
+;todo implement and provide 'ignore' key paths.
+(def ^:dynamic *db*)
+
 ;====================================task queue=================================================
 
 (defonce <task-queue (chan 20))                             ;go-block queue
@@ -26,7 +30,8 @@
   [?f]
   (let [p (p/deferred)
         f (fn []
-            (-> (p/do (?f @db*));use 'do' to convert all return types and exceptions to a promise
+            (-> (p/do (binding [*db* @db*]
+                        (?f *db*)));use 'do' to convert all return types and exceptions to a promise
                 (p/then (partial p/resolve! p))
                 (p/catch (partial p/reject! p)))
             p)]
@@ -79,7 +84,8 @@
 
 (defn do-async [f]
   (try
-    (f @db*)
+    (binding [*db* @db*]
+      (f *db*))
     (catch :default e (log/error log 'do-async "unhandled task error: " e))))
 
 (defn- $delay [ms & [v]]
@@ -93,6 +99,8 @@
     (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
 
   (p/then ($delay 5000 :delay-end) prn)
+  
+  (p/then (do-sync (fn [] *db*)) (partial prn :****db))
 
   (let []
     (prn :start)
@@ -110,6 +118,9 @@
    (trace log 'update-db label)
    (let [old-db @db*
          new-db (swap! db* (fn [db]
+                             (when (and *db* (not= db *db*))
+                               (warn log 'update-db! "undeclared db async change:\n" 
+                                     (trace-diff 'do-sync-db *db* 'update-db!-db db)))
                              (let [new-db (f db)]
                                (cond
                                  (nil? new-db) db
