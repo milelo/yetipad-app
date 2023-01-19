@@ -78,7 +78,9 @@
                    (partial log/error log 'do-sync "unhandled task error: "))))))
 
 (defn do-async [f]
-  (f @db*))
+  (try
+    (f @db*)
+    (catch :default e (log/error log 'do-async "unhandled task error: " e))))
 
 (defn- $delay [ms & [v]]
   (let [p (p/deferred)]
