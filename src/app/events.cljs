@@ -108,9 +108,9 @@
          (save-on-doc-change-interceptor! old-db db)
          (navbar-interceptor! old-db db)
          (when-let [persist-doc (on-change [:persist-doc])]
-           (store/write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
+           (store/$write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
          (when-let [persist-device (on-change [:persist-device])]
-           (store/write-persist-device persist-device)))))))
+           (store/$write-persist-device persist-device)))))))
 
 ;;Eliminate ASAP
 (reset! db/after-db-change* after-db-change!)
@@ -163,8 +163,8 @@
       (if (= old-doc-id doc-id)
         (assoc db :open-items (verified-open-items doc open-items))
         (do
-          (p/let [local-doc (store/read-local-doc doc-id)
-                  p-doc (store/read-persist-doc doc-id)]
+          (p/let [local-doc (store/$read-local-doc doc-id)
+                  p-doc (store/$read-persist-doc doc-id)]
             (read-doc-by-id-handler- {:doc-id      doc-id
                                       :doc         (or local-doc nil)
                                       :persist-doc (or p-doc nil)
@@ -317,7 +317,7 @@
 ;(def sign-out store/sign-out)
 
 (defn sign-in! []
-  (drive/sign-in!))
+  (drive/$sign-in!))
 
 (defn sign-out! []
   (drive/sign-out!))
@@ -582,10 +582,10 @@
                                           (assoc item :title title)))))
        db))))
 
-(defn rename-file [params]
+(defn rename-file! [params]
   (db/do-sync
    (fn [db]
-     (store/rename-file (get-in db [:doc :doc-id]) params)) {:on-success sync-doc-index!}))
+     (store/$rename-file (get-in db [:doc :doc-id]) params)) {:on-success sync-doc-index!}))
 
 (defn options [options-update]
   ;write options only after accept-edit
@@ -599,7 +599,7 @@
                                     (when (not= (get-in old-options path) v)
                                       v)))]
          (when (or (on-change [:doc-title]) (on-change [:doc-subtitle]))
-           (rename-file options))
+           (rename-file! options))
          (update-in db [:doc :options] merge options))
        db))))
 
@@ -829,18 +829,18 @@
 (defn dump-file-meta []
   (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
-     (p/let [idx (store/read-local-index)
+     (p/let [idx (store/$read-local-index)
              {:keys [file-id] :as idxe} (get idx doc-id)
              _ (println ::dump-file-meta :doc-d doc-id :file-id file-id :idxe idxe)
              ;meta (store/file-meta file-id [:modifiedTime])
              ;meta (store/file-meta file-id)
-             meta (store/find-file-data doc-id)]
+             meta (store/$find-file-data doc-id)]
        (println "File meta:")
        (pprint meta))
      db)))
 
 (defn debug-find-file []
-  (p/let [files (store/list-app-drive-files {:fields  "files(id, name, modifiedTime, trashed, appProperties)"
+  (p/let [files (store/$list-app-drive-files {:fields  "files(id, name, modifiedTime, trashed, appProperties)"
                                                     ;:name    "kgrsc300.ydn"
                                              :trashed false
                                              :doc-id  "kgrsc300"})]
@@ -857,8 +857,8 @@
 (defn dump-index []
   (firex
    (fn [{{:keys [doc-id]} :doc :as db}]
-     (p/let [local-index (store/read-local-index)
-             file-data-list (store/read-file-data-list)]
+     (p/let [local-index (store/$read-local-index)
+             file-data-list (store/$read-file-data-list)]
        (println "\nlocal index entry:")
        (pprint local-index)
        (println "\nfiles data:")
@@ -869,7 +869,7 @@
      db)))
 
 (defn debug-list-app-drive-files []
-  (p/let [files (store/list-app-drive-files {:fields "files(id, name, modifiedTime, trashed, appProperties)"
+  (p/let [files (store/$list-app-drive-files {:fields "files(id, name, modifiedTime, trashed, appProperties)"
                                                     ;:name    "kgrsc300.ydn"
                                                     ;:trashed false
                                              })]
@@ -878,8 +878,8 @@
 (defn debug-trash-file []
   (p/let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
           file-id "1ZYqrs1QLvoB5P4GhV8Q9Hz0FsyDDPSIR"     ;"kgrsc300.ydn"
-          response (drive/trash-file file-id)
-          file-meta (store/file-meta file-id)]
+          response (drive/$trash-file file-id)
+          file-meta (store/$file-meta file-id)]
     (println "Trash file")
     (pprint (-> response js->clj))
     (pprint file-meta)))
@@ -888,7 +888,7 @@
   (let [file-id "1zSgHNyQ3Z6h3lNkkFtppxmJ7ivvS5sht"
         file-id "1ZYqrs1QLvoB5P4GhV8Q9Hz0FsyDDPSIR"     ;"kgrsc300.ydn"
         ]
-    (p/let [response (drive/read-file-edn file-id)]
+    (p/let [response (drive/$read-file-edn file-id)]
       (info log ::debug-file-content response))))
 
 (defn debug-file-compress []
@@ -897,13 +897,13 @@
      (p/let [;file-id (store/create-file "compress-test" nil)
              value (fn [c] (.charCodeAt c 0))
              file-id "1QDGeNA9aIWD7KDN60wVKv9r-FY5gZK8y"
-             read (drive/read-file-edn file-id)
+             read (drive/$read-file-edn file-id)
              read (or read (p/let [content {:en :lz
                                             :d (-> db :doc pr-str store/compress)
                                             :r (-> db :doc pr-str)}
-                                   fields (drive/write-file-content file-id content {:content-type :edn})]
+                                   fields (drive/$write-file-content file-id content {:content-type :edn})]
                              (debug log ::debug-file-compress 'write-fields fields)
-                             (drive/read-file-edn file-id)))
+                             (drive/$read-file-edn file-id)))
              {:keys [d r]} read
              good (-> r store/compress)
              compare (filter identity (map (fn [dc rc]
@@ -924,14 +924,14 @@
      db)))
 
 (defn debug-rename-file []
-  (db/do-sync (fn [] (store/rename-file "klhurigk" {:title "My File Name"}))
+  (db/do-sync (fn [] (store/$rename-file "klhurigk" {:title "My File Name"}))
               {:on-success #(debug log ::debug-rename-file 'response %)}))
 
 (defn debug-add-properties []
   (p/let [file-id "1R8JZWxzjLAWYCXIb5Y493AemAoj9G-8W"     ;"kgrsc300.ydn"
           file-id "1CQXBtftHN-cUxgC-Au9-VpuWKyJbLxjc"     ;
-          response (drive/add-properties file-id {:doc-id "kgtbg5v1"})
-          file-meta (store/file-meta file-id)]
+          response (drive/$add-properties file-id {:doc-id "kgtbg5v1"})
+          file-meta (store/$file-meta file-id)]
     (println "Add property")
     (pprint (get-in response [:appProperties :doc-id]))
     (pprint response)
