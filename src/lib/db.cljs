@@ -30,24 +30,29 @@
                 (p/then (partial p/resolve! p))
                 (p/catch (partial p/reject! p)))
             p)]
-    (p/catch p (partial log/warn log 'defer "task rejected: "))
     [p f]))
 
 (def task-runner-ctrl* (core/atom {}))
 
 (defn start-task-runner []
-  ;execute queued go-block functions
+  ;execute queued do-sync functions
   (trace log 'task-runner-started)
   (swap! task-runner-ctrl* dissoc :stop)
   (go (loop []
-        ((<! <task-queue))
-        (trace log 'start-task-runner 'started-task)
+        (try (let [p ((<! <task-queue))]
+               (trace log 'start-task-runner 'task-started)
+               (<p! p) ;wait for task to complete
+               )
+             ;ignore exceptions thrown by <p!; they are handled by do-sync default handler
+             (catch :default _e))
+        (trace log 'start-task-runner 'task-complete)
         (when-not (:stop @task-runner-ctrl*)
           (recur)))
-      (log/error log 'task-runner 'stopped)))
+      (log/error log 'task-runner-stopped)))
 
 (comment
   (swap! task-runner-ctrl* assoc :stop true)
+  (put! <task-queue (fn [] (prn :stop-task-queue)))
   (start-task-runner))
 
 (defonce _ (start-task-runner))
@@ -59,27 +64,36 @@
   ([?f]
    (let [[p f] (defer ?f)]
      (put! <task-queue f)
-     p))
+     ;report unhandled errors
+     (-> p (p/catch (partial log/error log 'do-sync "unhandled task error: ")))))
   ([?f {:keys [on-success on-error]}]
    (-> (do-sync ?f)
        (p/then #(and on-success (on-success)))
-       (p/catch #(and on-error (on-error))))))
+       (p/catch #(if on-error
+                   (on-error)
+                   (partial log/error log 'do-sync "unhandled task error: "))))))
 
 (defn do-async [f]
   (f @db*))
+
+(defn- $delay [ms & [v]]
+  (let [p (p/deferred)]
+    (js/setTimeout #(p/resolve! p v) ms)
+    p))
 
 (comment
   (let [[p f] (defer (fn [_db] :x))]
     (-> p (p/then (partial prn :then)))
     (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
 
-  (let [d (p/deferred)]
+  (p/then ($delay 5000 :delay-end) prn)
+
+  (let []
     (prn :start)
-    (p/then (do-sync (fn [_db] d)) prn)
+    (p/then (do-sync (fn [_db] ($delay 5000 :a))) prn)
     (p/catch (do-sync (fn [_db] (throw :error))) prn)
     (p/then (do-sync (fn [_db] :b)) prn)
-    (p/then (do-sync (fn [db] (keys db))) prn)
-    (js/setTimeout #(p/resolve! d :a) 5000)))
+    (p/then (do-sync (fn [db] (keys db))) prn)))
 
 
 ;====================================task queue=================================================
