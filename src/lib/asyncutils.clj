@@ -31,15 +31,14 @@
   is a js/Error."
   ([c e]
    `(let [val# (cljs.core.async/<! ~c)]
-      (if (instance? js/Error val#)
+      (if (or (instance? js/Error val#) (instance? cljs.core/ExceptionInfo val#))
         (when ~e (~e val#))
         val#)))
   ([c]
    `(let [val# (cljs.core.async/<! ~c)]
-      (if (instance? js/Error val#)
+      (if (or (instance? js/Error val#) (instance? cljs.core/ExceptionInfo val#))
         (throw val#)
-        val#)))
-  )
+        val#))))
 
 (defmacro go-let
   "Like (go (let ...))"

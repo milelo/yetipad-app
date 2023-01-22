@@ -21,7 +21,7 @@
   (or text (.generateParagraph lorem-ipsum)))
 
 (defn error? [v]
-  (instance? js/Error v))
+  (or (instance? js/Error v) (instance? ExceptionInfo v)))
 
 (defn throw-error [& s]
   (throw (js/Error. (apply str s))))
