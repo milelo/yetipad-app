@@ -70,7 +70,7 @@
         ($write-local-index (assoc idx doc-id updated))))))
 
 (defn- index-entry-merge! [doc-id updates]
-  (db/do-sync
+  (db/do-sync 'index-entry-merge!
    #(index-entry-merge doc-id updates)))
 
 (defn $read-local-doc
@@ -111,7 +111,7 @@
 (defn write-local-doc!
   "Write doc to localstore and update the localstore index."
   [doc & [options]]
-  (db/do-sync
+  (db/do-sync 'write-local-doc!
    #($write-local-doc doc)
    options))
 
@@ -285,7 +285,7 @@
 (defn- $put-trashed [data]
   (ls/$put-data :trashed data))
 
-(defn- delete-doc [doc-id {:keys [keep-file]}]
+(defn delete-doc [doc-id {:keys [keep-file]}]
   (p/let [local-index ($read-local-index)]
     ;p/let body items wait for promise to resolve like a p/do
     ($write-local-index (dissoc local-index doc-id))
@@ -299,25 +299,6 @@
           ($put-trashed (conj trashed doc-id)))))
     nil))
 
-(comment
-  ;p/let body items wait for promise to resolve like a p/do
-  (let [d1 (p/deferred)
-        d2 (p/deferred)]
-    (p/let []
-      ((fn []
-         (js/setTimeout #(p/resolve! d1 :a) 5000)
-         d1))
-      (prn :ax)
-      ((fn []
-         (js/setTimeout #(p/resolve! d2 :b) 5000)
-         d2))
-      (prn :bx))))
-
-(defn delete-doc! [doc-id options listeners]
-  ;todo test offline
-  (db/do-sync
-   #(delete-doc doc-id options) listeners))
-
 (defn trash-files-pending []
   (p/let [trashed ($get-trashed)
           _  (when (not-empty trashed)
@@ -329,7 +310,7 @@
                  nil))]))
 
 (defn trash-files-pending! [listeners]
-  (db/do-sync
+  (db/do-sync 'trash-files-pending!
    #(trash-files-pending) listeners))
 
 (defn- doc-item-change-status [file-change change root-change]
@@ -534,7 +515,7 @@
 
 (defn copy-items! [source-doc target-doc-or-id item-ids listeners]
   (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])
-  (db/do-sync
+  (db/do-sync 'copy-items!
    #($copy-items source-doc target-doc-or-id item-ids) listeners))
 
 (defn- sync-doc-content
@@ -612,7 +593,7 @@
       (and on-open-doc (on-open-doc doc)))))
 
 (defn open-local-file! [db doc listeners]
-  (db/do-sync
+  (db/do-sync 'open-local-file!
    #(open-local-file db doc listeners) listeners))
 
 (defn sync-doc-index
@@ -671,9 +652,6 @@
       (on-doc-status doc-status)
       nil)))
 
-(defn sync-doc-index! [listeners]
-  (db/do-sync
-   #(sync-doc-index listeners) listeners))
 
 (defn- $create-file [file-name doc-id]
   (p/let [file-name (str file-name ".ydn")
@@ -682,7 +660,7 @@
                                         :properties (when doc-id {:doc-id doc-id})})]
     (:id file-meta)))
 
-(defn sync-localstore
+(defn $sync-localstore
   "Checks for external localstore changes (from another browser instance).
   Reads localstore doc compares with specified doc change date.
   "
@@ -698,15 +676,7 @@
           (and on-ls-change (on-ls-change local-doc)))
         (and on-in-sync (on-in-sync))))))
 
-(defn sync-localstore!
-  "Checks for external localstore changes (from another browser instance).
-  Reads localstore doc compares with specified doc change date.
-  "
-  [doc listeners]
-  (db/do-sync
-   #(sync-localstore doc listeners)))
-
-(defn- sync-drive-file-
+(defn- sync-drive-file-$
   "Sync doc with its drive file and updates localstore and drive accordingly."
   ;Drive file could have been updated from another device.
   ;index-entry provides the file-change timestamp of the previous sync so it can be compared with the current
@@ -758,7 +728,7 @@
         (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
         nil))))
 
-(defn sync-drive-file
+(defn $sync-drive-file
   "Synchronises local doc with its Drive file doc.
   If doc-or-id is a doc-id then doc is read from localstore.
   "
@@ -779,7 +749,7 @@
           file-metadata (and file-id ($file-data file-id))
           file-metadata (or file-metadata (and doc-id ($find-file-data doc-id)) nil)]
          ;(debug log 'sync-drive-file! 'file-data (pprintl file-data))
-    (sync-drive-file- index-entry file-metadata doc listeners)))
+    (sync-drive-file-$ index-entry file-metadata doc listeners)))
 
 (defn sync-drive-file!
   "Synchronises local doc with its Drive file doc.
@@ -790,9 +760,8 @@
   ;to check if the Drive file has been updated from another device.
   ;If there is a mismatch local doc and Drive doc need to be synchronised.
   [doc-or-id listeners]
-  (assert (or (string? doc-or-id) (map? doc-or-id)) {:doc-or-id doc-or-id :src (:src listeners)})
-  (db/do-sync
-   #(sync-drive-file doc-or-id listeners) listeners))
+  (db/do-sync 'sync-drive-file!
+   #($sync-drive-file doc-or-id listeners) listeners))
 
 (defn- $drive-data-file-id
   "Searches for the apps drive-data-file and returns its id.

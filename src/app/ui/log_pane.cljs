@@ -37,7 +37,7 @@
 
 (defn debug-settings-button []
   (let [{:keys [icon title]} (reg/rget :log-config)]
-    [ui/item-button icon title #(events/open-item :log-config)]))
+    [ui/item-button icon title #(events/open-item! :log-config)]))
 
 (defn entry [{:keys [level package time args]}]
   (let [s {:style {:margin-right 4}}

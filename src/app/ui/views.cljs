@@ -137,13 +137,13 @@
      (for-all [{:keys [id title kind create change head__]} items-by-history]
               ^{:key id} [:<>
                           (when head__ [date-item (ui-utils/iso-time->formatted-date (or change create))])
-                          [index-list-item (reg/rget kind :icon) title #(events/open-item id)]])]))
+                          [index-list-item (reg/rget kind :icon) title #(events/open-item! id)]])]))
 
 (defn title-index-pane []
   (let [items-filtered @(subs/items-by-title-filtered @search-value*)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [id title kind]} items-filtered]
-              ^{:key id} [index-list-item (reg/rget kind :icon) title #(events/open-item id)])]))
+              ^{:key id} [index-list-item (reg/rget kind :icon) title #(events/open-item! id)])]))
 
 (defn doc-list-pane []
   (let [docs @subs/doc-list*
@@ -159,8 +159,8 @@
                                                          (when (not= selected-doc-id doc-id)
                                                            (events/move-items doc-id))
                                                          (do
-                                                           (events/read-doc-by-id- doc-id)
-                                                           (events/select-index-view :index-history))))}
+                                                           (events/read-doc-by-id! doc-id)
+                                                           (events/select-index-view! :index-history))))}
                               [:> Tooltip {:title (or subtitle file-description doc-id "")}
                                [:> ListItemText {:primary (str (or title file-name doc-id) " (" (name status) \))}]]])]))
 
@@ -204,7 +204,7 @@
 (defn menu-list-item [icon text on-click]
   [:> ListItem {:button   true
                 :on-click (fn []
-                            (events/open-tag-drawer false)
+                            (events/open-tag-drawer! false)
                             (on-click))}
    (when icon [:> ListItemIcon [:> icon]])
    [:> ListItemText {:primary text}]])
@@ -213,7 +213,7 @@
   (let [index-view @subs/index-view*
         tab (fn [id label]
               [:> Tab {:label    label
-                       :on-click #(events/select-index-view id)
+                       :on-click #(events/select-index-view! id)
                        :style    {:text-transform :none
                                   :min-width      50
                                   :min-height     0         ;override and let line-height determine
@@ -248,7 +248,7 @@
 
 (defn static-pane-list-item [kind]
   (let [{:keys [title icon]} (reg/rget kind)]
-    [menu-list-item icon title #(events/open-item kind #{:disable-toggle})]))
+    [menu-list-item icon title #(events/open-item! kind #{:disable-toggle})]))
 
 (defn tag-drawer []
   ;left side drawer
@@ -256,13 +256,13 @@
         show-close-main-menu false]
     [:> Drawer
      {:open     @subs/main-menu-open*
-      :on-close #(events/open-tag-drawer false)}
+      :on-close #(events/open-tag-drawer! false)}
      (when show-close-main-menu
        [:div {:style {:display        :flex
                       :alignItems     :center
                       :justifyContent :flex-end
                       :padding        "0 8px"}}
-        [:> chevron-left-icon {:on-click #(events/open-tag-drawer false)}]])
+        [:> chevron-left-icon {:on-click #(events/open-tag-drawer! false)}]])
      (when show-close-main-menu
        [:> Divider])
      [:div {:style {:flex-grow 2
@@ -312,7 +312,7 @@
     [:> Drawer
      {:open     @subs/index-menu-open*
       :anchor   :right
-      :on-close #(events/open-index-drawer false)}
+      :on-close #(events/open-index-drawer! false)}
      [:div {:style {:position :relative
                     :width    240
                     :anchor   :right}}
@@ -323,7 +323,7 @@
                        :padding    "0 8px"
                        ;; ...theme.mixins.toolbar,
                        }}
-         [:> chevron-right-icon {:on-click #(events/open-index-drawer false)}]])
+         [:> chevron-right-icon {:on-click #(events/open-index-drawer! false)}]])
       (when show-close-index-menu
         [:> Divider])
       [index-pane]]]))
@@ -370,7 +370,7 @@
             [:> IconButton {:title    "Open drawer"
                             :color    :inherit
                             :style    menu-btn-style
-                            :on-click #(events/open-tag-drawer true)} [:> tree-menu-icon]])
+                            :on-click #(events/open-tag-drawer! true)} [:> tree-menu-icon]])
           [:> Tooltip {:title (or @subs/doc-subtitle* "")}
            [:> Typography {:variant :h6
                            :color   :inherit
@@ -381,7 +381,7 @@
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}
-                          :on-click events/sync-local} (case online-status
+                          :on-click events/sync-local!} (case online-status
                                                          :syncing [:> syncing-icon]
                                                          :uploading [:> uploading-icon]
                                                          :downloading [:> downloading-icon]
@@ -405,7 +405,7 @@
           [:> IconButton {:title    "index menu"
                           :color    :inherit
                           :style    menu-btn-style
-                          :on-click #(events/open-index-drawer true)} [:> menu-icon]]])]
+                          :on-click #(events/open-index-drawer! true)} [:> menu-icon]]])]
 
       [ui/error-boundary ::tag-drawer [tag-drawer]]
       [ui/error-boundary ::index-drawer [index-drawer]]

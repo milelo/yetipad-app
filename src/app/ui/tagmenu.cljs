@@ -29,8 +29,8 @@
                                                                (swap! selected-elements* update id #(if % false element)))
                                                              (do
                                                                (reset! selected-elements* {})
-                                                               (events/open-tag-drawer false)
-                                                               (events/open-item id {:disable-toggle true})
+                                                               (events/open-tag-drawer! false)
+                                                               (events/open-item! id {:disable-toggle true})
                                                                )))
                                                }
                                   [:<>

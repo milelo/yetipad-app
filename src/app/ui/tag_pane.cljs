@@ -47,7 +47,7 @@
 (defn tag-list [parent-id]
         (let [[tags other] @(subs/child-data-by-tag-id parent-id)]
     [:> List (for-all [{:keys [id kind title]} (concat other tags)]
-               ^{:key id} [index-list-item (reg/rget kind :icon) title #(events/open-item id)])]))
+               ^{:key id} [index-list-item (reg/rget kind :icon) title #(events/open-item! id)])]))
 
 (defn content-pane [{:keys [id content]}]
   ;break-word is required to avoid horizontal scroll bar on long words ie url's
@@ -62,7 +62,7 @@
                                } options)])
 
 (defn open-all-button [id]
-  [ui/item-button open-all-icon "open all children" #(events/open-tag-children id)])
+  [ui/item-button open-all-icon "open all children" #(events/open-tag-children! id)])
 
 (defn tag-pane [{:keys [item]}]
   (if-let [edit-item @(subs/edit-item (:id item))]

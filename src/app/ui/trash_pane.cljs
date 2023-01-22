@@ -48,7 +48,7 @@
      [:> List
       (for-all [{:keys [id kind title]} trashed]
         (let [icon (reg/rget kind :icon)]
-          ^{:key id} [index-list-item icon title #(events/open-item id)]))]]
+          ^{:key id} [index-list-item icon title #(events/open-item! id)]))]]
     ))
 
 

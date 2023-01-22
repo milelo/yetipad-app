@@ -86,7 +86,7 @@
              :size     :small
              ;:color    :primary
              :clickable false ;hack: avoid mui bug with 'true'
-             :on-click #(events/open-item id)
+             :on-click #(events/open-item! id)
              }]])
 
 (defn tag-viewer [id]
