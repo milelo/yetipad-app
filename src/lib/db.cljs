@@ -4,10 +4,13 @@
    [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
    [lib.asyncutils :as au :refer [put-last!] :refer-macros [<? go? go-try goc go-let]]
-   [cljs.core.async.interop :refer-macros [<p!]]
+   [lib.utils :as utils]
+   ;https://cljdoc.org/d/andare/andare/1.0.0/api/cljs.core.async.interop
+   [cljs.core.async.interop :refer [p->c] :refer-macros [<p!]]
    [promesa.core :as p]
    [reagent.core :as r]
    [clojure.core :as core]
+   [lib.debug :as debug :refer [we wd]]
    [cljs-bean.core :refer [bean ->clj ->js]]
    [clojure.pprint :refer [pprint]]))
 
@@ -19,68 +22,85 @@
 ;todo implement and provide 'ignore' key paths.
 (def ^:dynamic *db*)
 
+;DEPRECATED Eliminate ASAP
+(def after-db-change* (core/atom nil))
+
 ;====================================task queue=================================================
+
 
 (defonce <task-queue (chan 20))                             ;go-block queue
 
-(defn defer
-  "?f can return a value or promise
-   p will be resolved after the return value of ?f resolved.
-   ?f will be called after f is called also returning p"
-  [?f]
-  (let [p (p/deferred)
-        f (fn []
-            (-> (p/do (binding [*db* @db*]
-                        (?f *db*)));use 'do' to convert all return types and exceptions to a promise
-                (p/then (partial p/resolve! p))
-                (p/catch (partial p/reject! p)))
-            p)]
-    [p f]))
+(defn task-runner []
+  ;execute queued go-block functions
+  (trace log 'task-runner-started)
+  (go-loop [i 0]
+    (when-let [[<fn <c label] (<! <task-queue)]
+      (when-let [[v _port] (try (binding [*db* @db*]
+                                  (trace log 'task-runner 'task-started label i)
+                                  (async/alts! [(<fn *db*) (async/timeout 10000)]))
+                                (catch :default e [e nil]))]
+        (trace log 'task-runner 'task-complete label i)
+        (put! <c (or v (js/Error. (str "task timeout: " i)))))
+      (close! <c)
+      (recur (inc i)))
+    (log/error log 'task-runner-stopped)))
 
-(def task-runner-ctrl* (core/atom {}))
-
-(defn task-runner 
-  "Start the task-runner to execute queued do-sync functions"
-  []
-  (trace log 'task-runner 'started)
-  (swap! task-runner-ctrl* dissoc :stop)
-  (go (loop []
-        (try (let [p ((<! <task-queue))]
-               (trace log 'task-runner 'task-started)
-               (<p! p) ;wait for task to complete
-               )
-             ;ignore exceptions thrown by <p!; they are handled by do-sync default handler
-             (catch :default _e))
-        (trace log 'task-runner 'task-complete)
-        (when-not (:stop @task-runner-ctrl*)
-          (recur)))
-      (log/error log 'task-runner 'stopped)))
-
-(defn- restart-task-runner []
-  (swap! task-runner-ctrl* assoc :stop true)
-  (put! <task-queue (fn [] (prn :stop-task-queue)))
+(defn- start-task-runner []
   (task-runner))
 
+(defn- stop-task-runner []
+  (put! <task-queue false))
+
 (comment
-  (restart-task-runner))
+  (stop-task-runner)
+  (start-task-runner)
+
+  (go (let [<c (chan)
+            _ (put! <c :a)
+            [v _p] (async/alts! [<c (async/timeout 1000)])]
+        (prn (or v :b)))))
 
 (defonce _ (task-runner))
 
-;Eliminate ASAP
-(def after-db-change* (core/atom nil))
 
-(defn  do-sync
-  ([?f]
-   (let [[p f] (defer ?f)]
-     (put! <task-queue f)
-     ;report unhandled errors
-     (-> p (p/catch (partial log/error log 'do-sync "unhandled task error: ")))))
-  ([?f {:keys [on-success on-error]}]
-   (-> (do-sync ?f)
-       (p/then #(and on-success (on-success)))
-       (p/catch #(if on-error
-                   (on-error)
-                   (partial log/error log 'do-sync "unhandled task error: "))))))
+(defn <do-sync
+  "Adds a function returning a channel yielding a single result (usually a go block) to a task queue.
+  Sequences calls to go-blocks submitted from concurrent processes.
+  Required to support external async calls.
+  <fn is a function that returns a channel yielding a single value.
+  Listeners: on-success & on-error notify of completion or error respectively.
+  "
+  ([label <fn]
+   (go-let [<do (fn [<fn]
+                  (let [<c (chan)]
+                    (put! <task-queue [<fn <c label])
+                    <c))]
+           (<! (<do <fn))))
+  ([label <fn {:keys [on-success on-error]}]
+   (go-let [v (<! (<do-sync label <fn))]
+           (if (utils/error? v)
+             (if on-error (on-error v) (warn log '<do-sync v))
+             (when on-success (on-success v))))))
+
+(defn do-sync
+  ([label $fn]
+  ;adaptor for channel to promise based do-sync
+   (let [d (p/deferred)]
+     (go (p/resolve! d (<? (<do-sync label
+                                     (fn [db]
+                                       (go? (<p! (p/do ($fn db))))))
+                           #(p/reject! d %))))
+     d))
+  ([label $f {:keys [on-success on-error]}]
+   (let [p (do-sync label $f)]
+     (-> p
+         (p/then #(and on-success (on-success)))
+         (p/catch #(if on-error
+                     (on-error)
+                     (fn [e]
+                       (log/error log 'do-sync "unhandled task error: " e)
+                       e))))
+     p)))
 
 (defn do-async [f]
   (try
@@ -88,26 +108,40 @@
       (f *db*))
     (catch :default e (log/error log 'do-async "unhandled task error: " e))))
 
+(defn- <delay [ms v]
+  (let [<c (chan)]
+    (js/setTimeout #(put! <c (or v false)) ms)
+    <c))
+
+(comment
+  (stop-task-runner)
+  (start-task-runner)
+
+  (go (prn (<! (<do-sync :a (fn [_db] (<delay 5000 :a))))))
+  (go
+    (prn :start)
+    (go (prn (<! (<do-sync :a (fn [_db] (<delay 5000 :a))))))
+    (go (prn (<! (<do-sync 'error-test (fn [_db] (go? (throw (ex-info "error" {:error :an-error}))))))))
+    (go (prn (<! (<do-sync :b (fn [_db] (go :b))))))
+    (go (prn (<! (<do-sync 'db-keys (fn [db] (go (keys db)))))))))
+
 (defn- $delay [ms & [v]]
   (let [p (p/deferred)]
     (js/setTimeout #(p/resolve! p v) ms)
     p))
 
 (comment
-  (let [[p f] (defer (fn [_db] :x))]
-    (-> p (p/then (partial prn :then)))
-    (js/setTimeout #(-> (f) (p/then (partial prn :timeout))) 5000))
+  (p/then (do-sync :a (fn [_db] ($delay 5000 :a))) prn)
 
-  (p/then ($delay 5000 :delay-end) prn)
-  
-  (p/then (do-sync (fn [] *db*)) (partial prn :****db))
+  (p/then (do-sync :b (fn [_db] :b)) prn)
 
   (let []
     (prn :start)
-    (p/then (do-sync (fn [_db] ($delay 5000 :a))) prn)
-    (p/catch (do-sync (fn [_db] (throw :error))) prn)
-    (p/then (do-sync (fn [_db] :b)) prn)
-    (p/then (do-sync (fn [db] (keys db))) prn)))
+    (p/then (do-sync :a (fn [_db] ($delay 5000 :a))) prn)
+    (p/catch (do-sync 'error (fn [_db] (throw (ex-info "error" {:error :an-error})))) prn)
+    (p/then (do-sync :b (fn [_db] :b)) prn)
+    (p/then (do-sync 'db-keys (fn [db] (keys db))) prn)))
+
 
 
 ;====================================task queue=================================================
@@ -119,7 +153,7 @@
    (let [old-db @db*
          new-db (swap! db* (fn [db]
                              (when (and *db* (not= db *db*))
-                               (warn log 'update-db! "undeclared db async change:\n" 
+                               (warn log 'update-db! "undeclared db async change:\n"
                                      (trace-diff 'do-sync-db *db* 'update-db!-db db)))
                              (let [new-db (f db)]
                                (cond
@@ -134,7 +168,7 @@
   ([f] (update-db! nil f)))
 
 (defn firex
-  "Update the db, optionally with a promise."
+  "^:deprecated - Update the db, optionally with a promise."
   ([f {:keys [label before! after!]}]
    (let [old-db @db*
          _ (and before! (before! old-db))
