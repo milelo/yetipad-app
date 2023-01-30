@@ -3,7 +3,7 @@
   (:require
    [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
-   [lib.asyncutils :as au :refer [put-last!] :refer-macros [<? go? go-try goc go-let]]
+   [lib.asyncutils :as au :refer [put-last! chan?] :refer-macros [<? go? go-try goc go-let]]
    [lib.utils :as utils]
    ;https://cljdoc.org/d/andare/andare/1.0.0/api/cljs.core.async.interop
    [cljs.core.async.interop :refer [p->c] :refer-macros [<p!]]
@@ -21,6 +21,7 @@
 ;provide db binding to enable update-db to guard against db changes.
 ;todo implement and provide 'ignore' key paths.
 (def ^:dynamic *db*)
+(def ^:dynamic *task-props* {:timeout 10000})
 
 ;DEPRECATED Eliminate ASAP
 (def after-db-change* (core/atom nil))
@@ -28,37 +29,57 @@
 ;====================================task queue=================================================
 
 
-(defonce <task-queue (chan 20))                             ;go-block queue
+(defonce <task-queue (chan 20))
+(def <inject-task (chan))
 
 (defn task-runner []
   ;execute queued go-block functions
   (trace log 'task-runner-started)
   (go-loop [i 0]
-    (when-let [[<fn <c label] (<! <task-queue)]
-      (when-let [[v _port] (try (binding [*db* @db*]
-                                  (trace log 'task-runner 'task-started label i)
-                                  (async/alts! [(<fn *db*) (async/timeout 10000)]))
-                                (catch :default e [e nil]))]
-        (trace log 'task-runner 'task-complete label i)
-        (put! <c (or v (js/Error. (str "task timeout: " i)))))
+    (when-let [[<fn <c {:keys [label timeout timer]}] (<! <task-queue)]
+      (binding [*db* @db*]
+        (let [<response (try (<fn *db*) (catch :default e (go e)))
+              <response (if (chan? <response) <response (go <response))
+              <timeout (if timeout (async/timeout timeout) (chan))
+              id (when timer (js/setInterval #(warn log 'task-runner "no response from task: " label i) timer))]
+          (trace log 'task-runner 'task-started label i)
+          (when-let [[v port] (async/alts! [<response <inject-task <timeout])]
+            (when timer (js/clearInterval id))
+            (put! <c (condp = port
+                       <response (do
+                                   (trace log 'task-runner 'task-complete label i)
+                                   (if (nil? v) ::nil v))
+                       <timeout (js/Error. (str "task timeout: " label " " i " " timeout "ms"))
+                       <inject-task (js/Error. (str "aborting task: " label " " i)))))))
       (close! <c)
       (recur (inc i)))
     (log/error log 'task-runner-stopped)))
 
 (defn- start-task-runner []
-  (task-runner))
+  (go
+    (while (async/poll! <inject-task))
+    (task-runner)))
 
 (defn- stop-task-runner []
   (put! <task-queue false))
 
-(comment
-  (stop-task-runner)
-  (start-task-runner)
+(defn- abort-tasks []
+  (go
+    (while (async/poll! <task-queue))
+    (put! <inject-task false)
+    (trace log 'abort-tasks "tasks aborted")))
 
-  (go (let [<c (chan)
-            _ (put! <c :a)
-            [v _p] (async/alts! [<c (async/timeout 1000)])]
-        (prn (or v :b)))))
+(defn- reset-task-runner []
+  (go
+    (<! (abort-tasks))
+    (stop-task-runner)
+    (<! (start-task-runner))))
+
+(comment
+  (reset-task-runner)
+  (abort-tasks)
+  (stop-task-runner)
+  (start-task-runner))
 
 (defonce _ (task-runner))
 
@@ -70,29 +91,33 @@
   <fn is a function that returns a channel yielding a single value.
   Listeners: on-success & on-error notify of completion or error respectively.
   "
-  ([label <fn]
-   (go-let [<do (fn [<fn]
+  ([label-or-props <fn]
+   (go-let [props (if (map? label-or-props)
+                    label-or-props
+                    {:label label-or-props})
+            props (merge-with #(or %1 %2) props {:timer 10000}); provide defaults
+            <do (fn [<fn]
                   (let [<c (chan)]
-                    (put! <task-queue [<fn <c label])
+                    (put! <task-queue [<fn <c props])
                     <c))]
-           (<! (<do <fn))))
-  ([label <fn {:keys [on-success on-error]}]
-   (go-let [v (<! (<do-sync label <fn))]
+           (let [r (<! (<do <fn))] (if (= r ::nil) nil r))))
+  ([label-or-props <fn {:keys [on-success on-error]}]
+   (go-let [v (<! (<do-sync label-or-props <fn))]
            (if (utils/error? v)
              (if on-error (on-error v) (warn log '<do-sync v))
              (when on-success (on-success v))))))
 
-(defn do-sync
-  ([label $fn]
+(defn $do-sync
+  ([label-or-props $fn]
   ;adaptor for channel to promise based do-sync
    (let [d (p/deferred)]
-     (go (p/resolve! d (<? (<do-sync label
+     (go (p/resolve! d (<? (<do-sync label-or-props
                                      (fn [db]
-                                       (go? (<p! (p/do ($fn db))))))
+                                       (p->c (p/do ($fn db)))))
                            #(p/reject! d %))))
      d))
-  ([label $f {:keys [on-success on-error]}]
-   (let [p (do-sync label $f)]
+  ([label-or-props $f {:keys [on-success on-error]}]
+   (let [p ($do-sync label-or-props $f)]
      (-> p
          (p/then #(and on-success (on-success)))
          (p/catch #(if on-error
@@ -102,10 +127,16 @@
                        e))))
      p)))
 
-(defn do-async [f]
+(defn do-async [label-or-props f]
   (try
     (binding [*db* @db*]
-      (f *db*))
+      (let [{:keys [label]} (if (map? label-or-props)
+                              label-or-props
+                              {:label label-or-props})
+            _ (trace log 'do-async 'start label)
+            r (f *db*)]
+        (trace log 'do-async 'end label)
+        r))
     (catch :default e (log/error log 'do-async "unhandled task error: " e))))
 
 (defn- <delay [ms v]
@@ -114,15 +145,24 @@
     <c))
 
 (comment
+  (reset-task-runner)
+  (abort-tasks)
   (stop-task-runner)
   (start-task-runner)
 
   (go (prn (<! (<do-sync :a (fn [_db] (<delay 5000 :a))))))
+  (go (prn (<! (<do-sync {:label 'timeout :timeout 4000} (fn [_db] (<delay 5000 :timeout))))))
+  (go (prn (<! (<do-sync :go-nil (fn [_db] (go nil))))))
+  (go (prn (<! (<do-sync :nil (fn [_db] nil)))))
   (go
     (prn :start)
     (go (prn (<! (<do-sync :a (fn [_db] (<delay 5000 :a))))))
     (go (prn (<! (<do-sync 'error-test (fn [_db] (go? (throw (ex-info "error" {:error :an-error}))))))))
     (go (prn (<! (<do-sync :b (fn [_db] (go :b))))))
+    (go (prn (<! (<do-sync {:label 'timer :timer 4000} (fn [_db] (<delay 5000 :timer))))))
+    (go (prn (<! (<do-sync {:label 'timeout :timeout 4000} (fn [_db] (<delay 5000 :timeout))))))
+    (go (prn (<! (<do-sync :go-nil (fn [_db] (go nil))))))
+    (go (prn (<! (<do-sync :nil (fn [_db] nil)))))
     (go (prn (<! (<do-sync 'db-keys (fn [db] (go (keys db)))))))))
 
 (defn- $delay [ms & [v]]
@@ -131,26 +171,32 @@
     p))
 
 (comment
-  (p/then (do-sync :a (fn [_db] ($delay 5000 :a))) prn)
-
-  (p/then (do-sync :b (fn [_db] :b)) prn)
+  (p/then ($do-sync :a (fn [_db] ($delay 5000 :a))) prn)
+  (p/then ($do-sync {:label 'timeout :timeout 4000} (fn [_db] ($delay 5000 :timeout))) prn)
+  (p/then ($do-sync :b (fn [_db] :b)) prn)
+  (p/then ($do-sync :nil (fn [_db] nil)) prn)
 
   (let []
     (prn :start)
-    (p/then (do-sync :a (fn [_db] ($delay 5000 :a))) prn)
-    (p/catch (do-sync 'error (fn [_db] (throw (ex-info "error" {:error :an-error})))) prn)
-    (p/then (do-sync :b (fn [_db] :b)) prn)
-    (p/then (do-sync 'db-keys (fn [db] (keys db))) prn)))
+    (p/then ($do-sync :a (fn [_db] ($delay 5000 :a))) prn)
+    (p/catch ($do-sync 'error (fn [_db] (throw (ex-info "error" {:error :an-error})))) prn)
+    (p/then ($do-sync :b (fn [_db] :b)) prn)
+    (p/catch ($do-sync {:label 'timeout :timeout 4000} (fn [_db] ($delay 5000 :timeout))) prn)
+    (p/then ($do-sync :nil (fn [_db] nil)) prn)
+    (p/then ($do-sync 'db-keys (fn [db] (keys db))) prn)))
 
 
 
 ;====================================task queue=================================================
 
 (defn update-db!
-  ([{:keys [label]} f]
+  ([label-or-props f]
    (assert (fn? f))
-   (trace log 'update-db label)
-   (let [old-db @db*
+   (let [{:keys [label]} (if (map? label-or-props)
+                           label-or-props
+                           {:label label-or-props})
+         _  (trace log 'update-db label)
+         old-db @db*
          new-db (swap! db* (fn [db]
                              (when (and *db* (not= db *db*))
                                (warn log 'update-db! "undeclared db async change:\n"
@@ -166,40 +212,6 @@
        (after! old-db new-db))
      new-db))
   ([f] (update-db! nil f)))
-
-(defn firex
-  "^:deprecated - Update the db, optionally with a promise."
-  ([f {:keys [label before! after!]}]
-   (let [old-db @db*
-         _ (and before! (before! old-db))
-         updates (f old-db)
-         {:keys [db on-updated]} (cond
-                                   (-> updates map? not) nil
-                                   (::db? updates) {:db updates}
-                                   (get-in updates [:db ::db?]) updates
-                                   :else nil)
-         set-db! (fn [db]
-                   (trace log 'fire label)
-                   (if db
-                     (let [old-db- @db*]
-                       (when-not (= old-db old-db-)
-                         (log/error log 'fire 'overwritten-db-change (trace-diff 'old-db old-db 'old-db- old-db-))
-                         #_(throw (js/Error (str "Out of sync db changes"))))
-                       (reset! db* db)
-                       (when on-updated (on-updated))
-                       (and after! (after! old-db db))
-                       (trace log 'fire-end label)
-                       db)
-                     (when updates (throw (js/Error "Attempted db overwrite.")))))]
-     (if (p/promise? db)
-       (-> db
-           (p/then (set-db! db))
-           (p/catch (fn [e] (-> e str println)
-                 ;(-> e .-name println)
-                 ;(-> e .-message println)
-                      )))
-       (set-db! db))))
-  ([f] (firex f nil)))
 
 (defn atom
   "Returns: a potentially cacheable deref-able var that behaves as reagent atom.
