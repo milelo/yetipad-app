@@ -64,9 +64,9 @@
     (fn? arg) (arg)
     :default (pr-str arg)))
 
-(defn- print-to-console! [level package method time {:keys [args meta ns]}]
+(defn- print-to-console! [level package method time {:keys [args meta ns scope]}]
   ;only error log source-map stack traces, alternatively use stack fn.
-  (let [args (concat [time level (if meta (str ns \: (:line meta)) package)] args)]
+  (let [args (concat [time level (if meta (str ns \: (:line meta) (when scope (str " " scope))) package)] args)]
     (js-apply method js/console (map arg-to-str args))
     (when-let [cause (ex-cause (last args))]
       (.call method js/console "cause: " cause))))
@@ -141,3 +141,5 @@
 (defn warn [logger* & args] ((partial trace! logger* :warn) {:args args}))
 (defn error [logger* & args] ((partial trace! logger* :error) {:args args}))
 (defn fatal [logger* & args] ((partial trace! logger* :fatal) {:args args}))
+
+
