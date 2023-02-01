@@ -44,7 +44,7 @@
                 {:component-will-unmount
                  (fn [_this]
                    ;(debug log :new-title @new-title*)
-                   (events/new-title id @new-title*)
+                   (events/new-title! id @new-title*)
                    )})]))
 
 (defn note-editor [{:keys [id] :as item} & [options]]

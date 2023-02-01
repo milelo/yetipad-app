@@ -93,7 +93,7 @@
                                  [table title options editing? values*]
                                  )
        :component-will-unmount (fn [_this]
-                                 (events/options @values*))
+                                 (events/options! @values*))
        })))
 
 (defn content [editing?]

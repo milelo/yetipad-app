@@ -58,7 +58,7 @@
                           ]
                       ;(debug log "writing content: ")
                       ;(pprint content)
-                      (evts/new-content id content)
+                      (evts/new-content! id content)
                       (dispose)
                       (reset! editor* nil)
                       ))

@@ -78,7 +78,7 @@
   (when-let [file (-> e .-target.files first)]
     (set! (.-onload file-reader) (fn [^js e]
                                    (let [doc (-> e .-target.result read-string)]
-                                     (events/open-doc-file doc))))
+                                     (events/open-doc-file!! doc))))
     (.readAsText file-reader file)))
 
 (def mui-theme
@@ -157,9 +157,9 @@
                                                        (if @subs/moving-items?*
                                                   ;source and target must be different
                                                          (when (not= selected-doc-id doc-id)
-                                                           (events/move-items doc-id))
+                                                           (events/move-items!! doc-id))
                                                          (do
-                                                           (events/read-doc-by-id! doc-id)
+                                                           (events/read-doc-by-id!! doc-id)
                                                            (events/select-index-view! :index-history))))}
                               [:> Tooltip {:title (or subtitle file-description doc-id "")}
                                [:> ListItemText {:primary (str (or title file-name doc-id) " (" (name status) \))}]]])]))
@@ -173,7 +173,7 @@
 (defn doc-index-toolbar []
   [:div {:style {:display        :flex
                  :flex-direction :row}}
-   [doc-index-tool delete-document-icon "Delete current document" #(events/delete-doc {})]
+   [doc-index-tool delete-document-icon "Delete current document" #(events/delete-doc!! {})]
    [:input {:accept    ".edn,.odn"
             :style     {:display :none}
             :multiple  false
@@ -181,8 +181,7 @@
             :ref       #(set! (.-upload (js-this)) %)
             :on-change got-file}]
    [doc-index-tool open-file-icon "Open file" #(-> (js-this) .-upload .click)]
-   [doc-index-tool move-items-icon "start move open items..."
-    events/toggle-start-move-items
+   [doc-index-tool move-items-icon "start move open items..." events/toggle-start-move-items!
     {:selected @subs/moving-items?*}]])
 
 (defn doc-index-pane []
@@ -222,8 +221,8 @@
                    :flex-direction :column
                    :padding        "0 8px"}}
      [:> List
-      [menu-list-item close-all-icon "Close all" #(events/close-all-items)]
-      [menu-list-item new-note-icon "New note" events/start-edit-new-note]]
+      [menu-list-item close-all-icon "Close all" #(events/close-all-items!)]
+      [menu-list-item new-note-icon "New note" events/start-edit-new-note!]]
      [:> Paper {:style {:width "100%"}}
       [:> Tabs {:value    (case index-view :index-history 0 :index-title 1 :index-docs 2)
                 :variant  :fullWidth
@@ -280,23 +279,22 @@
       [static-pane-list-item :about]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
       [:> ListItem [:> ListItemText {:primary app-version}]]
-      [menu-list-item nil "refresh Drive-token" events/refresh-drive-token]
       (when config/debug?
         [:<>
          [:> Divider]
          [menu-list-item nil "debug-file-compress" events/debug-file-compress]
          [menu-list-item nil "check-doc" events/check-doc]
          [menu-list-item nil "fix-doc" events/fix-doc]
-         [menu-list-item nil "restore-all-trashed" events/restore-all-trashed]
+         [menu-list-item nil "restore-all-trashed" events/restore-all-trashed!]
          [menu-list-item nil "Dump document meta" events/dump-doc-meta]
          [menu-list-item nil "Dump document" events/dump-doc]
          [menu-list-item nil "List app drive files meta" events/debug-list-app-drive-files]
          [menu-list-item nil "Dump this file meta" events/dump-file-meta]
-         [menu-list-item nil "Update doc index pane" events/sync-doc-index!]
+         [menu-list-item nil "Update doc index pane" events/sync-doc-index!!]
          [menu-list-item nil "Dump index" events/dump-index]
-         [menu-list-item nil "Delete doc - keep file" #(events/delete-doc {:keep-file true})]
+         [menu-list-item nil "Delete doc - keep file" #(events/delete-doc!! {:keep-file true})]
          [menu-list-item nil "Dump tag-map" #(pprint @subs/tag-map*)]
-         [menu-list-item nil "rename-file" events/debug-rename-file]
+         [menu-list-item nil "rename-file" events/debug-rename-file!!]
          [menu-list-item nil "find-file" events/debug-find-file]
          [menu-list-item nil "Trash file" events/debug-trash-file]
          [menu-list-item nil "FIle content" events/debug-file-content]
@@ -381,7 +379,7 @@
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}
-                          :on-click events/sync-local!} (case online-status
+                          :on-click events/sync-local!!} (case online-status
                                                          :syncing [:> syncing-icon]
                                                          :uploading [:> uploading-icon]
                                                          :downloading [:> downloading-icon]

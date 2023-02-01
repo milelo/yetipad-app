@@ -1,7 +1,7 @@
 (ns lib.db
   (:refer-clojure :exclude [atom])
   (:require
-   [lib.log :as log :refer [trace debug info warn fatal pprintl trace-diff]]
+   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl trace-diff]]
    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
    [lib.asyncutils :as au :refer [put-last! chan?] :refer-macros [<? go? go-try goc go-let]]
    [lib.utils :as utils]
@@ -12,7 +12,10 @@
    [clojure.core :as core]
    [lib.debug :as debug :refer [we wd]]
    [cljs-bean.core :refer [bean ->clj ->js]]
-   [clojure.pprint :refer [pprint]]))
+   [clojure.pprint :refer [pprint]])
+  (:require-macros
+   [taoensso.truss :as truss :refer [have have! have? have!?]]
+   [lib.assertion :as assert]))
 
 (def log (log/logger 'lib.db))
 
@@ -30,7 +33,7 @@
 
 
 (defonce <task-queue (chan 20))
-(def <inject-task (chan))
+(def <inject-task (chan 4))
 
 (defn task-runner []
   ;execute queued go-block functions
@@ -65,6 +68,7 @@
 
 (defn- abort-tasks []
   (go
+    ;(while (async/offer! <inject-task false))
     (while (async/poll! <task-queue))
     (put! <inject-task false)
     (trace log 'abort-tasks "tasks aborted")))

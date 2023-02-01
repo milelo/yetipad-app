@@ -55,7 +55,7 @@
    ])
 
 (defn edit-button [item-id]
-  [item-button edit-icon "edit" #(events/start-edit item-id)])
+  [item-button edit-icon "edit" #(events/start-edit! item-id)])
 
 (defn fullscreen-button [item-id]
   [item-button fullscreen-icon "full-screen" #(swap! item-state* update item-id assoc :open true)])
@@ -65,22 +65,22 @@
     [item-button inspect-content-icon "inspect content" events/dump-item-content item-id]))
 
 (defn close-button [item-id]
-  [item-button close-icon "close" #(events/close-item item-id)])
+  [item-button close-icon "close" #(events/close-item! item-id)])
 
 (defn close-other-button [item-id]
-  [item-button close-other-icon "close other items" #(events/close-other-items item-id)])
+  [item-button close-other-icon "close other items" #(events/close-other-items! item-id)])
 
 (defn trash-item-button [item-id]
-  (when (string? item-id) [item-button delete-icon "delete" #(events/trash-item item-id)]))
+  (when (string? item-id) [item-button delete-icon "delete" #(events/trash-item! item-id)]))
 
 (defn restore-button [item-id]
-  [item-button restore-icon "restore from trash" #(events/restore-item item-id)])
+  [item-button restore-icon "restore from trash" #(events/restore-item! item-id)])
 
 (defn delete-permanent-button [item-id]
-  [item-button delete-permanent-icon "delete permanent" #(events/delete-item-permanent item-id)])
+  [item-button delete-permanent-icon "delete permanent" #(events/delete-item-permanent!! item-id)])
 
 (defn empty-trash-button []
-  [item-button delete-permanent-icon "empty trash" events/empty-trash])
+  [item-button delete-permanent-icon "empty trash" events/empty-trash!!])
 
 (defn fullscreen-exit-button [item-id]
   [item-button fullscreen-exit-icon "exit full-screen" #(swap! item-state* update item-id assoc :open false)])
@@ -162,10 +162,10 @@
     ]))
 
 (defn accept-edit-button [id]
-  [item-button accept-edit-icon "end edit" #(events/accept-edit id)])
+  [item-button accept-edit-icon "end edit" #(events/accept-edit! id)])
 
 (defn cancel-edit-button [id]
-  [item-button cancel-edit-icon "cancel edit" #(events/cancel-edit id)])
+  [item-button cancel-edit-icon "cancel edit" #(events/cancel-edit! id)])
 
 (defn editor-pane [{:keys [id] :as item} {:keys [body buttons]}]
   [:div (theme ::theme/pane)

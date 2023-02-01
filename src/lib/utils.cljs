@@ -111,6 +111,11 @@
   [f x]
   (when (f x) x))
 
+(defn prn-stack-trace
+  "Prints a stack-trace to the console"
+  []
+  (.trace js/console))
+
 ;(group [:a :b :c] (range))
 ;=> ([:a 0] [:b 1] [:c 2])
 (defn group [& c]

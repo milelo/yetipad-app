@@ -104,7 +104,7 @@
       [(with-meta (fn [] [tagger id tag-ids* new-tags*])
                   {:component-will-unmount
                    (fn [_this]
-                     (events/new-tags id @tag-ids* @new-tags*)
+                     (events/new-tags! id @tag-ids* @new-tags*)
                      (reset! tag-ids* nil)
                      (reset! new-tags* nil)
                      )})])))

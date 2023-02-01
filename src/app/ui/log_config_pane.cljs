@@ -30,7 +30,7 @@
                                [op/table title options editing? values*]
                                )
      :component-will-unmount (fn [_this]
-                               (events/set-log-config @values*))
+                               (events/set-log-config! @values*))
      }))
 
 (defn content [editing?]

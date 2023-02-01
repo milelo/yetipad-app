@@ -1,6 +1,6 @@
 (ns lib.goog-drive
   (:require
-   [lib.log :as log :refer [pprintl trace debug info warn fatal]]
+   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl trace-diff]]
    [promesa.core :as p]
    [cljs.reader :as reader]
    [cljs-bean.core :refer [bean ->clj ->js]]
@@ -15,16 +15,16 @@
   (try
     (reader/read-string s)
     (catch :default e
-      (warn log 'read-string s)
+      (warn log s)
       (warn log 'error e)
       e)))
 
 (defn- $request- [request return-type {:keys [default] :as opt}]
   (assert (fn? request))
-  (when opt (trace log 'request-opt opt))
+  (when opt (trace log opt))
   (-> (request)
       (p/then (fn [response]
-                (trace log 'request- 'response return-type)
+                (trace log 'response return-type)
              ;(js/console.log response)
                 (let [response (case return-type
                                  :body-edn (-> response .-body read-string)
@@ -41,7 +41,7 @@
       (p/catch (fn [^js/Object err]
                  (let [code err.result.error.code
                        status err.result.error.status]
-                   (trace log 'request :code code :status status (-> err.result.error pprintl))
+                   (trace log :code code :status status (-> err.result.error pprintl))
                    (if (or (= code 401) (and (= code 403) #_(= status "PERMISSION_DENIED")))
                      (-> ($sign-in!)
                          (p/then #($request- request return-type opt)))
@@ -49,7 +49,7 @@
 
 ;=================================== Requests =======================================
 (defn $create-file [{:keys [file-name mime-type parents app-data? properties]}]
-  (trace log 'create-file file-name)
+  (trace log file-name)
   (let [metadata {:name          file-name                  ;"yetipad.ydn"
                   :mimeType      (or mime-type text-mime)   ;ydn-mime
                   :fields        "id, appProperties"
@@ -60,7 +60,7 @@
     ($request #(js/gapi.client.drive.files.create (clj->js metadata)) :result)))
 
 (defn $list-app-data-files [{:keys [query]}]
-  (trace log 'list-app-data-files query)
+  (trace log query)
   ;https://developers.google.com/drive/api/v3/appdata
   (let [params {:spaces "appDataFolder"
                 :fields "files(id, name, modifiedTime, appProperties)"
@@ -69,7 +69,7 @@
     ($request #(js/gapi.client.drive.files.list (clj->js params)) :result)))
 
 (defn $list-app-files [{:keys [query fields]}]
-  (trace log 'list-app-files query)
+  (trace log query)
   ;https://developers.google.com/drive/api/v3/appdata
   (let [params {;https://developers.google.com/drive/api/v3/reference/files
                 :fields fields
@@ -81,7 +81,7 @@
 (defn $write-file-content
   "Write or overwrite the content of an existing file."
   [file-id content & [{:keys [mime-type content-type fields]}]]
-  (trace log 'write-file-content file-id)
+  (trace log file-id)
   (assert file-id)
   (let [body (case content-type
                :edn (pr-str content)
@@ -98,7 +98,7 @@
     ($request #(js/gapi.client.request (clj->js req-params)) :result)))
 
 (defn $read-file-edn [file-id & [options]]
-  (trace log 'read-file-content file-id)
+  (trace log file-id)
   (assert file-id)
   ;https://developers.google.com/drive/api/v3/manage-downloads
   (let [params {:fileId file-id
@@ -108,7 +108,7 @@
 (defn $get-file-meta
   ;warning: on error, doesn't respond
   [file-id & [{:keys [fields]}]]
-  (trace log 'get-file-meta file-id)
+  (trace log file-id)
   (assert file-id)
   (let [params {:fileId file-id
                 :fields (or (and (vector? fields) (str/join \, (map name fields)))
@@ -125,7 +125,7 @@
     ($request #(js/gapi.client.drive.files.delete (clj->js params)) :result)))
 
 (defn $trash-file [file-id]
-  (trace log 'trash-file file-id)
+  (trace log file-id)
   ;https://developers.google.com/drive/api/v3/reference/files/update
   ;https://developers.google.com/drive/api/v3/reference/files#resource-representations
   (let [params {:fileId  file-id
@@ -138,7 +138,7 @@
   modifiedTime is updated.
   "
   [file-id property-map]
-  (trace log 'add-properties file-id property-map)
+  (trace log file-id property-map)
   ;https://developers.google.com/drive/api/v3/properties
   (let [params {:fileId        file-id
                 :appProperties property-map
@@ -177,7 +177,7 @@
                          (fn [response]
                            (if (.-error response)
                              (do
-                               (log/error log 'sign-in! (-> response ->clj pprintl))
+                               (log/error log (-> response ->clj pprintl))
                                (reject response))
                              ;GIS has automatically updated gapi.client with the newly issued access token.
                              (let [token (js/gapi.client.getToken)]
@@ -189,18 +189,18 @@
   (let [cred (js/gapi.client.getToken)
         access-token (and cred (.-access_token cred))]
     (when cred
-      (js/google.accounts.oauth2.revoke access-token #(info log 'sign-out))
+      (js/google.accounts.oauth2.revoke access-token #(info log))
       (js/gapi.client.setToken "")
-      (trace log 'sign-out! "token revoked"))))
+      (trace log "token revoked"))))
 
 (defn- start-after-init! []
   (let [{:keys [gapi? token-client]} @token-client*]
     (when (and gapi? token-client)
-      (trace log 'start-after-init!)
+      (trace log)
       ($sign-in!))))
 
 (defn- gapi-init! []
-  (trace log 'gapi-init)
+  (trace log)
   (p/let [_ (js/gapi.client.init #js {})]
     (js/gapi.client.load "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest")
     (swap! token-client* assoc :gapi? true)
@@ -209,13 +209,13 @@
 (defn gapi-load!
   "Google API load"
   []
-  (trace log 'gapi-load)
+  (trace log)
   (js/gapi.load "client:auth2:picker" gapi-init!))
 
 (defn gis-init!
   "Google Identity Service init"
   [credentials on-token-acquired]
-  (trace log 'gis-init)
+  (trace log)
   (swap! token-client* assoc
          :token-client (js/google.accounts.oauth2.initTokenClient (->js credentials))
          :on-token-acquired on-token-acquired)

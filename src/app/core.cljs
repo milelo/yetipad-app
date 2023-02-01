@@ -1,7 +1,7 @@
 (ns app.core
   (:require
     ;make logger first item
-   [lib.log :as log :refer [trace debug info warn fatal]]
+   [lib.log :as log :refer-macros [trace debug info warn fatal]]
    [app.store :as store]
    [reagent.core :as reagent]
    [reagent.dom :as rdom]
@@ -38,15 +38,15 @@
 
 (defn init []
   (trace log :init)
-  (events/initialize-db)
+  (events/initialize-db!)
   (dev-setup)
   (mount-root)
   (debug log :add-focus-listener)
   (gevents/listen js/window "focus" on-window-focus)
   (add-watch log/config* ::logger-config (fn [_k _r o n]
                                            (when-not (identical? o n)
-                                             (events/logger-config n))))
-  (events/logger-config @log/config*)
+                                             (events/logger-config! n))))
+  (events/logger-config! @log/config*)
   (events/init-navigation!))
 
 #_(defn ^:export handle-client-load []
@@ -59,5 +59,5 @@
 
 (defn ^:export gis-init []
   (drive/gis-init! app.credentials/yetipad-credentials
-                   events/got-access-token))
+                   events/got-access-token!))
 
