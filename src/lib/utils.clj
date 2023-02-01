@@ -1,4 +1,6 @@
-(ns lib.utils)
+(ns lib.utils
+  (:require
+   [clojure.string :as str]))
 
 (defn- to-property [sym]
   (symbol (str "-" sym)))
@@ -20,3 +22,8 @@
 
 (defmacro for-all [& body]
   (list 'doall (cons 'for body)))
+
+(defmacro fn-name 
+  "returns the name of the bounding function(s)"
+  []
+  (not-empty (str/join \. (map #(-> % :name pr-str) (:fn-scope &env)))))

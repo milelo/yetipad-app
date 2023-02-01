@@ -92,7 +92,9 @@
     (ls/$remove-item (ldb-doc-data-key doc-id))
     (ls/$put-data (ldb-doc-data-key doc-id) data)))
 
-(defn $read-persist-doc [doc-id]
+(defn $read-persist-doc
+  "Read data stored in the document"
+  [doc-id]
   (trace log)
   (ls/$get-data (ldb-doc-data-key doc-id)))
 
@@ -104,7 +106,9 @@
     (ls/$remove-item ldb-device-key)
     (ls/$put-data ldb-device-key data)))
 
-(defn $read-persist-device []
+(defn $read-persist-device
+  "Read data stored in the device (browser)"
+  []
   (trace log)
   (ls/$get-data \*))
 

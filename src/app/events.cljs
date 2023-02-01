@@ -205,9 +205,9 @@
 (defn $sync-doc-index []
   (store/$sync-doc-index
    {:on-doc-status (fn [doc-index]
-                     (update-db!
-                      (fn [db]
-                        (assoc db :doc-file-index doc-index))))}))
+                     (update-db! '$sync-doc-index
+                                 (fn [db]
+                                   (assoc db :doc-file-index doc-index))))}))
 
 (defn sync-doc-index!! []
   (do-async 'sync-doc-index!
@@ -290,23 +290,24 @@
                                   (assoc db :online-status (and signed-in? :online))))))))
 
 (defn read-doc-by-id!!
+  ""
   ([doc-id {:keys [open-items]}]
    (do-async 'read-doc-by-id!!
              (fn [{{old-doc-id :doc-id :as app-doc} :doc}]
                (assert (string? doc-id))
                (if (= old-doc-id doc-id)
                  (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items))))
-                 ($do-sync 'read-doc-by-id!!
-                           (fn [_db]
-                             (p/let [local-doc (store/$read-local-doc doc-id)
-                                     p-doc (store/$read-persist-doc doc-id)
-                                     persist-doc (or p-doc {})
-                                     local-doc-or-id (or local-doc {:doc-id doc-id})]
-                               ($sync-drive-file app-doc local-doc-or-id {:src ::read-doc-by-id-handler-})
-                               (update-db! (fn [db] (assoc db
-                                                           :doc local-doc-or-id
-                                                           :persist-doc persist-doc
-                                                           :open-items (verified-open-items local-doc-or-id open-items)))))))))))
+                 ($do-sync
+                  (fn [_db]
+                    (p/let [local-doc (store/$read-local-doc doc-id)
+                            local-doc (or local-doc {:doc-id doc-id})
+                            persist-doc (store/$read-persist-doc doc-id)
+                            persist-doc (or persist-doc {})]
+                      ($sync-drive-file app-doc local-doc {:src ::read-doc-by-id!!})
+                      (update-db! (fn [db] (assoc db
+                                                  :doc local-doc
+                                                  :persist-doc persist-doc
+                                                  :open-items (verified-open-items local-doc open-items)))))))))))
   ([doc-id] (read-doc-by-id!! doc-id nil)))
 
 (defn- new-local-doc!

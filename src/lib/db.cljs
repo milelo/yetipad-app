@@ -1,7 +1,7 @@
 (ns lib.db
   (:refer-clojure :exclude [atom])
   (:require
-   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl trace-diff]]
+   [lib.log :as log :refer-macros [stack trace debug info warn fatal] :refer [pprintl trace-diff]]
    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
    [lib.asyncutils :as au :refer [put-last! chan?] :refer-macros [<? go? go-try goc go-let]]
    [lib.utils :as utils]
@@ -23,8 +23,7 @@
 
 ;provide db binding to enable update-db to guard against db changes.
 ;todo implement and provide 'ignore' key paths.
-(def ^:dynamic *db*)
-(def ^:dynamic *task-props* {:timeout 10000})
+(def ^:dynamic *context* {})
 
 ;DEPRECATED Eliminate ASAP
 (def after-db-change* (core/atom nil))
@@ -40,8 +39,8 @@
   (trace log 'task-runner-started)
   (go-loop [i 0]
     (when-let [[<fn <c {:keys [label timeout timer]}] (<! <task-queue)]
-      (binding [*db* @db*]
-        (let [<response (try (<fn *db*) (catch :default e (go e)))
+      (binding [*context* (assoc *context* :db @db* :label label :do-sync? true)]
+        (let [<response (try (<fn (:db *context*)) (catch :default e (go e)))
               <response (if (chan? <response) <response (go <response))
               <timeout (if timeout (async/timeout timeout) (chan))
               id (when timer (js/setInterval #(warn log 'task-runner "no response from task: " label i) timer))]
@@ -95,13 +94,17 @@
   <fn is a function that returns a channel yielding a single value.
   Listeners: on-success & on-error notify of completion or error respectively.
   "
+  ([<fn]
+   (<do-sync nil <fn))
   ([label-or-props <fn]
+   (assert (not (:do-sync? *context*)))
    (go-let [props (if (map? label-or-props)
                     label-or-props
-                    {:label label-or-props})
-            props (merge-with #(or %1 %2) props {:timer 10000}); provide defaults
+                    {:label label-or-props}) 
+            props (merge-with #(or %1 %2) props {:timer 10000 :label (:label *context*)}); provide defaults 
             <do (fn [<fn]
                   (let [<c (chan)]
+                    (trace log "task-queue put" (:label props))
                     (put! <task-queue [<fn <c props])
                     <c))]
            (let [r (<! (<do <fn))] (if (= r ::nil) nil r))))
@@ -112,10 +115,16 @@
              (when on-success (on-success v))))))
 
 (defn $do-sync
+  ([$fn]
+   ($do-sync nil $fn))
   ([label-or-props $fn]
-  ;adaptor for channel to promise based do-sync
-   (let [d (p/deferred)]
-     (go (p/resolve! d (<? (<do-sync label-or-props
+   (assert (not (:do-sync? *context*)))
+   (let [props (if (map? label-or-props)
+                 label-or-props
+                 {:label label-or-props})
+         props (merge-with #(or %1 %2) props {:label (:label *context*)})
+         d (p/deferred)]
+     (go (p/resolve! d (<? (<do-sync props
                                      (fn [db]
                                        (p->c (p/do ($fn db)))))
                            #(p/reject! d %))))
@@ -133,14 +142,14 @@
 
 (defn do-async [label-or-props f]
   (try
-    (binding [*db* @db*]
-      (let [{:keys [label]} (if (map? label-or-props)
-                              label-or-props
-                              {:label label-or-props})
-            _ (trace log 'do-async 'start label)
-            r (f *db*)]
-        (trace log 'do-async 'end label)
-        r))
+    (let [{:keys [label]} (if (map? label-or-props)
+                            label-or-props
+                            {:label label-or-props})]
+      (binding [*context* (assoc *context* :db @db* :label label)]
+        (trace log 'start label)
+        (let [r (f (:db *context*))]
+          (trace log 'end label)
+          r)))
     (catch :default e (log/error log 'do-async "unhandled task error: " e))))
 
 (defn- <delay [ms v]
@@ -199,12 +208,15 @@
    (let [{:keys [label]} (if (map? label-or-props)
                            label-or-props
                            {:label label-or-props})
-         _  (trace log 'update-db label)
+         label (or label (:label *context*))
+         _  (if label
+              (trace log 'update-db! label)
+              (stack log 'update-db!))
          old-db @db*
          new-db (swap! db* (fn [db]
-                             (when (and *db* (not= db *db*))
+                             (when (and (:db *context*) (not= db (:db *context*)))
                                (warn log 'update-db! "undeclared db async change:\n"
-                                     (trace-diff 'do-sync-db *db* 'update-db!-db db)))
+                                     (trace-diff 'do-sync-db (:db *context*) 'update-db!-db db)))
                              (let [new-db (f db)]
                                (cond
                                  (nil? new-db) db

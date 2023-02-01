@@ -6,7 +6,7 @@
    [app.config :as config]
    [reagent.core :as r]
    ;[breaking-point.core :as bp]
-   [lib.log :as log :refer [trace debug info warn fatal]]
+   [lib.log :as log :refer-macros [trace debug info warn fatal]]
    [lib.debug :as debug :refer [we wd wee expose]]
    [lib.utils :as utils :refer [iso-time->date-time format-date time-formatter] :refer-macros [for-all]]
    [lib.debug :as debug]
