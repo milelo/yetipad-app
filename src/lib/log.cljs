@@ -66,7 +66,7 @@
 
 (defn- print-to-console! [level package method time {:keys [args meta ns scope]}]
   ;only error log source-map stack traces, alternatively use stack fn.
-  (let [args (concat [time level (if meta (str ns \: (:line meta) (when scope (str " " scope))) package)] args)]
+  (let [args (concat [time level (if meta (str ns \: (:line meta) (when scope (str \. scope))) package)] args)]
     (js-apply method js/console (map arg-to-str args))
     (when-let [cause (ex-cause (last args))]
       (.call method js/console "cause: " cause))))
@@ -84,7 +84,8 @@
         level-tracers (fn [level method]
                         [(when buffer-enable? (partial trace-to-channel! level package))
                          (when console-enable? (partial print-to-console! (name level) (name package) method))])
-        tracers {:trace (level-tracers :trace (.-log js/console))
+        tracers {:stack (level-tracers :stack (.-trace js/console))
+                 :trace (level-tracers :trace (.-log js/console))
                  :debug (level-tracers :debug (.-debug js/console))
                  :info  (level-tracers :info (.-info js/console))
                  :warn  (level-tracers :warn (.-warn js/console))
@@ -93,10 +94,10 @@
     (reset! logger* (case level
                       :trace tracers
                       :debug (dissoc tracers :trace)
-                      :info (dissoc tracers :trace :debug)
-                      :warn (dissoc tracers :trace :debug :info)
-                      :error (dissoc tracers :trace :debug :info :warn)
-                      :fatal (dissoc tracers :trace :debug :info :warn :error)))))
+                      :info (dissoc tracers :stack :trace :debug)
+                      :warn (dissoc tracers :stack :trace :debug :info)
+                      :error (dissoc tracers :stack :trace :debug :info :warn)
+                      :fatal (dissoc tracers :stack :trace :debug :info :warn :error)))))
 
 (defn- reconfigure-loggers! [config]
   (doseq [[option level] config]
@@ -141,5 +142,3 @@
 (defn warn [logger* & args] ((partial trace! logger* :warn) {:args args}))
 (defn error [logger* & args] ((partial trace! logger* :error) {:args args}))
 (defn fatal [logger* & args] ((partial trace! logger* :fatal) {:args args}))
-
-

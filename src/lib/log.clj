@@ -1,9 +1,13 @@
 (ns lib.log
   (:require
-   [cljs.analyzer :as analyzer]))
+   [cljs.analyzer :as analyzer]
+   [clojure.string :as str]))
 
 (defn scope [env]
-  (-> env :fn-scope first :name pr-str (#(when-not (= % "nil") %))))
+  (not-empty (str/join \. (map #(-> % :name pr-str) (:fn-scope env)))))
+
+(defmacro stack [logger* & args]
+  (list `(partial lib.log/trace! ~logger* :stack) {:args (cons `list args) :meta (meta &form) :ns (name analyzer/*cljs-ns*) :scope (scope &env)}))
 
 (defmacro trace [logger* & args]
   (list `(partial lib.log/trace! ~logger* :trace) {:args (cons `list args) :meta (meta &form) :ns (name analyzer/*cljs-ns*) :scope (scope &env)}))
