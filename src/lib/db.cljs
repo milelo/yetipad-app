@@ -44,12 +44,12 @@
               <response (if (chan? <response) <response (go <response))
               <timeout (if timeout (async/timeout timeout) (chan))
               id (when timer (js/setInterval #(warn log 'task-runner "no response from task: " label i) timer))]
-          (trace log 'task-runner 'task-started label i)
+          (trace log 'task-started label i)
           (when-let [[v port] (async/alts! [<response <inject-task <timeout])]
             (when timer (js/clearInterval id))
             (put! <c (condp = port
                        <response (do
-                                   (trace log 'task-runner 'task-complete label i)
+                                   (trace log 'task-complete label i)
                                    (if (nil? v) ::nil v))
                        <timeout (js/Error. (str "task timeout: " label " " i " " timeout "ms"))
                        <inject-task (js/Error. (str "aborting task: " label " " i)))))))

@@ -4,7 +4,7 @@
     ;[cljs-uuid-utils.core :as uuid]
    [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl trace-diff]]
    [lib.debug :as debug :refer [we wd]]
-   [lib.utils :as utils :refer [time-now-ms iso-time->date-time new-item-id]]
+   [lib.utils :as utils :refer-macros [fn-name] :refer [time-now-ms iso-time->date-time new-item-id]]
    [lib.goog-drive :as drive]
    [lib.html-parse :as html-parse]
    [clojure.pprint :refer [pprint cl-format]]
@@ -263,7 +263,8 @@
       (p/catch (fn [error]
                  (warn log 'sync error)
                  (online-status :error)
-                 (set-app-status! error)))))
+                 (set-app-status! error)
+                 error))))
 
 (defn sync-drive-file!! [local-doc options]
   ($do-sync 'sync-drive-file!!
@@ -292,13 +293,14 @@
 (defn read-doc-by-id!!
   ""
   ([doc-id {:keys [open-items]}]
+   (we :fn-name (fn-name))
    (do-async 'read-doc-by-id!!
-             (fn [{{old-doc-id :doc-id :as app-doc} :doc}]
+             (fn  [{{old-doc-id :doc-id :as app-doc} :doc}]
                (assert (string? doc-id))
                (if (= old-doc-id doc-id)
                  (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items))))
                  ($do-sync
-                  (fn [_db]
+                  (fn read-doc-by-id!! [_db]
                     (p/let [local-doc (store/$read-local-doc doc-id)
                             local-doc (or local-doc {:doc-id doc-id})
                             persist-doc (store/$read-persist-doc doc-id)
@@ -352,7 +354,7 @@
 
 
 (defn window-focused []
-  (info log "window focused")
+  (info log)
   #_(sync-local!!))
 
 ;--------------------------------Panel selection-------------------------------

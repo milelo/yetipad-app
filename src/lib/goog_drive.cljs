@@ -165,8 +165,23 @@
 ;======================================= Authentication =============================================
 (defonce token-client* (atom {}))
 
-(defn signed-in? []
+(defn ^:deprecated signed-in? []
   (boolean (and js/gapi.client (js/gapi.client.getToken))))
+
+(defn- get-token []
+  (and js/gapi.client (js/gapi.client.getToken)))
+
+(defn status []
+  (let [{:keys [gapi? token-client credentials failed-sign-in?]} @token-client*
+        hasGrantedAllScopes js/google.accounts.oauth2.hasGrantedAllScopes
+        token (get-token)]
+    (cond
+      (not (and gapi? token-client)) :initialising 
+      (and token (hasGrantedAllScopes token (:scope credentials))) :authenticated
+      token :signed-in
+      failed-sign-in? :failed-sign-in
+      :else :sign-in-pending
+      )))
 
 (defn $sign-in! []
   (when-let [{:keys [^js/Object token-client on-token-acquired]} @token-client*]
@@ -178,6 +193,7 @@
                            (if (.-error response)
                              (do
                                (log/error log (-> response ->clj pprintl))
+                               (assoc token-client* :failed-sign-in? true)
                                (reject response))
                              ;GIS has automatically updated gapi.client with the newly issued access token.
                              (let [token (js/gapi.client.getToken)]
@@ -217,6 +233,7 @@
   [credentials on-token-acquired]
   (trace log)
   (swap! token-client* assoc
+         :credentials credentials
          :token-client (js/google.accounts.oauth2.initTokenClient (->js credentials))
          :on-token-acquired on-token-acquired)
   (start-after-init!))
