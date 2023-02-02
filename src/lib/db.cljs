@@ -100,7 +100,7 @@
    (assert (not (:do-sync? *context*)))
    (go-let [props (if (map? label-or-props)
                     label-or-props
-                    {:label label-or-props}) 
+                    {:label label-or-props})
             props (merge-with #(or %1 %2) props {:timer 10000 :label (:label *context*)}); provide defaults 
             <do (fn [<fn]
                   (let [<c (chan)]
@@ -117,28 +117,26 @@
 (defn $do-sync
   ([$fn]
    ($do-sync nil $fn))
-  ([label-or-props $fn]
+  ([label-or-props $fn {:keys [on-success on-error]}]
    (assert (not (:do-sync? *context*)))
-   (let [props (if (map? label-or-props)
-                 label-or-props
-                 {:label label-or-props})
-         props (merge-with #(or %1 %2) props {:label (:label *context*)})
-         d (p/deferred)]
-     (go (p/resolve! d (<? (<do-sync props
-                                     (fn [db]
-                                       (p->c (p/do ($fn db)))))
-                           #(p/reject! d %))))
-     d))
-  ([label-or-props $f {:keys [on-success on-error]}]
-   (let [p ($do-sync label-or-props $f)]
-     (-> p
-         (p/then #(and on-success (on-success)))
-         (p/catch #(if on-error
-                     (on-error)
-                     (fn [e]
-                       (log/error log 'do-sync "unhandled task error: " e)
-                       e))))
-     p)))
+   (-> (let [props (if (map? label-or-props)
+                     label-or-props
+                     {:label label-or-props})
+             props (merge-with #(or %1 %2) props {:label (:label *context*)})
+             d (p/deferred)]
+         (go (p/resolve! d (<? (<do-sync props
+                                         (fn [db]
+                                           (p->c (p/do ($fn db)))))
+                               #(p/reject! d %))))
+         d)
+       (p/then #(and on-success (on-success)))
+       (p/catch #(if on-error
+                   (on-error)
+                   (fn [e]
+                     (log/error log 'do-sync "unhandled task error: " e)
+                     e)))))
+  ([label-or-props $f]
+   ($do-sync label-or-props $f nil)))
 
 (defn do-async [label-or-props f]
   (try
