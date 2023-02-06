@@ -1,7 +1,7 @@
 (ns lib.db
   (:refer-clojure :exclude [atom])
   (:require
-   [lib.log :as log :refer-macros [stack trace debug info warn fatal] :refer [pprintl trace-diff]]
+   [lib.log :as log :refer-macros [stack trace debug info warn error fatal] :refer [pprintl trace-diff]]
    [cljs.core.async :as async :refer [<! >! chan put! take! close!] :refer-macros [go-loop go]]
    [lib.asyncutils :as au :refer [put-last! chan?] :refer-macros [<? go? go-try goc go-let]]
    [lib.utils :as utils]
@@ -38,8 +38,8 @@
   ;execute queued go-block functions
   (trace log 'task-runner-started)
   (go-loop [i 0]
-    (when-let [[<fn <c {:keys [label timeout timer]}] (<! <task-queue)]
-      (binding [*context* (assoc *context* :db @db* :label label :do-sync? true)]
+    (when-let [[<fn <c {:keys [label timeout timer nesting]}] (<! <task-queue)]
+      (binding [*context* (assoc *context* :db @db* :label label :nesting nesting)]
         (let [<response (try (<fn (:db *context*)) (catch :default e (go e)))
               <response (if (chan? <response) <response (go <response))
               <timeout (if timeout (async/timeout timeout) (chan))
@@ -97,44 +97,51 @@
   ([<fn]
    (<do-sync nil <fn))
   ([label-or-props <fn]
-   (assert (not (:do-sync? *context*)))
-   (go-let [props (if (map? label-or-props)
-                    label-or-props
-                    {:label label-or-props})
-            props (merge-with #(or %1 %2) props {:timer 10000 :label (:label *context*)}); provide defaults 
-            <do (fn [<fn]
-                  (let [<c (chan)]
-                    (trace log "task-queue put" (:label props))
-                    (put! <task-queue [<fn <c props])
-                    <c))]
-           (let [r (<! (<do <fn))] (if (= r ::nil) nil r))))
+   (go?
+    (let [props (if (map? label-or-props)
+                  label-or-props
+                  {:label label-or-props})
+          _ (assert (< (:nesting props) 4) (str "Deep sync nesting: " (:nesting props) " " (:label props)))
+          props (merge-with #(or %1 %2) props {:timer 10000
+                                               :label (:label *context*)
+                                               :nesting (-> *context* :nesting inc)}); provide defaults 
+          <do (fn [<fn]
+                (let [<c (chan)]
+                  (trace log "task-queue put" (:label props))
+                  (put! <task-queue [<fn <c props])
+                  <c))
+          r (<! (<do <fn))]
+      (if (= r ::nil) nil r))))
   ([label-or-props <fn {:keys [on-success on-error]}]
    (go-let [v (<! (<do-sync label-or-props <fn))]
            (if (utils/error? v)
-             (if on-error (on-error v) (warn log '<do-sync v))
+             (if on-error (on-error v) (error log '<do-sync v))
              (when on-success (on-success v))))))
 
 (defn $do-sync
   ([$fn]
    ($do-sync nil $fn))
   ([label-or-props $fn {:keys [on-success on-error]}]
-   (assert (not (:do-sync? *context*)))
-   (-> (let [props (if (map? label-or-props)
-                     label-or-props
-                     {:label label-or-props})
-             props (merge-with #(or %1 %2) props {:label (:label *context*)})
-             d (p/deferred)]
-         (go (p/resolve! d (<? (<do-sync props
-                                         (fn [db]
-                                           (p->c (p/do ($fn db)))))
-                               #(p/reject! d %))))
-         d)
+   (-> (p/do
+         (let [props (if (map? label-or-props)
+                       label-or-props
+                       {:label label-or-props})
+               _ (assert (< (:nesting props) 4) (str "Deep sync nesting: " (:nesting props) " " (:label props)))
+               props (merge-with #(or %1 %2) props {:timer 10000
+                                                    :label (:label *context*)
+                                                    :nesting (-> *context* :nesting inc)}); provide defaults 
+               d (p/deferred)]
+           (go (p/resolve! d (<? (<do-sync props
+                                           (fn [db]
+                                             (p->c (p/do ($fn db)))))
+                                 #(p/reject! d %))))
+           d))
        (p/then #(and on-success (on-success)))
-       (p/catch #(if on-error
-                   (on-error)
-                   (fn [e]
-                     (log/error log 'do-sync "unhandled task error: " e)
-                     e)))))
+       (p/catch (if on-error
+                  on-error
+                  (fn [e]
+                    (error log 'do-sync "unhandled task error: " e)
+                    e)))))
   ([label-or-props $f]
    ($do-sync label-or-props $f nil)))
 
