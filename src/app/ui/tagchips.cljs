@@ -2,7 +2,7 @@
   (:require
     [reagent.core :as r]
     [clojure.string :as str]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer-macros [trace debug info warn error fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
     [app.subs :as subs]

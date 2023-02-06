@@ -1,7 +1,7 @@
 (ns app.ui.note-pane
   (:require
     [reagent.core :as r]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer-macros [trace debug info warn error fatal]]
     [lib.debug :as debug :refer [we wd wee expose]]
     [lib.utils :as u :refer-macros [for-all]]
     [app.subs :as subs]

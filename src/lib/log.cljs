@@ -136,10 +136,3 @@
         time (when (or l1 l2) (- (js/Date.now) @ref-time*))]
     (when l1 (l1 time data))
     (when l2 (l2 time data))))
-
-(defn trace [logger* & args] ((partial trace! logger* :trace) {:args args}))
-(defn debug [logger* & args] ((partial trace! logger* :debug) {:args args}))
-(defn info [logger* & args] ((partial trace! logger* :info) {:args args}))
-(defn warn [logger* & args] ((partial trace! logger* :warn) {:args args}))
-(defn error [logger* & args] ((partial trace! logger* :error) {:args args}))
-(defn fatal [logger* & args] ((partial trace! logger* :fatal) {:args args}))

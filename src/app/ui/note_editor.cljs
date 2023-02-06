@@ -6,7 +6,7 @@
     [app.ui.editor :refer [create-editor editor-buttons-standard]]
     [app.ui.utils :as ui-utils]
     [app.ui.ui :as ui :refer [error-boundary]]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer-macros [trace debug info warn error fatal]]
     [cljs.pprint :refer [pprint]]
     [lib.html-parse :as hp]
     [lib.debug :as debug :refer [we wd wee expose]]

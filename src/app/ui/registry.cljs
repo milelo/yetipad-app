@@ -1,7 +1,7 @@
 (ns app.ui.registry
   (:require
     ["@material-ui/icons/HelpTwoTone" :default no-kind-icon]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer-macros [trace debug info warn error fatal]]
     [cljs.pprint :refer [pprint]]
     ))
 

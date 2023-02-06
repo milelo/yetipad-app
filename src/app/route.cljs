@@ -1,7 +1,7 @@
 (ns app.route
   (:require
     [lib.debug :as debug :refer [we wd expose]]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer-macros [trace debug info warn error fatal]]
     [goog.string :refer [urlDecode]]
     [clojure.string :as str :refer [split join]]
     ))

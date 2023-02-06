@@ -1,7 +1,7 @@
 (ns app.ui.editor
   (:require
     [reagent.core :as reagent]
-    [lib.log :as log :refer [trace debug info warn fatal]]
+    [lib.log :as log :refer-macros [trace debug info warn error fatal]]
     [lib.debug :as debug :refer [we wd wee]]
     [lib.utils :as u]
     ;[lib.html-parse :as hp]

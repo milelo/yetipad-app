@@ -1,7 +1,7 @@
 (ns app.subs
   (:require
    [lib.db :as db]
-   [lib.log :as log :refer [trace debug info warn fatal]]
+   [lib.log :as log :refer-macros [trace debug info warn error fatal]]
    [lib.debug :as debug :refer [we wd wee expose]]
    [lib.utils :as utils :refer [iso-time->date-time only]]
    [cljs.pprint :refer [pprint]]
