@@ -1,6 +1,7 @@
 (ns lib.goog-drive
   (:require
-   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl trace-diff]]
+   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl]]
+   [lib.debug :as debug :refer [we wd]]
    [promesa.core :as p]
    [cljs.reader :as reader]
    [cljs-bean.core :refer [bean ->clj ->js]]
@@ -19,9 +20,30 @@
       (warn log 'error e)
       e)))
 
+(def online-status* (atom {:status :offline} {:validator (fn [{:keys [status]}]
+                                                           (#{:offline :online} status))}))
+
+(comment 
+  (-> (p/rejected :response)
+      (p/catch (fn [e]
+                 (println 1 e)
+                 ;(p/rejected e)
+                 e
+                 ))
+      (p/catch (fn [e]
+                 (println 2 e)
+                 (throw :thrown)
+                 ))
+      (p/catch (fn [e]
+                 (println 3 e)
+                 (p/rejected e)))
+      (p/then (fn [x]
+                (println 4 x))))
+  )
+
 (defn- $request- [request return-type {:keys [default] :as opt}]
   (assert (fn? request))
-  (when opt (trace log opt))
+  (when opt (trace log 'request-opt opt))
   (-> (request)
       (p/then (fn [response]
                 (trace log 'response return-type)
@@ -38,13 +60,22 @@
 
 (defn- $request [request return-type & [opt]]
   (-> ($request- request return-type opt)
+      (p/then (fn [resolved]
+                (swap! online-status* assoc :status :online)
+                resolved))
       (p/catch (fn [^js/Object err]
+                 (trace log "response-err:" (bean err))
                  (let [code err.result.error.code
                        status err.result.error.status]
+                   ;codes: -1 network-error (eg no internet access)
                    (trace log :code code :status status (-> err.result.error pprintl))
+                   (swap! online-status* assoc :status (if (= code -1) :offline :online))
                    (if (or (= code 401) (and (= code 403) #_(= status "PERMISSION_DENIED")))
                      (-> ($sign-in!)
-                         (p/then #($request- request return-type opt)))
+                         (p/then #($request- request return-type opt))
+                         (p/catch (fn [e]
+                                    (warn log "sign in error" e)
+                                    (p/rejected e))))
                      (p/rejected err)))))))
 
 ;=================================== Requests =======================================
@@ -165,49 +196,74 @@
 ;======================================= Authentication =============================================
 (defonce token-client* (atom {}))
 
-(defn ^:deprecated signed-in? []
-  (boolean (and js/gapi.client (js/gapi.client.getToken))))
-
 (defn- get-token []
   (and js/gapi.client (js/gapi.client.getToken)))
 
-(defn status []
-  (let [{:keys [gapi? token-client credentials failed-sign-in?]} @token-client*
+(defn signed-in? []
+  (boolean (get-token)))
+
+(defn status
+  ;no internet access?
+  []
+  (let [{:keys [gapi? token-client credentials aborted-sign-in?]} @token-client*
         hasGrantedAllScopes js/google.accounts.oauth2.hasGrantedAllScopes
-        token (get-token)]
-    (cond
-      (not (and gapi? token-client)) :initialising 
-      (and token (hasGrantedAllScopes token (:scope credentials))) :authenticated
-      token :signed-in
-      failed-sign-in? :failed-sign-in
-      :else :sign-in-pending
-      )))
+        token (get-token)
+        status (cond
+                 (not (and gapi? token-client)) :initialising
+                 aborted-sign-in? :aborted-sign-in
+                 (not token) :sign-in-pending
+                 (and token (hasGrantedAllScopes token (:scope credentials))) :authenticated
+                 :else :failed-authentication)]
+    (trace log "status: " status)
+    status))
+
+(comment
+  (status))
+
+(defn authenticated? []
+  (:authenticated (status)))
 
 (defn $sign-in! []
   (when-let [{:keys [^js/Object token-client on-token-acquired]} @token-client*]
     ;For prompt values see: https://developers.google.com/identity/oauth2/web/reference/js-reference#TokenClientConfig
     ;ALWAYS PROMPTS with localhost: https://stackoverflow.com/questions/73519031/how-do-i-let-the-browser-store-my-login-status-with-google-identity-services
     (js/Promise. (fn [resolve reject]
+                   (trace log "register callback" #_(-> token-client bean pprintl))
                    (set! (.-callback token-client)
                          (fn [response]
-                           (if (.-error response)
-                             (do
-                               (log/error log (-> response ->clj pprintl))
-                               (assoc token-client* :failed-sign-in? true)
+                           (trace log "callback:" (-> response bean pprintl))
+                           (if-let [err (.-error response)]
+                             (let [code err.result.error.code]
+                               (log/error log "code: " code \newline (-> response ->clj pprintl))
+                               (swap! online-status* assoc :status (if (= code -1) :offline :online))
+                               (swap! token-client* assoc :aborted-sign-in? true)
                                (reject response))
                              ;GIS has automatically updated gapi.client with the newly issued access token.
                              (let [token (js/gapi.client.getToken)]
+                               (swap! online-status* assoc :status :online)
                                (when on-token-acquired (on-token-acquired token))
                                (resolve token)))))
+                   (set! (.-error_callback token-client)
+                         (fn [response]
+                           (trace log "error_callback:" response)
+                           (swap! token-client* assoc :aborted-sign-in? true)
+                           (reject response)))
                    (.requestAccessToken  token-client #js {:prompt (if (signed-in?) "" "consent")})))))
 
 (defn sign-out! []
-  (let [cred (js/gapi.client.getToken)
-        access-token (and cred (.-access_token cred))]
-    (when cred
-      (js/google.accounts.oauth2.revoke access-token #(info log))
+  (let [token (get-token)
+        access-token (and token (.-access_token token))]
+    (swap! token-client* assoc :aborted-sign-in? false)
+    (when token
+      (js/google.accounts.oauth2.revoke access-token (fn [response]
+                                                       (let [response (bean response)]
+                                                         (info log :response response)
+                                                         ;currently doesn't report an error
+                                                         ;so can't update offline-status*
+                                                         )))
       (js/gapi.client.setToken "")
-      (trace log "token revoked"))))
+      (trace log "token revoked")
+      nil)))
 
 (defn- start-after-init! []
   (let [{:keys [gapi? token-client]} @token-client*]
@@ -237,7 +293,3 @@
          :token-client (js/google.accounts.oauth2.initTokenClient (->js credentials))
          :on-token-acquired on-token-acquired)
   (start-after-init!))
-
-
-
-

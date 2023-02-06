@@ -2,7 +2,7 @@
   (:require
    [lib.db :as db :refer [$do-sync do-async update-db!]]
     ;[cljs-uuid-utils.core :as uuid]
-   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl trace-diff]]
+   [lib.log :as log :refer-macros [trace stack debug info warn error fatal] :refer [pprintl trace-diff]]
    [lib.debug :as debug :refer [we wd]]
    [lib.utils :as utils :refer-macros [fn-name] :refer [time-now-ms iso-time->date-time new-item-id]]
    [lib.goog-drive :as drive]
@@ -122,14 +122,7 @@
 (defn set-app-status! [status & [type]]
   (db/update-db! 'set-app-status!
                  (fn [db]
-     ;(debug log ::set-app-status status)
-                   (let [default-type :info]
-                     (assoc db :status (assoc
-                                        (cond
-                                          (map? status) (let [{:keys [type]} status] (assoc status :type (or type default-type)))
-                                          (utils/error? status) {:text (str status) :type :error}
-                                          :else {:text (str status) :type (or type default-type)})
-                                        :time-ms (time-now-ms)))))))
+                   (assoc db :status (store/app-status status type)))))
 
 (defn clear-app-status! []
   (db/update-db! 'clear-app-status!
@@ -150,6 +143,7 @@
 (declare new-local-doc!)
 
 (defonce init-status* (atom {}))
+
 (defn init-once [id f]
   (when-not (get init-status* id)
     (let [r (f)]
@@ -180,6 +174,14 @@
 
 ;----------------------localstore-------------------
 
+(defn $sync-doc-index []
+  (store/$sync-doc-index
+   {:on-doc-status (fn [doc-index]
+                     (update-db! '$sync-doc-index
+                                 (fn [db]
+                                   ;(trace log 'updated-index (pprintl doc-index))
+                                   (assoc db :doc-file-index doc-index))))}))
+
 (declare sync-drive-file!!)
 
 (declare $sync-drive-file)
@@ -188,26 +190,20 @@
   ($do-sync 'save-doc-with-sync!!
             (fn [{app-doc :doc :as db}]
               (info log "saving doc...")
-              (p/do
-                (store/$write-local-doc app-doc)
-                ($sync-drive-file app-doc app-doc {:src ::save-doc-with-sync-})
-                (update-db! (fn [db]
-                              (assoc db
-                                     :save-pending? false
-                                     :saving? false))))) {:label 'save-doc-with-sync-}))
+              (when (drive/authenticated?)
+                (p/do
+                  (store/$write-local-doc app-doc)
+                  ($sync-drive-file app-doc app-doc {:src ::save-doc-with-sync-})
+                  (update-db! (fn [db]
+                                (assoc db
+                                       :save-pending? false
+                                       :saving? false)))))) {:label 'save-doc-with-sync-}))
 
 (defn save-doc! []
   (db/update-db! 'save-doc!
                  (fn [db]
                    (assoc db :save-pending? true)))
   (run-later save-doc-with-sync!! 100))
-
-(defn $sync-doc-index []
-  (store/$sync-doc-index
-   {:on-doc-status (fn [doc-index]
-                     (update-db! '$sync-doc-index
-                                 (fn [db]
-                                   (assoc db :doc-file-index doc-index))))}))
 
 (defn sync-doc-index!! []
   (do-async 'sync-doc-index!
@@ -227,49 +223,56 @@
 (defn- $update-doc
   "Update the app doc"
   [updated-doc app-doc status-message]
-  (update-db! 'update-doc
+  (update-db! '$update-doc
               (fn [{:keys [doc open-items] :as db}]
                 (let [doc-change-during-sync? (and app-doc (not (identical? doc app-doc)))]
-                  (when doc-change-during-sync?
-                    (warn log "Doc changed during file-synch")
-                    (set-app-status! status-message :error))
-                  (when (and status-message (not doc-change-during-sync?))
-                    (set-app-status! status-message :info))
-                  (assoc db :doc updated-doc :open-items (verified-open-items updated-doc open-items)))))
+                  (assoc db
+                         :doc updated-doc
+                         :open-items (verified-open-items updated-doc open-items)
+                         :status (cond
+                                   doc-change-during-sync?
+                                   (do
+                                     (warn log "Doc changed during file-synch")
+                                     (store/app-status status-message :error))
+                                   ;
+                                   (and status-message
+                                        (not doc-change-during-sync?))
+                                   (store/app-status status-message :info))))))
   ($sync-doc-index))
 
-(defn $sync-drive-file [app-doc local-doc-or-id {:keys [src]}]
-  (trace log)
-  (online-status :online)
-  (-> (p/do
-        (if (store/signed-in?)
-          (store/$sync-drive-file local-doc-or-id
-                                  {:src                    src
-                                   :on-sync-status         (fn [sync-status]
-                                                             (when-let [status ({:overwrite-from-file :downloading
-                                                                                 :overwrite-file      :uploading
-                                                                                 :resolve-conflicts   :syncing} sync-status)]
-                                                               (online-status status)))
-                                   :on-in-sync             $sync-doc-index
-                                   :on-overwrite-from-file (fn [drive-doc]
-                                                             ($update-doc drive-doc app-doc "Updated from Drive"))
-                                   :on-overwrite-file      (fn []
-                                                             (set-app-status! "Drive updated" :info)
-                                                             ($sync-doc-index))
-                                   :on-conflicts-resolved  (fn [synched-doc]
-                                                             ($update-doc synched-doc app-doc "Synched with Drive"))})
-          ($sync-doc-index))
-        (online-status :synced))
-      (p/catch (fn [error]
-                 (warn log 'sync error)
-                 (online-status :error)
-                 (set-app-status! error)
-                 error))))
+(defn $sync-drive-file
+  [app-doc local-doc-or-id {:keys [src]}]
+  (p/do
+    (trace log)
+    (online-status :online)
+    (-> (store/$sync-drive-file local-doc-or-id
+                                {:src                    src
+                                 :on-sync-status         (fn [sync-status]
+                                                           (when-let [status ({:overwrite-from-file :downloading
+                                                                               :overwrite-file      :uploading
+                                                                               :resolve-conflicts   :syncing} sync-status)]
+                                                             (online-status status)))
+                                 :on-in-sync             $sync-doc-index
+                                 :on-overwrite-from-file (fn [drive-doc]
+                                                           ($update-doc drive-doc app-doc "Updated from Drive"))
+                                 :on-overwrite-file      (fn []
+                                                           (set-app-status! "Drive updated" :info)
+                                                           ($sync-doc-index))
+                                 :on-conflicts-resolved  (fn [synched-doc]
+                                                           ($update-doc synched-doc app-doc "Synched with Drive"))})
+        (p/catch (fn [error]
+                   (warn log 'sync error)
+                   (online-status :error)
+                   (set-app-status! error)
+                   error
+                   ;(p/rejected error)
+                   )))))
 
 (defn sync-drive-file!! [local-doc options]
   ($do-sync 'sync-drive-file!!
             (fn [{app-doc :doc}]
-              ($sync-drive-file app-doc local-doc options))))
+              (when (drive/authenticated?)
+                ($sync-drive-file app-doc local-doc options)))))
 
 (defn sign-in! []
   (drive/$sign-in!))
@@ -284,19 +287,21 @@
 (defn signed-in!! [signed-in?]
   ($do-sync 'signed-in!!
             (fn [{doc :doc}]
-              (p/do (when (and signed-in? (:doc-id doc))
-                      (store/$trash-files-pending)
-                      ($sync-drive-file doc (get doc :doc-id) {:src ::signed-in}))
-                    (update-db! (fn [db]
-                                  (assoc db :online-status (and signed-in? :online))))))))
+              (when (drive/authenticated?)
+                (p/do (when (and signed-in? (:doc-id doc))
+                        (store/$trash-files-pending)
+                        ($sync-drive-file doc (get doc :doc-id) {:src ::signed-in}))
+                      (update-db! (fn [db]
+                                    (assoc db :online-status (and signed-in? :online)))))))))
 
 (defn read-doc-by-id!!
   ""
   ([doc-id {:keys [open-items]}]
-   (we :fn-name (fn-name))
+   (trace log)
    (do-async 'read-doc-by-id!!
              (fn  [{{old-doc-id :doc-id :as app-doc} :doc}]
                (assert (string? doc-id))
+               (debug log :nesting (:nesting db/*context*))
                (if (= old-doc-id doc-id)
                  (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items))))
                  ($do-sync
@@ -305,11 +310,12 @@
                             local-doc (or local-doc {:doc-id doc-id})
                             persist-doc (store/$read-persist-doc doc-id)
                             persist-doc (or persist-doc {})]
-                      ($sync-drive-file app-doc local-doc {:src ::read-doc-by-id!!})
                       (update-db! (fn [db] (assoc db
                                                   :doc local-doc
                                                   :persist-doc persist-doc
-                                                  :open-items (verified-open-items local-doc open-items)))))))))))
+                                                  :open-items (verified-open-items local-doc open-items))))
+                      (when (drive/authenticated?)
+                        ($sync-drive-file app-doc local-doc {:src ::read-doc-by-id!!})))))))))
   ([doc-id] (read-doc-by-id!! doc-id nil)))
 
 (defn- new-local-doc!
@@ -327,9 +333,10 @@
                 (new-local-doc!)
                 (sync-doc-index!!)))))
 
-(defn sync-local!! []
-  ($do-sync 'sync-local!!
+(defn sync-doc!! []
+  ($do-sync 'sync-doc!!
             (fn [{:keys [doc saving?]}]
+              (debug log :nesting (:nesting db/*context*))
          ;Check for external changes and sync if required:
     ;localstore - by another browser window - Just replace doc if it has changed. conflicts with open editors
     ;must be resolved on save, just compare change times and disable save. warning could be given on focus.
@@ -338,10 +345,11 @@
     ;first merge localstore than sync with the drive file
               (when-not saving?
                 (store/$sync-localstore doc {:on-ls-change  (fn [ls-doc]
-                                                              (trace log :on-ls-change)
-                                                              ($update-doc ls-doc doc "Updated from Localstore")
-                                                    ;re-enter to check for file changes
-                                                              (run-later sync-local!!))
+                                                              (p/do
+                                                                (trace log :on-ls-change)
+                                                                ($update-doc ls-doc doc "Updated from Localstore")
+                                                                ;re-enter to check for file changes
+                                                                (run-later sync-doc!!)))
                                              :on-in-sync    (fn []
                                                               (trace log :on-in-sync)
                                                     ;now sync with Drive

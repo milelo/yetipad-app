@@ -140,8 +140,8 @@
        (p/catch (if on-error
                   on-error
                   (fn [e]
-                    (error log 'do-sync "unhandled task error: " e)
-                    e)))))
+                    (error log '$do-sync "unhandled task error: " e)
+                    (p/rejected e))))))
   ([label-or-props $f]
    ($do-sync label-or-props $f nil)))
 
@@ -229,6 +229,7 @@
                                  :else (do
                                          (log/error log 'update-db! "Attempted db overwrite.")
                                          db)))))]
+     ;(debug log label 'db-change (trace-diff :old old-db :new new-db))
      (when-let [after! @after-db-change*]
        (after! old-db new-db))
      new-db))

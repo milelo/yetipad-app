@@ -1,7 +1,8 @@
 (ns app.store
   (:require
-   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl]]
+   [lib.log :as log :refer-macros [trace stack debug info warn error fatal] :refer [pprintl]]
    [lib.debug :as debug :refer [we wd]]
+   [cljs-bean.core :refer [bean ->clj ->js]]
    [lib.localstore :as ls]
    [lib.goog-drive :as drive]
    [lib.utils :as utils :refer [only] :refer-macros [for-all]]
@@ -11,7 +12,8 @@
    [promesa.core :as p]
    [lib.db :as db]
    [app.credentials]
-   ["lz-string" :as lz-string]))
+   ["lz-string" :as lz-string]
+   ["ping.js" :as pinger]))
 
 (def log (log/logger 'app.store))
 
@@ -22,7 +24,6 @@
 
 (def index-key :yetipad)
 (def index-format :object)
-
 
 (defn compress [s]
   (assert (string? s))
@@ -49,6 +50,28 @@
     (case en
       :lz (-> d decompress drive/read-string))
     s))
+
+(add-watch drive/online-status* ::pinger
+           (fn [k r o n]
+             ;ping server at intervals
+             ))
+
+(let [pinger (pinger.)
+      ;url "www.googleapis.com"
+      ;url "142.250.179.234"
+      url "https://github.com";
+      ]
+  (defn $ping-server []
+    (p/do
+      (-> (.ping pinger url)
+          (p/then (fn [data]
+                    (trace log "ping data: " data)
+                    (swap! drive/online-status* assoc :status :online)
+                    data))
+          (p/catch (fn [e]
+                     (warn log 'error e)
+                     (swap! drive/online-status* assoc :status :offline)
+                     e))))))
 
 (defn- $read-local-index []
   (trace log)
@@ -77,6 +100,7 @@
   "Return the doc or false"
   [doc-id]
   (assert doc-id)
+  (trace log)
   (ls/$get-data doc-id))
 
 (defn $write-local-doc [doc]
@@ -593,7 +617,7 @@
                #($open-local-file db doc listeners) listeners))
 
 (defn $sync-doc-index
-  "Reads the Drive file list and updates the
+  "Gets the Drive file list and updates db.
   "
   [{:keys [on-doc-status]}]
   (if (signed-in?)
@@ -626,25 +650,27 @@
                                              :file-name        (not-empty file-name-part)
                                              :file-description file-description
                                              :status           status
-                                             :file-id          file-id}])))
-            ;If a file has been trashed by another device it needs removing from this devices localstore
-            _  (on-doc-status doc-status)
-            _  (when-let [remove-doc-ids (not-empty
-                                          (for [{trashed-doc-id :doc-id :as trashed-file-data} (filter :trashed (vals files-data))
-                                                :let [idx-entry (get local-index trashed-doc-id)]
+                                             :file-id          file-id}])))]
+                  ;If a file has been trashed by another device it needs removing from this devices localstore 
+      (on-doc-status doc-status)
+      (when-let [remove-doc-ids (not-empty
+                                 (for [{trashed-doc-id :doc-id :as trashed-file-data} (filter :trashed (vals files-data))
+                                       :let [idx-entry (get local-index trashed-doc-id)]
                                              ;Don't remove if an un-synched local change has been made
-                                                :when (and idx-entry (not= (:file-change trashed-file-data) (:file-change idx-entry)))]
-                                            trashed-doc-id))]
-                 (trace log 'remove-trashed-docs-locally remove-doc-ids)
-                 (p/let [_ (p/all
-                            (for [doc-id remove-doc-ids]
-                              (ls/$remove-item doc-id)))
-                         _ ($write-local-index (apply dissoc local-index remove-doc-ids))]))]
+                                       :when (and idx-entry (not= (:file-change trashed-file-data) (:file-change idx-entry)))]
+                                   trashed-doc-id))]
+        (trace log 'remove-trashed-docs-locally remove-doc-ids)
+        (p/do
+          (p/all
+           (for [doc-id remove-doc-ids]
+             (ls/$remove-item doc-id)))
+          ($write-local-index (apply dissoc local-index remove-doc-ids))))
       nil)
     (p/let [local-index ($read-local-index)
             doc-status (into {} (for [doc-id (keys local-index)]
                                   [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])
                                                  :status :offline)]))]
+      (trace log "signed-out")
       (on-doc-status doc-status)
       nil)))
 
@@ -656,21 +682,32 @@
                                          :properties (when doc-id {:doc-id doc-id})})]
     (:id file-meta)))
 
+(defn app-status [status type]
+  (let [default-type :info]
+    (assoc
+     (cond
+       (map? status) (let [{:keys [type]} status] (assoc status :type (or type default-type)))
+       (utils/error? status) {:text (str status) :type :error}
+       :else {:text (str status) :type (or type default-type)})
+     :time-ms (utils/time-now-ms))))
+
 (defn $sync-localstore
   "Checks for external localstore changes (from another browser instance).
   Reads localstore doc compares with specified doc change date.
   "
   [{:keys [doc-id change]} {:keys [on-ls-change on-in-sync on-virgin-doc]}]
+  {:pre [(string? doc-id)]}
   (if (not change)
     (p/do (and on-virgin-doc (on-virgin-doc)));new unchanged doc (only save after change)
     (p/let [idx ($read-local-index)
             {:keys [doc-change] :as idx-entry} (get idx doc-id)]
       (trace log 'idx-entry idx-entry)
-      (trace log 'change change)
-      (if (and doc-change (> doc-change change))
-        (p/let [local-doc ($read-local-doc doc-id)]
-          (and on-ls-change (on-ls-change local-doc)))
-        (and on-in-sync (on-in-sync))))))
+      (let [changed? (and doc-change (> doc-change change))]
+        (trace log 'change [doc-change change changed?])
+        (if changed?
+          (p/let [local-doc ($read-local-doc doc-id)]
+            (and on-ls-change (on-ls-change local-doc)))
+          (and on-in-sync (on-in-sync)))))))
 
 (defn- $sync-drive-file-
   "Sync doc with its drive file and updates localstore and drive accordingly."

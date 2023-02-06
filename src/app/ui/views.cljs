@@ -379,7 +379,7 @@
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}
-                          :on-click events/sync-local!!} (case online-status
+                          :on-click events/sync-doc!!} (case online-status
                                                          :syncing [:> syncing-icon]
                                                          :uploading [:> uploading-icon]
                                                          :downloading [:> downloading-icon]

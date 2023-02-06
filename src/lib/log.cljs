@@ -47,8 +47,9 @@
                   (when include-both
                     (str "both:" \newline (pprint-out both))))
              (str "Diff match: " ma \space mb
-                  (when (or include-match)
-                    (str "both:" \newline (pprint-out both))))))))
+                  (if (or include-match)
+                    (str "both:" \newline (pprint-out both))
+                    (str " -no-differences")))))))
 
 (defn- error? [x]
   ;ExceptionInfo is also an error!
