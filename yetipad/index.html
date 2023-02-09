@@ -11,24 +11,25 @@
     <link rel="manifest" href="/manifest.json">
 </head>
 <body>
-<noscript>
+  <noscript>
     yetipad-app is a JavaScript app. Please enable JavaScript to continue.
-</noscript>
-<div id="app"></div>
-<script src="js/app.js"></script>
-<script async defer src="https://apis.google.com/js/api.js"
-        onload="this.onload=function(){};app.core.handle_client_load()"
-        onreadystatechange="if (this.readyState === 'complete') this.onload()">
-</script>
+  </noscript>
+  <div id="app"></div>
+  <script src="js/app.js"></script>
+  <!--script async defer src="https://apis.google.com/js/api.js"
+            onload="this.onload=function(){};app.core.handle_client_load()"
+            onreadystatechange="if (this.readyState === 'complete') this.onload()">
+    </script-->
+  <script async defer src="https://apis.google.com/js/api.js" onload="app.core.gapi_load()"></script>
+  <script async defer src="https://accounts.google.com/gsi/client" onload="app.core.gis_init()"></script>
 <script>
 // Check that service workers are supported
 if ('serviceWorker' in navigator) {
   // Use the window load event to keep the page load performant
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js');
+    navigator.serviceWorker.register('service-worker.js');
   });
 }
-
 </script>
 </body>
 </html>

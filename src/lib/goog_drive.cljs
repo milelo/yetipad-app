@@ -23,23 +23,20 @@
 (def online-status* (atom {:status :offline} {:validator (fn [{:keys [status]}]
                                                            (#{:offline :online} status))}))
 
-(comment 
+(comment
   (-> (p/rejected :response)
       (p/catch (fn [e]
                  (println 1 e)
                  ;(p/rejected e)
-                 e
-                 ))
+                 e))
       (p/catch (fn [e]
                  (println 2 e)
-                 (throw :thrown)
-                 ))
+                 (throw :thrown)))
       (p/catch (fn [e]
                  (println 3 e)
                  (p/rejected e)))
       (p/then (fn [x]
-                (println 4 x))))
-  )
+                (println 4 x)))))
 
 (defn- $request- [request return-type {:keys [default] :as opt}]
   (assert (fn? request))
@@ -58,25 +55,29 @@
 
 (declare $sign-in!)
 
+(declare allow-drive-request?)
+
 (defn- $request [request return-type & [opt]]
-  (-> ($request- request return-type opt)
-      (p/then (fn [resolved]
-                (swap! online-status* assoc :status :online)
-                resolved))
-      (p/catch (fn [^js/Object err]
-                 (trace log "response-err:" (bean err))
-                 (let [code err.result.error.code
-                       status err.result.error.status]
+  (if (allow-drive-request?)
+    (-> ($request- request return-type opt)
+        (p/then (fn [resolved]
+                  (swap! online-status* assoc :status :online)
+                  resolved))
+        (p/catch (fn [^js/Object err]
+                   (trace log "response-err:" (bean err))
+                   (let [code err.result.error.code
+                         status err.result.error.status]
                    ;codes: -1 network-error (eg no internet access)
-                   (trace log :code code :status status (-> err.result.error pprintl))
-                   (swap! online-status* assoc :status (if (= code -1) :offline :online))
-                   (if (or (= code 401) (and (= code 403) #_(= status "PERMISSION_DENIED")))
-                     (-> ($sign-in!)
-                         (p/then #($request- request return-type opt))
-                         (p/catch (fn [e]
-                                    (warn log "sign in error" e)
-                                    (p/rejected e))))
-                     (p/rejected err)))))))
+                     (trace log :code code :status status (-> err.result.error pprintl))
+                     (swap! online-status* assoc :status (if (= code -1) :offline :online))
+                     (if (or (= code 401) (and (= code 403) #_(= status "PERMISSION_DENIED")))
+                       (-> ($sign-in!)
+                           (p/then #($request- request return-type opt))
+                           (p/catch (fn [e]
+                                      (warn log "sign in error" e)
+                                      (p/rejected e))))
+                       (p/rejected err))))))
+    (p/rejected ::access-denied)))
 
 ;=================================== Requests =======================================
 (defn $create-file [{:keys [file-name mime-type parents app-data? properties]}]
@@ -220,35 +221,40 @@
 (comment
   (status))
 
-(defn authenticated? []
-  (:authenticated (status)))
+(defn allow-drive-request? []
+  (#{:sign-in-pending :authenticated} (status)))
 
 (defn $sign-in! []
   (when-let [{:keys [^js/Object token-client on-token-acquired]} @token-client*]
     ;For prompt values see: https://developers.google.com/identity/oauth2/web/reference/js-reference#TokenClientConfig
     ;ALWAYS PROMPTS with localhost: https://stackoverflow.com/questions/73519031/how-do-i-let-the-browser-store-my-login-status-with-google-identity-services
-    (js/Promise. (fn [resolve reject]
-                   (trace log "register callback" #_(-> token-client bean pprintl))
-                   (set! (.-callback token-client)
-                         (fn [response]
-                           (trace log "callback:" (-> response bean pprintl))
-                           (if-let [err (.-error response)]
-                             (let [code err.result.error.code]
-                               (log/error log "code: " code \newline (-> response ->clj pprintl))
-                               (swap! online-status* assoc :status (if (= code -1) :offline :online))
-                               (swap! token-client* assoc :aborted-sign-in? true)
-                               (reject response))
+    (p/create (fn [resolve reject]
+                (trace log "register callback" #_(-> token-client bean pprintl))
+                (set! (.-callback token-client)
+                      (fn [response]
+                        (let [response (bean response)]
+                          (trace log "callback:" (-> response pprintl))
+                          (if (:error response)
+                            (do
+                              (swap! online-status* assoc :status :online)
+                              (swap! token-client* assoc :aborted-sign-in? true)
+                              (reject response))
                              ;GIS has automatically updated gapi.client with the newly issued access token.
-                             (let [token (js/gapi.client.getToken)]
-                               (swap! online-status* assoc :status :online)
-                               (when on-token-acquired (on-token-acquired token))
-                               (resolve token)))))
-                   (set! (.-error_callback token-client)
-                         (fn [response]
-                           (trace log "error_callback:" response)
-                           (swap! token-client* assoc :aborted-sign-in? true)
-                           (reject response)))
-                   (.requestAccessToken  token-client #js {:prompt (if (signed-in?) "" "consent")})))))
+                            (let [token (js/gapi.client.getToken)]
+                              (swap! online-status* assoc :status :online)
+                              (when on-token-acquired (on-token-acquired token))
+                              (resolve token))))))
+                (set! (.-error_callback token-client)
+                      (fn [response]
+                        (trace log "error_callback:" response)
+                        (swap! token-client* assoc :aborted-sign-in? true)
+                        (reject response)))
+                (let [;prompt (if (signed-in?) "" "consent") 
+                      prompt "";The user will be prompted only the first time your app requests access. Cannot be specified with other values.
+                      ;prompt "none";
+                      ]
+                  (trace log :prompt prompt)
+                  (.requestAccessToken  token-client #js {:prompt prompt}))))))
 
 (defn sign-out! []
   (let [token (get-token)
@@ -269,7 +275,8 @@
   (let [{:keys [gapi? token-client]} @token-client*]
     (when (and gapi? token-client)
       (trace log)
-      ($sign-in!))))
+      ;($sign-in!);
+      )))
 
 (defn- gapi-init! []
   (trace log)
