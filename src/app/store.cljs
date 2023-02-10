@@ -66,11 +66,11 @@
       (-> (.ping pinger url)
           (p/then (fn [data]
                     (trace log "ping data: " data)
-                    (swap! drive/online-status* assoc :status :online)
+                    (swap! drive/online-status* assoc :online? true)
                     data))
           (p/catch (fn [e]
                      (warn log 'error e)
-                     (swap! drive/online-status* assoc :status :offline)
+                     (swap! drive/online-status* assoc :online? false)
                      e))))))
 
 (defn- $read-local-index []

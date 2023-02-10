@@ -42,6 +42,13 @@
 
 (info log 'platform \newline (pprintl platform))
 
+(add-watch drive/online-status* ::status-watch
+           (fn [k r {old-online? :online? old-status :status} {:keys [online? status]}]
+             (when (or (not= old-online? online?) (not= old-status status))
+               (update-db! ::status-watch
+                           (fn [db]
+                             (assoc db  :online? online? :online-status (-> status name keyword)))))))
+
 (def clean-db
   {:doc            nil
    :persist-doc    nil
@@ -60,7 +67,9 @@
                               :index-view         :index-history
                               :doc-file-index     {}
                               :status             {}
-                              :online-status      false
+                              :online?            false?
+                              :online-status      nil
+                              :sync-status        false
                               :keep-doc-in-sync?  true
                               :platform           platform}
                           clean-db))))
@@ -125,8 +134,8 @@
 
 (add-watch db/db* :db-monitor (fn [k r o n]
                                 (when (not= o n)
-                                  #_(when-not (= (:online-status o) (:online-status n))
-                                      (stack log "online-status:" {:old (:online-status o) :new (:online-status n)}))
+                                  #_(when-not (= (:sync-status o) (:sync-status n))
+                                      (stack log "sync-status:" {:old (:sync-status o) :new (:sync-status n)}))
                                   (after-db-change! o n))))
 
 (defn set-app-status! [status & [type]]
@@ -206,7 +215,7 @@
             $sync-doc-index))
 
 (comment
-  (:online-status @db/db*))
+  (:sync-status @db/db*))
 
 (defn- $update-doc
   "Update the app doc"
@@ -228,13 +237,12 @@
                                    (store/app-status status-message :info))))))
   ($sync-doc-index))
 
-(defn online-status! [status]
-  (db/update-db! 'online-status
-                 (fn [{:keys [online-status] :as db}]
+(defn set-sync-status! [status]
+  (db/update-db! 'set-sync-status!
+                 (fn [db]
                    (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
-                   (let [status (and online-status status)]
-                     (trace log status)
-                     (assoc db :online-status status)))))
+                   (trace log :status status)
+                   (assoc db :sync-status status))))
 
 (defn $sync-drive-file
   "app-doc: doc loaded in the app.
@@ -250,7 +258,7 @@
                                                            (when-let [status ({:overwrite-from-file :downloading
                                                                                :overwrite-file      :uploading
                                                                                :resolve-conflicts   :syncing} sync-status)]
-                                                             (online-status! status)))
+                                                             (set-sync-status! status)))
                                  :on-in-sync             $sync-doc-index
                                  :on-overwrite-from-file (fn [drive-doc]
                                                            ($update-doc drive-doc app-doc "Updated from Drive"))
@@ -260,11 +268,11 @@
                                  :on-conflicts-resolved  (fn [synched-doc]
                                                            ($update-doc synched-doc app-doc "Synched with Drive"))})
         (p/then (fn [r]
-                  (online-status! :synced)
+                  (set-sync-status! :synced)
                   r))
         (p/catch (fn [error]
                    (warn log 'sync error)
-                   (online-status! :error)
+                   (set-sync-status! :error)
                    (set-app-status! error)
                    error
                    ;(p/rejected error)
@@ -280,17 +288,6 @@
   (db/$do-sync 'trash-files-pending!!
                store/$trash-files-pending listeners))
 
-(defn signed-in!! [signed-in?]
-  ($do-sync 'signed-in!!
-            (fn [{doc :doc}]
-              (when (drive/allow-drive-request?)
-                (trace log "can sync drive file")
-                (p/do (when (and signed-in? (:doc-id doc))
-                        (store/$trash-files-pending)
-                        ($sync-drive-file doc (get doc :doc-id) {:src ::signed-in}))
-                      (update-db! (fn [db]
-                                    (assoc db :online-status (and signed-in? :online)))))))))
-
 (defn read-doc-by-id!!
   ;""
   ([doc-id {:keys [open-items]}]
@@ -299,7 +296,7 @@
              (fn  [{{old-doc-id :doc-id :as app-doc} :doc}]
                (assert (string? doc-id))
                (if (= old-doc-id doc-id)
-                 (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items)))) 
+                 (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items))))
                  ($do-sync
                   (fn [_db]
                     (p/let [local-doc (store/$read-local-doc doc-id)
@@ -708,10 +705,15 @@
 
 (defn got-access-token! [token]
   (trace log "token:" (-> token bean pprintl))
-  (signed-in!! true)
-  (update-db! 'got-access-token!
-              (fn [db]
-                (assoc db :signed-in? true))))
+  ($do-sync 'got-access-token!
+            (fn [{doc :doc}]
+              (when (drive/allow-drive-request?)
+                (trace log "can sync drive file")
+                (p/do (when (:doc-id doc)
+                        (store/$trash-files-pending)
+                        ($sync-drive-file doc (get doc :doc-id) {:src ::signed-in}))
+                      #_(update-db! (fn [db]
+                                      (assoc db :sync-status :online))))))))
 
 
 ;===============================================================

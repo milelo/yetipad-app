@@ -251,7 +251,7 @@
 
 (defn tag-drawer []
   ;left side drawer
-  (let [online-status @subs/online-status*
+  (let [sync-status @subs/sync-status*
         show-close-main-menu false]
     [:> Drawer
      {:open     @subs/main-menu-open*
@@ -273,7 +273,7 @@
       [static-pane-list-item :trash]
       [static-pane-list-item :options]
       [static-pane-list-item :log]
-      (if online-status
+      (if sync-status
         [menu-list-item account-icon "Sign-out" events/sign-out!]
         [menu-list-item account-icon "Sign-in" events/sign-in!])
       [static-pane-list-item :about]
@@ -343,7 +343,7 @@
 (defn app-root []
   (let [page-item false
         app-status @subs/app-status*
-        online-status @subs/online-status*]
+        sync-status @subs/sync-status*]
     ;(debug log (->  base-theme js->clj :root))
     [ui/error-boundary ::app-route
      [:link {:rel "stylesheet" :href "/goog.css"}]
@@ -379,15 +379,16 @@
           [:> IconButton {:title    "online status"
                           :color    :inherit
                           :style    {:flex 0}
-                          :on-click events/sync-doc!!} (case online-status
-                                                         :syncing [:> syncing-icon]
-                                                         :uploading [:> uploading-icon]
-                                                         :downloading [:> downloading-icon]
-                                                         :synced [:> synced-icon]
-                                                         :online [:> signed-in-icon]
-                                                         :error [:> online-error-icon]
-                                                         false [:> signed-out-icon]    ;offline
-                                                         (warn log ::online-status-unknown online-status))]
+                          :on-click events/sync-doc!!}
+           (case sync-status
+             :syncing [:> syncing-icon]
+             :uploading [:> uploading-icon]
+             :downloading [:> downloading-icon]
+             :synced [:> synced-icon]
+             :online [:> signed-in-icon]
+             :error [:> online-error-icon]
+             false [:> signed-out-icon]    ;offline
+             (warn log ::sync-status-unknown sync-status))]
           ;variant ["h1","h2","h3","h4","h5","h6","subtitle1","subtitle2","body1","body2","caption","button","overline","srOnly","inherit"]
           ;valid colours: ["initial","inherit","primary","secondary","textPrimary","textSecondary","error"]
           [:> Typography {:variant :subtitle2

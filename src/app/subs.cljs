@@ -135,9 +135,9 @@
                (fn [db _]
                  (:saving? db))))
 
-(def online-status* (db/atom
-                     (fn [db]
-                       (:online-status db))))
+(def sync-status* (db/atom
+                   (fn [db]
+                     (and (:online? db) (:sync-status db)))))
 
 (def doc-list* (db/atom
                 (fn [{:keys [doc-file-index]}]

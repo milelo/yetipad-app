@@ -20,7 +20,7 @@
       (warn log 'error e)
       e)))
 
-(def online-status* (atom {:status :offline} {:validator (fn [{:keys [status]}]
+(def online-status* (atom {:online? false} #_{:validator (fn [{:keys [status]}]
                                                            (#{:offline :online} status))}))
 
 (comment
@@ -61,7 +61,7 @@
   (if (allow-drive-request?)
     (-> ($request- request return-type opt)
         (p/then (fn [resolved]
-                  (swap! online-status* assoc :status :online)
+                  (swap! online-status* assoc :online? true)
                   resolved))
         (p/catch (fn [^js/Object err]
                    (trace log "response-err:" (bean err))
@@ -69,7 +69,7 @@
                          status err.result.error.status]
                    ;codes: -1 network-error (eg no internet access)
                      (trace log :code code :status status (-> err.result.error pprintl))
-                     (swap! online-status* assoc :status (if (= code -1) :offline :online))
+                     (swap! online-status* assoc :online? (not= code -1))
                      (if (or (= code 401) (and (= code 403) #_(= status "PERMISSION_DENIED")))
                        (-> ($ensure-authentication?)
                            (p/then #($request- request return-type opt))
@@ -213,6 +213,7 @@
                  (and token (hasGrantedAllScopes token (:scope credentials))) ::authenticated
                  :else ::failed-authentication)]
     (trace log "status: " status)
+    (swap! online-status* assoc :status status)
     #_(when (= status ::authenticated)
         (stack log "status: " status))
     status))
@@ -246,12 +247,12 @@
                                        (trace log "callback:" (-> response pprintl))
                                        (if (:error response)
                                          (do
-                                           (swap! online-status* assoc :status :online)
+                                           (swap! online-status* assoc :online? true)
                                            (swap! token-client* assoc ::aborted-sign-in? true)
                                            (reject response))
                              ;GIS has automatically updated gapi.client with the newly issued access token.
                                          (let [token (js/gapi.client.getToken)]
-                                           (swap! online-status* assoc :status :online)
+                                           (swap! online-status* assoc :online? true)
                                            (when on-token-acquired (on-token-acquired token))
                                            (resolve token))))))
                              (set! (.-error_callback token-client)
@@ -283,7 +284,11 @@
   (let [{:keys [gapi? token-client]} @token-client*]
     (when (and gapi? token-client)
       (trace log)
-      ;($sign-in!);
+      ;This call to $ensure-authentication? not initiated from user action so may be blocked by browser.
+      ;That should be ok, user authentication pop-up will be initiated if the user selects
+      ;sign-in or presses the
+      ;online sync status button.
+      ($ensure-authentication?)
       )))
 
 (defn- gapi-init! []
