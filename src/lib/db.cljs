@@ -25,11 +25,7 @@
 ;todo implement and provide 'ignore' key paths.
 (def ^:dynamic *context* {})
 
-;DEPRECATED Eliminate ASAP
-(def after-db-change* (core/atom nil))
-
 ;====================================task queue=================================================
-
 
 (defonce <task-queue (chan 20))
 (def <inject-task (chan 4))
@@ -122,26 +118,27 @@
   ([$fn]
    ($do-sync nil $fn))
   ([label-or-props $fn {:keys [on-success on-error]}]
-   (-> (p/do
-         (let [props (if (map? label-or-props)
-                       label-or-props
-                       {:label label-or-props})
-               _ (assert (< (:nesting props) 4) (str "Deep sync nesting: " (:nesting props) " " (:label props)))
-               props (merge-with #(or %1 %2) props {:timer 10000
-                                                    :label (:label *context*)
-                                                    :nesting (-> *context* :nesting inc)}); provide defaults 
-               d (p/deferred)]
-           (go (p/resolve! d (<? (<do-sync props
-                                           (fn [db]
-                                             (p->c (p/do ($fn db)))))
-                                 #(p/reject! d %))))
-           d))
-       (p/then #(and on-success (on-success)))
-       (p/catch (if on-error
-                  on-error
-                  (fn [e]
-                    (error log '$do-sync "unhandled task error: " e)
-                    (p/rejected e))))))
+   (let [context *context*]
+     (-> (p/do
+           (let [props (if (map? label-or-props)
+                         label-or-props
+                         {:label label-or-props})
+                 _ (assert (< (:nesting props) 4) (str "Deep sync nesting: " (:nesting props) " " (:label props)))
+                 props (merge-with #(or %1 %2) props {:timer 10000
+                                                      :label (:label context)
+                                                      :nesting (-> context :nesting inc)}); provide defaults 
+                 d (p/deferred)]
+             (go (p/resolve! d (<? (<do-sync props
+                                             (fn [db]
+                                               (p->c (p/do ($fn db)))))
+                                   #(p/reject! d %))))
+             d))
+         (p/then #(and on-success (on-success)))
+         (p/catch (if on-error
+                    on-error
+                    (fn [e]
+                      (error log '$do-sync "unhandled task error: " e)
+                      (p/rejected e)))))))
   ([label-or-props $f]
    ($do-sync label-or-props $f nil)))
 
@@ -203,8 +200,6 @@
     (p/then ($do-sync :nil (fn [_db] nil)) prn)
     (p/then ($do-sync 'db-keys (fn [db] (keys db))) prn)))
 
-
-
 ;====================================task queue=================================================
 
 (defn update-db!
@@ -230,8 +225,6 @@
                                          (log/error log 'update-db! "Attempted db overwrite.")
                                          db)))))]
      ;(debug log label 'db-change (trace-diff :old old-db :new new-db))
-     (when-let [after! @after-db-change*]
-       (after! old-db new-db))
      new-db))
   ([f] (update-db! nil f)))
 
