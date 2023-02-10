@@ -266,9 +266,6 @@
                                                                 :doc-change (:change doc)))]))
     doc))
 
-(defn signed-in? []
-  (drive/signed-in?))
-
 (defn $file-meta
   "Returns a map of file metadata. Defaults to all metadata or specify fields,
   a list of keys or strings selecting metadata eg [:modifiedTime :mimeType]."
@@ -318,7 +315,7 @@
     ($write-local-index (dissoc local-index doc-id))
     (ls/$remove-item doc-id)
     (when-not keep-file
-      (if (signed-in?)
+      (if (drive/allow-drive-request?)
         (when-let [file-id (get-in local-index [doc-id :file-id])]
                   ;file may me local only
           (drive/$trash-file file-id))
@@ -586,7 +583,7 @@
    from the localstore file index entry and the drive file meta-data.
   "
   [drive-file-data local-idx-file-entry]
-  (assert (signed-in?))
+  (assert (drive/allow-drive-request?))
   (let [{:keys [file-change]} drive-file-data
         {:keys [doc-changes] idx-file-change :file-change} local-idx-file-entry
         debug-data {:file-change file-change :idx-file-change idx-file-change
@@ -674,7 +671,7 @@
                            doc-status (into {} (for [doc-id (keys local-index)]
                                                  [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])
                                                                 :status :offline)]))]
-                     (trace log "signed-out")
+                     (trace log "authentication required")
                      (on-doc-status doc-status)
                      nil)
                    (p/rejected e))))))

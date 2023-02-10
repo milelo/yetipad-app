@@ -1,6 +1,6 @@
 (ns lib.goog-drive
   (:require
-   [lib.log :as log :refer-macros [trace debug info warn fatal] :refer [pprintl]]
+   [lib.log :as log :refer-macros [trace stack debug info warn fatal] :refer [pprintl]]
    [lib.debug :as debug :refer [we wd]]
    [promesa.core :as p]
    [cljs.reader :as reader]
@@ -53,7 +53,7 @@
                                  :raw response)]
                   (or response default false))))))
 
-(declare $sign-in!)
+(declare $ensure-authentication?)
 
 (declare allow-drive-request?)
 
@@ -71,7 +71,7 @@
                      (trace log :code code :status status (-> err.result.error pprintl))
                      (swap! online-status* assoc :status (if (= code -1) :offline :online))
                      (if (or (= code 401) (and (= code 403) #_(= status "PERMISSION_DENIED")))
-                       (-> ($sign-in!)
+                       (-> ($ensure-authentication?)
                            (p/then #($request- request return-type opt))
                            (p/catch (fn [e]
                                       (warn log "sign in error" e)
@@ -200,66 +200,74 @@
 (defn- get-token []
   (and js/gapi.client (js/gapi.client.getToken)))
 
-(defn signed-in? []
-  (boolean (get-token)))
-
-(defn status
+(defn get-status
   ;no internet access?
   []
   (let [{:keys [gapi? token-client credentials aborted-sign-in?]} @token-client*
         hasGrantedAllScopes js/google.accounts.oauth2.hasGrantedAllScopes
         token (get-token)
         status (cond
-                 (not (and gapi? token-client)) :initialising
-                 aborted-sign-in? :aborted-sign-in
-                 (not token) :sign-in-pending
-                 (and token (hasGrantedAllScopes token (:scope credentials))) :authenticated
-                 :else :failed-authentication)]
+                 (not (and gapi? token-client)) ::initialising
+                 aborted-sign-in? ::aborted-sign-in
+                 (not token) ::sign-in-pending
+                 (and token (hasGrantedAllScopes token (:scope credentials))) ::authenticated
+                 :else ::failed-authentication)]
     (trace log "status: " status)
+    #_(when (= status ::authenticated)
+        (stack log "status: " status))
     status))
 
 (comment
-  (status))
+  (get-status))
 
-(defn allow-drive-request? []
-  (#{:sign-in-pending :authenticated} (status)))
+(defn allow-drive-request?
+  "Allow a request that may succeed or trigger a user sign-in or authentication request."
+  []
+  (#{::sign-in-pending ::authenticated} (get-status)))
 
-(defn $sign-in! []
+(defn $ensure-authentication?
+  "Ensure or attempt Drive access authentication.
+   Return true if successful."
+  []
   (when-let [{:keys [^js/Object token-client on-token-acquired]} @token-client*]
+    (trace log)
     ;For prompt values see: https://developers.google.com/identity/oauth2/web/reference/js-reference#TokenClientConfig
     ;ALWAYS PROMPTS with localhost: https://stackoverflow.com/questions/73519031/how-do-i-let-the-browser-store-my-login-status-with-google-identity-services
-    (p/create (fn [resolve reject]
-                (trace log "register callback" #_(-> token-client bean pprintl))
-                (set! (.-callback token-client)
-                      (fn [response]
-                        (let [response (bean response)]
-                          (trace log "callback:" (-> response pprintl))
-                          (if (:error response)
-                            (do
-                              (swap! online-status* assoc :status :online)
-                              (swap! token-client* assoc :aborted-sign-in? true)
-                              (reject response))
+    (let [status (get-status)]
+      (cond
+        (= status ::authenticated) (p/resolved true)
+        (= status ::initialising) (p/resolved false)
+        :else  (p/do
+                 (p/create (fn [resolve reject]
+                             (trace log "register callback" #_(-> token-client bean pprintl))
+                             (set! (.-callback token-client)
+                                   (fn [response]
+                                     (let [response (bean response)]
+                                       (trace log "callback:" (-> response pprintl))
+                                       (if (:error response)
+                                         (do
+                                           (swap! online-status* assoc :status :online)
+                                           (swap! token-client* assoc ::aborted-sign-in? true)
+                                           (reject response))
                              ;GIS has automatically updated gapi.client with the newly issued access token.
-                            (let [token (js/gapi.client.getToken)]
-                              (swap! online-status* assoc :status :online)
-                              (when on-token-acquired (on-token-acquired token))
-                              (resolve token))))))
-                (set! (.-error_callback token-client)
-                      (fn [response]
-                        (trace log "error_callback:" response)
-                        (swap! token-client* assoc :aborted-sign-in? true)
-                        (reject response)))
-                (let [;prompt (if (signed-in?) "" "consent") 
-                      prompt "";The user will be prompted only the first time your app requests access. Cannot be specified with other values.
-                      ;prompt "none";
-                      ]
-                  (trace log :prompt prompt)
-                  (.requestAccessToken  token-client #js {:prompt prompt}))))))
+                                         (let [token (js/gapi.client.getToken)]
+                                           (swap! online-status* assoc :status :online)
+                                           (when on-token-acquired (on-token-acquired token))
+                                           (resolve token))))))
+                             (set! (.-error_callback token-client)
+                                   (fn [response]
+                                     (trace log "error_callback:" response)
+                                     (swap! token-client* assoc ::aborted-sign-in? true)
+                                     (reject response)))
+                             (let [prompt (if (= status ::failed-authentication) "consent" "")]
+                               (trace log :prompt prompt)
+                               (.requestAccessToken  token-client #js {:prompt prompt}))))
+                 (= (get-status) ::authenticated))))))
 
 (defn sign-out! []
   (let [token (get-token)
         access-token (and token (.-access_token token))]
-    (swap! token-client* assoc :aborted-sign-in? false)
+    (swap! token-client* assoc ::aborted-sign-in? false)
     (when token
       (js/google.accounts.oauth2.revoke access-token (fn [response]
                                                        (let [response (bean response)]

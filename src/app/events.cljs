@@ -40,7 +40,7 @@
                :mobile-vendor        mobileVendor
                :mobile-model         mobileModel})
 
-(info log 'platform \newline (with-out-str (pprint platform)))
+(info log 'platform \newline (pprintl platform))
 
 (def clean-db
   {:doc            nil
@@ -69,8 +69,7 @@
 
 (def min-status-display-time-ms 5000)
 
-(declare clear-app-status!)
-(declare save-doc!)
+(declare save-doc-with-sync!!)
 
 (defn run-later
   ([f delay-ms]
@@ -86,7 +85,10 @@
                (= (:doc-id old-doc) (:doc-id doc))
                (not-empty (dissoc doc :doc-id)))
       ;(debug log 'save-on-doc-change-interceptor! 'save-doc)
-      (save-doc!))))
+      (db/update-db! 'save-on-doc-change-interceptor!
+                     (fn [db]
+                       (assoc db :save-pending? true)))
+      (run-later save-doc-with-sync!! 100))))
 
 (defn navbar-interceptor! [old-db db]
   (let [{old-open-items :open-items {old-doc-id :doc-id} :doc} old-db
@@ -97,6 +99,11 @@
             path (str \/ query-str \# doc-id)]
         (info log 'navbar-interceptor! 'navigate! path)
         (navigate! path)))))
+
+(defn clear-app-status! []
+  (db/update-db! 'clear-app-status!
+                 (fn [db]
+                   (assoc db :status {}))))
 
 (defn after-db-change! [old-db db]
   (run-later
@@ -116,18 +123,16 @@
            ;Write persistent data to this device
            (store/$write-persist-device persist-device)))))))
 
-;;Eliminate ASAP
-(reset! db/after-db-change* after-db-change!)
+(add-watch db/db* :db-monitor (fn [k r o n]
+                                (when (not= o n)
+                                  #_(when-not (= (:online-status o) (:online-status n))
+                                      (stack log "online-status:" {:old (:online-status o) :new (:online-status n)}))
+                                  (after-db-change! o n))))
 
 (defn set-app-status! [status & [type]]
   (db/update-db! 'set-app-status!
                  (fn [db]
                    (assoc db :status (store/app-status status type)))))
-
-(defn clear-app-status! []
-  (db/update-db! 'clear-app-status!
-                 (fn [db]
-                   (assoc db :status {}))))
 
 (defn- verified-open-items
   "return only item (ids) that are present in the document"
@@ -188,32 +193,17 @@
   ($do-sync 'save-doc-with-sync!!
             (fn [{active-doc :doc :as db}]
               (info log "saving doc...")
-              (when (drive/allow-drive-request?)
-                (p/do
-                  (store/$write-local-doc active-doc)
-                  ($sync-drive-file active-doc active-doc {:src ::save-doc-with-sync-})
-                  (update-db! (fn [db]
-                                (assoc db
-                                       :save-pending? false
-                                       :saving? false)))))) {:label 'save-doc-with-sync-}))
-
-(defn save-doc! []
-  (db/update-db! 'save-doc!
-                 (fn [db]
-                   (assoc db :save-pending? true)))
-  (run-later save-doc-with-sync!! 100))
+              (p/do
+                (store/$write-local-doc active-doc)
+                ($sync-drive-file active-doc active-doc {:src ::save-doc-with-sync-})
+                (update-db! (fn [db]
+                              (assoc db
+                                     :save-pending? false
+                                     :saving? false))))) {:label 'save-doc-with-sync-}))
 
 (defn sync-doc-index!! []
   (do-async 'sync-doc-index!
             $sync-doc-index))
-
-(defn online-status [status]
-  (db/update-db! 'online-status
-                 (fn [{:keys [online-status] :as db}]
-                   (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
-                   (let [status (and online-status status)]
-                     (trace log status)
-                     (assoc db :online-status status)))))
 
 (comment
   (:online-status @db/db*))
@@ -238,6 +228,14 @@
                                    (store/app-status status-message :info))))))
   ($sync-doc-index))
 
+(defn online-status! [status]
+  (db/update-db! 'online-status
+                 (fn [{:keys [online-status] :as db}]
+                   (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
+                   (let [status (and online-status status)]
+                     (trace log status)
+                     (assoc db :online-status status)))))
+
 (defn $sync-drive-file
   "app-doc: doc loaded in the app.
    local-doc: doc in the localstore shared by local doc instances on a common domain.
@@ -252,7 +250,7 @@
                                                            (when-let [status ({:overwrite-from-file :downloading
                                                                                :overwrite-file      :uploading
                                                                                :resolve-conflicts   :syncing} sync-status)]
-                                                             (online-status status)))
+                                                             (online-status! status)))
                                  :on-in-sync             $sync-doc-index
                                  :on-overwrite-from-file (fn [drive-doc]
                                                            ($update-doc drive-doc app-doc "Updated from Drive"))
@@ -261,16 +259,19 @@
                                                            ($sync-doc-index))
                                  :on-conflicts-resolved  (fn [synched-doc]
                                                            ($update-doc synched-doc app-doc "Synched with Drive"))})
+        (p/then (fn [r]
+                  (online-status! :synced)
+                  r))
         (p/catch (fn [error]
                    (warn log 'sync error)
-                   (online-status :error)
+                   (online-status! :error)
                    (set-app-status! error)
                    error
                    ;(p/rejected error)
                    )))))
 
 (defn sign-in! []
-  (drive/$sign-in!))
+  (drive/$ensure-authentication?))
 
 (defn sign-out! []
   (drive/sign-out!))
@@ -283,6 +284,7 @@
   ($do-sync 'signed-in!!
             (fn [{doc :doc}]
               (when (drive/allow-drive-request?)
+                (trace log "can sync drive file")
                 (p/do (when (and signed-in? (:doc-id doc))
                         (store/$trash-files-pending)
                         ($sync-drive-file doc (get doc :doc-id) {:src ::signed-in}))
@@ -290,17 +292,16 @@
                                     (assoc db :online-status (and signed-in? :online)))))))))
 
 (defn read-doc-by-id!!
-  ""
+  ;""
   ([doc-id {:keys [open-items]}]
    (trace log)
    (do-async 'read-doc-by-id!!
              (fn  [{{old-doc-id :doc-id :as app-doc} :doc}]
                (assert (string? doc-id))
-               (debug log :nesting (:nesting db/*context*))
                (if (= old-doc-id doc-id)
-                 (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items))))
+                 (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items)))) 
                  ($do-sync
-                  (fn read-doc-by-id!! [_db]
+                  (fn [_db]
                     (p/let [local-doc (store/$read-local-doc doc-id)
                             local-doc (or local-doc {:doc-id doc-id})
                             persist-doc (store/$read-persist-doc doc-id)
@@ -309,7 +310,7 @@
                                                   :doc local-doc
                                                   :persist-doc persist-doc
                                                   :open-items (verified-open-items local-doc open-items))))
-                      (when (drive/allow-drive-request?)
+                      (when-not (= (drive/get-status) ::drive/initialising)
                         ($sync-drive-file app-doc local-doc {:src ::read-doc-by-id!!})))))))))
   ([doc-id] (read-doc-by-id!! doc-id nil)))
 
@@ -657,8 +658,8 @@
 
 (defn- $finish-move-items! [{:keys [doc] :as db} target-doc move-items]
       ;(debug log ::finish-move-items- 'target-doc (pprintl target-doc))
-  (p/do
-    (when (store/signed-in?)
+  (p/let [authenticated? (drive/$ensure-authentication?)]
+    (when authenticated?
       (p/do
         (store/$sync-drive-file target-doc
                                 {:on-sync-status #(info log 'target-sync-status %)})
@@ -681,7 +682,7 @@
               (when-let [;exclude source tags; moved-item tags are copied by default.
                          move-items (not-empty (filter #(and (string? %)
                                                              (-> % source-doc :kind (not= :tag))) open-items))]
-                (if (store/signed-in?)
+                (if (drive/allow-drive-request?)
                   (store/$sync-drive-file
                    target-doc-id
                    {:src            ::move-items
