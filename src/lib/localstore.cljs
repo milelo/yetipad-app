@@ -2,8 +2,11 @@
   (:refer-clojure :exclude [keys key])
   (:require
    ["localforage" :as local-forage]
+   [lib.log :as log :refer-macros [trace stack debug info warn error fatal] :refer [pprintl trace-diff]]
    [cljs.reader :refer [read-string]]
    [promesa.core :as p]))
+
+(def log (log/logger 'lib.localstore))
 
 ;https://localforage.github.io/localForage/
 
@@ -11,13 +14,13 @@
   "Gets an item from the storage library and supplies the result to a callback. 
    If the key does not exist, getItem() will return null"
   [k]
-  (assert k)
+  (assert (or (string? k) (keyword? k)))
   (.getItem local-forage (name k)))
 
 (defn $remove-item
   "Removes the value of a key from the offline store"
   [k]
-  (assert k)
+  (assert (or (string? k) (keyword? k)))
   (.removeItem local-forage (name k)))
 
 (defn $set-item
@@ -26,7 +29,8 @@
    Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, 
    Number, Object, Uint8Array, Uint8ClampedArray, Uint16Array, Uint32Array, String"
   [k v]
-  (assert k)
+  (trace log :k k)
+  (assert (or (string? k) (keyword? k)))
   (.setItem local-forage (name k) v))
 
 (defn $keys

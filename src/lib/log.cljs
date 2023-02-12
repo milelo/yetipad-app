@@ -1,7 +1,7 @@
 (ns lib.log
   (:require
    [cljs.core.async :as async :refer [put! chan]]
-   [cljs.reader :refer [read-string]]
+   [clojure.edn :refer [read-string]]
    [cljs.pprint :refer [pprint]]
    [clojure.data :refer [diff]]
    ["localforage" :as local-forage]))

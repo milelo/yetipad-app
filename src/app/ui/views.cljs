@@ -376,7 +376,7 @@
                                      :line-height :normal
                                      ;;:font-weight :bold
                                      }}@subs/doc-title*]]
-          [:> IconButton {:title    "online status"
+          [:> IconButton {:title    "sync status"
                           :color    :inherit
                           :style    {:flex 0}
                           :on-click events/sync-doc!!}

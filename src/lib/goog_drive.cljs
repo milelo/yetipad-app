@@ -51,7 +51,7 @@
                                  :result (some-> response .-result ->clj)
                                  :response (->clj response)
                                  :raw response)]
-                  (or response default false))))))
+                  (or response default))))))
 
 (declare $ensure-authentication?)
 
@@ -64,20 +64,25 @@
                   (swap! online-status* assoc :online? true)
                   resolved))
         (p/catch (fn [^js/Object err]
-                   (trace log "response-err:" (bean err))
-                   (let [code err.result.error.code
-                         status err.result.error.status]
-                   ;codes: -1 network-error (eg no internet access)
-                     (trace log :code code :status status (-> err.result.error pprintl))
+                   (let [err (bean err.result.error)
+                         ;_ (trace log "response-err:" err)
+                         code (:code err)
+                         status (:status err)]
+                     ;codes: -1 network-error (eg no internet access)
+                     (trace log :code code :status status (-> err pprintl))
                      (swap! online-status* assoc :online? (not= code -1))
-                     (if (or (= code 401) (and (= code 403) #_(= status "PERMISSION_DENIED")))
-                       (-> ($ensure-authentication?)
-                           (p/then #($request- request return-type opt))
-                           (p/catch (fn [e]
-                                      (warn log "sign in error" e)
-                                      (p/rejected e))))
+                     (if (or (= code 401) (= code 403))
+                       (do
+                         (when (and (= code 401) (= status "UNAUTHENTICATED"))
+                           ;Stop behaving as authenticated
+                           (js/gapi.client.setToken ""))
+                         (-> ($ensure-authentication?)
+                             (p/then #($request- request return-type opt))
+                             (p/catch (fn [e]
+                                        (warn log "sign in error" e)
+                                        (p/rejected e)))))
                        (p/rejected err))))))
-    (p/rejected ::access-denied)))
+    (p/rejected {:message "access denied" :id ::access-denied})))
 
 ;=================================== Requests =======================================
 (defn $create-file [{:keys [file-name mime-type parents app-data? properties]}]
@@ -249,7 +254,7 @@
                                          (do
                                            (swap! online-status* assoc :online? true)
                                            (swap! token-client* assoc ::aborted-sign-in? true)
-                                           (reject response))
+                                           (reject {:response response :message (:error response)}))
                              ;GIS has automatically updated gapi.client with the newly issued access token.
                                          (let [token (js/gapi.client.getToken)]
                                            (swap! online-status* assoc :online? true)
@@ -257,9 +262,9 @@
                                            (resolve token))))))
                              (set! (.-error_callback token-client)
                                    (fn [response]
-                                     (trace log "error_callback:" response)
+                                     (trace log :error_callback response)
                                      (swap! token-client* assoc ::aborted-sign-in? true)
-                                     (reject response)))
+                                     (reject {:response response})))
                              (let [prompt (if (= status ::failed-authentication) "consent" "")]
                                (trace log :prompt prompt)
                                (.requestAccessToken  token-client #js {:prompt prompt}))))
@@ -278,6 +283,7 @@
                                                          )))
       (js/gapi.client.setToken "")
       (trace log "token revoked")
+      (get-status);update-status
       nil)))
 
 (defn- start-after-init! []
@@ -288,8 +294,7 @@
       ;That should be ok, user authentication pop-up will be initiated if the user selects
       ;sign-in or presses the
       ;online sync status button.
-      ($ensure-authentication?)
-      )))
+      ($ensure-authentication?))))
 
 (defn- gapi-init! []
   (trace log)

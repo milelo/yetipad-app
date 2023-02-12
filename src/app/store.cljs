@@ -254,6 +254,7 @@
   update-index option will update the index entry for the doc-id with the files timestamp.
   "
   [file-id & [{:keys [update-index]}]]
+  (trace log [file-id update-index])
   ;todo can <read-file-content also read meta-data
   (p/let [edn (drive/$read-file-edn file-id)
           doc (or (decode edn) {})]
@@ -666,7 +667,7 @@
             ($write-local-index (apply dissoc local-index remove-doc-ids))))
         nil)
       (p/catch (fn [e]
-                 (if (= e ::drive/access-denied)
+                 (if (= (:id e) ::drive/access-denied)
                    (p/let [local-index ($read-local-index)
                            doc-status (into {} (for [doc-id (keys local-index)]
                                                  [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])

@@ -30,9 +30,13 @@
 (defonce <task-queue (chan 20))
 (def <inject-task (chan 4))
 
+(def task-runner-status* (core/atom {}))
+
 (defn task-runner []
   ;execute queued go-block functions
   (trace log 'task-runner-started)
+  (assert (-> @task-runner-status* :running not))
+  (swap! task-runner-status* assoc :running true)
   (go-loop [i 0]
     (when-let [[<fn <c {:keys [label timeout timer nesting]}] (<! <task-queue)]
       (binding [*context* (assoc *context* :db @db* :label label :nesting nesting)]
@@ -51,7 +55,8 @@
                        <inject-task (js/Error. (str "aborting task: " label " " i)))))))
       (close! <c)
       (recur (inc i)))
-    (log/error log 'task-runner-stopped)))
+    (log/error log 'task-runner-stopped)
+    (swap! task-runner-status* assoc :running false)))
 
 (defn- start-task-runner []
   (go
@@ -93,21 +98,22 @@
   ([<fn]
    (<do-sync nil <fn))
   ([label-or-props <fn]
-   (go?
-    (let [props (if (map? label-or-props)
-                  label-or-props
-                  {:label label-or-props})
-          _ (assert (< (:nesting props) 4) (str "Deep sync nesting: " (:nesting props) " " (:label props)))
-          props (merge-with #(or %1 %2) props {:timer 10000
-                                               :label (:label *context*)
-                                               :nesting (-> *context* :nesting inc)}); provide defaults 
-          <do (fn [<fn]
-                (let [<c (chan)]
-                  (trace log "task-queue put" (:label props))
-                  (put! <task-queue [<fn <c props])
-                  <c))
-          r (<! (<do <fn))]
-      (if (= r ::nil) nil r))))
+   (let [context *context*]
+     (go?
+      (let [props (if (map? label-or-props)
+                    label-or-props
+                    {:label label-or-props})
+            _ (assert (< (:nesting props) 4) (str "Deep sync nesting: " (:nesting props) " " (:label props)))
+            props (merge-with #(or %1 %2) props {:timer 10000
+                                                 :label (:label context)
+                                                 :nesting (-> context :nesting inc)}); provide defaults 
+            <do (fn [<fn]
+                  (let [<c (chan)]
+                    (trace log "task-queue put" (:label props))
+                    (put! <task-queue [<fn <c props])
+                    <c))
+            r (<! (<do <fn))]
+        (if (= r ::nil) nil r)))))
   ([label-or-props <fn {:keys [on-success on-error]}]
    (go-let [v (<! (<do-sync label-or-props <fn))]
            (if (utils/error? v)
@@ -214,9 +220,9 @@
               (stack log 'update-db!))
          old-db @db*
          new-db (swap! db* (fn [db]
-                             (when (and (:db *context*) (not= db (:db *context*)))
-                               (warn log 'update-db! "undeclared db async change:\n"
-                                     (trace-diff 'do-sync-db (:db *context*) 'update-db!-db db)))
+                             #_(when (and (:db *context*) (not= db (:db *context*)))
+                                 (warn log 'update-db! "undeclared db async change:\n"
+                                       (trace-diff 'do-sync-db (:db *context*) 'update-db!-db db)))
                              (let [new-db (f db)]
                                (cond
                                  (nil? new-db) db

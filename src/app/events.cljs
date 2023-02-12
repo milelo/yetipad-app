@@ -139,6 +139,7 @@
                                   (after-db-change! o n))))
 
 (defn set-app-status! [status & [type]]
+  (assert (#{:info :warn :error nil} type))
   (db/update-db! 'set-app-status!
                  (fn [db]
                    (assoc db :status (store/app-status status type)))))
@@ -219,17 +220,21 @@
 
 (defn- $update-doc
   "Update the app doc"
-  [updated-doc active-doc status-message]
+  [updated-doc app-doc status-message]
   (update-db! '$update-doc
               (fn [{:keys [doc open-items] :as db}]
-                (let [doc-change-during-sync? (and active-doc (not (identical? doc active-doc)))]
+                (let [;doc-change-during-sync? (and app-doc (not (identical? doc app-doc)))
+                      doc-change-during-sync? false]
                   (assoc db
                          :doc updated-doc
                          :open-items (verified-open-items updated-doc open-items)
                          :status (cond
                                    doc-change-during-sync?
                                    (do
-                                     (warn log "Doc changed during file-synch")
+                                     ;is this just when switching documents?
+                                     (warn log "Doc changed during file-synch" \n
+                                           (trace-diff :app-doc app-doc :updated-doc updated-doc))
+                                     
                                      (store/app-status status-message :error))
                                    ;
                                    (and status-message
@@ -273,7 +278,7 @@
         (p/catch (fn [error]
                    (warn log 'sync error)
                    (set-sync-status! :error)
-                   (set-app-status! error)
+                   (set-app-status! (or (:message error) (str error)) :error)
                    error
                    ;(p/rejected error)
                    )))))
@@ -361,7 +366,7 @@
 
 (defn window-focused []
   (info log)
-  #_(sync-local!!))
+  (sync-doc!!))
 
 ;--------------------------------Panel selection-------------------------------
 
