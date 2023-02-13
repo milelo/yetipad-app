@@ -22,22 +22,6 @@
 
 (def online-status* (atom {:online? false} #_{:validator (fn [{:keys [status]}]
                                                            (#{:offline :online} status))}))
-
-(comment
-  (-> (p/rejected :response)
-      (p/catch (fn [e]
-                 (println 1 e)
-                 ;(p/rejected e)
-                 e))
-      (p/catch (fn [e]
-                 (println 2 e)
-                 (throw :thrown)))
-      (p/catch (fn [e]
-                 (println 3 e)
-                 (p/rejected e)))
-      (p/then (fn [x]
-                (println 4 x)))))
-
 (defn- $request- [request return-type {:keys [default] :as opt}]
   (assert (fn? request))
   (when opt (trace log 'request-opt opt))

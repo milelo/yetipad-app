@@ -39,14 +39,14 @@
   (let [{:keys [icon title]} (reg/rget :log-config)]
     [ui/item-button icon title #(events/open-item! :log-config)]))
 
-(defn entry [{:keys [level package time args]}]
+(defn entry [{:keys [level package time args meta ns scope]}]
   (let [s {:style {:margin-right 4}}
         p {:style {:margin-right 4 :color :green}}
         ]
     [:div
      [:span s time]
      [:span s (name level)]
-     [:span p (name package)]
+     [:span p (if meta (str ns \: (:line meta) (when scope (str \. scope))) (name package))]
      [:span s (str/join \space (map log/arg-to-str args))]
      ]))
 

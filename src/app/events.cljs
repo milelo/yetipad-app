@@ -278,7 +278,7 @@
         (p/catch (fn [error]
                    (warn log 'sync error)
                    (set-sync-status! :error)
-                   (set-app-status! (or (:message error) (str error)) :error)
+                   (set-app-status! (or (:message error) (:status error) (str error)) :error)
                    error
                    ;(p/rejected error)
                    )))))
