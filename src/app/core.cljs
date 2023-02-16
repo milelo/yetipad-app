@@ -4,6 +4,7 @@
    [lib.log :as log :refer-macros [trace debug info warn fatal]]
    [app.store :as store]
    [reagent.core :as reagent]
+   [promesa.core :as p]
    [reagent.dom :as rdom]
    [app.events :as events]
    [app.ui.views :as views]
@@ -17,7 +18,8 @@
    [app.ui.log-config-pane]
    [app.ui.about-pane]
    [lib.goog-drive :as drive]
-   [app.credentials]))
+   [app.credentials]
+   [lib.localstore :as ls]))
 
 (def log (log/logger 'app.core))
 
@@ -55,9 +57,11 @@
                        (events/signed-in signed-in?))))
 
 (defn ^:export gapi-load []
-  (drive/gapi-load!))
+  (drive/gapi-load! app.credentials/yetipad-credentials))
 
 (defn ^:export gis-init []
-  (drive/gis-init! app.credentials/yetipad-credentials
-                   events/got-access-token!))
+  (p/let [{:keys [email]} (ls/$get-data :*user-info)]
+    (trace log 'email email)
+    (drive/gis-init! (into app.credentials/yetipad-credentials [(when email [:hint email])])
+                     events/on-authorized!)))
 

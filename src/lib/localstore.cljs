@@ -61,8 +61,4 @@
    (p/let [v ($get-item k)]
      (or (read-string v) default)))
   ;default to false to support async channels
-  ([k] ($get-data k false)))
-
-
-
-
+  ([k] ($get-data k nil)))

@@ -10,6 +10,7 @@
 # Node.js dependencies
 /node_modules/
 
+/~*/
 # Cache and data files
 /.*/
 !/.clj-kondo/

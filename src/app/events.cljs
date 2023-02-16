@@ -6,6 +6,7 @@
    [lib.debug :as debug :refer [we wd]]
    [lib.utils :as utils :refer-macros [fn-name] :refer [time-now-ms iso-time->date-time new-item-id]]
    [lib.goog-drive :as drive]
+   [lib.localstore :as ls]
    [lib.html-parse :as html-parse]
    [clojure.pprint :refer [pprint cl-format]]
    [app.store :as store]
@@ -708,8 +709,10 @@
 
 ;===============================================================
 
-(defn got-access-token! [token]
+(defn on-authorized! [{:keys [token email]}]
   (trace log "token:" (-> token bean pprintl))
+  (when email
+    (ls/$put-data :*user-info {:email email}))
   ($do-sync 'got-access-token!
             (fn [{doc :doc}]
               (when (drive/allow-drive-request?)
