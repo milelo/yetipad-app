@@ -36,7 +36,7 @@
                                  :raw response)]
                   (or response default))))))
 
-(declare $ensure-authentication?)
+(declare $ensure-authorized?)
 
 (declare allow-drive-request?)
 
@@ -59,7 +59,7 @@
                          (when (and (= code 401) #_(= status "UNAUTHENTICATED"))
                            ;Stop behaving as authenticated
                            (js/gapi.client.setToken ""))
-                         (-> ($ensure-authentication?)
+                         (-> ($ensure-authorized?)
                              (p/then #($request- request return-type opt))
                              (p/catch (fn [e]
                                         (warn log "sign in error" e)
@@ -128,7 +128,7 @@
 (defn $get-file-meta
   ;warning: on error, doesn't respond
   [file-id & [{:keys [fields]}]]
-  (trace log file-id)
+  (trace log :file-id file-id)
   (assert file-id)
   (let [params {:fileId file-id
                 :fields (or (and (vector? fields) (str/join \, (map name fields)))
@@ -198,12 +198,10 @@
                  (not (and gapi? token-client)) ::initialising
                  aborted-sign-in? ::aborted-sign-in
                  (not token) ::sign-in-pending
-                 (and token (hasGrantedAllScopes token "https://www.googleapis.com/auth/drive.file")) ::authenticated
-                 :else ::failed-authentication)]
-    (trace log "status: " status)
+                 (and token (hasGrantedAllScopes token "https://www.googleapis.com/auth/drive.file")) ::authorized
+                 :else ::failed-authorization)]
+    (trace log :status status)
     (swap! online-status* assoc :status status)
-    #_(when (= status ::authenticated)
-        (stack log "status: " status))
     status))
 
 (comment
@@ -220,10 +218,10 @@
 (defn allow-drive-request?
   "Allow a request that may succeed or trigger a user sign-in or authentication request."
   []
-  (#{::sign-in-pending ::authenticated} (get-status)))
+  (#{::sign-in-pending ::authorized} (get-status)))
 
-(defn $ensure-authentication?
-  "Ensure or attempt Drive access authentication.
+(defn $ensure-authorized?
+  "Ensure or attempt Drive access authorization.
    Return true if successful."
   []
   (when-let [{:keys [^js/Object token-client on-authorized]} @token-client*]
@@ -232,7 +230,7 @@
     ;ALWAYS PROMPTS with localhost: https://stackoverflow.com/questions/73519031/how-do-i-let-the-browser-store-my-login-status-with-google-identity-services
     (let [status (get-status)]
       (cond
-        (= status ::authenticated) (p/resolved true)
+        (= status ::authorized) (p/resolved true)
         (= status ::initialising) (p/resolved false)
         :else  (p/do
                  (p/create (fn [resolve reject]
@@ -259,10 +257,10 @@
                                        (trace log :error_callback err)
                                        (swap! token-client* assoc ::aborted-sign-in? true)
                                        (reject err))))
-                             (let [prompt (if (= status ::failed-authentication) "consent" "")]
+                             (let [prompt (if (= status ::failed-authorization) "consent" "")]
                                (trace log :prompt prompt)
                                (.requestAccessToken  token-client #js {:prompt prompt}))))
-                 (= (get-status) ::authenticated))))))
+                 (= (get-status) ::authorized))))))
 
 (defn sign-out!
   "Revokes authentication (log out).
@@ -292,27 +290,24 @@
       ;That should be ok, user authentication pop-up will be initiated if the user selects
       ;sign-in or presses the
       ;online sync status button.
-      (when (and ($ensure-authentication?) on-authorized)
+      (when (and ($ensure-authorized?) on-authorized)
         (on-authorized {:token (get-token) :email (get-user-email)})
         ;(on-authorized {:token (get-token)})
         ))))
 
-(defn- gapi-init! [credentials]
+(defn- gapi-init! []
   (trace log)
   (p/do
-    ;(js/gapi.client.init (->js (select-keys credentials [:apiKey :discoveryDocs])))
     (js/gapi.client.init #js {})
     (js/gapi.client.load "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest")
-    ;https://developers.google.com/identity/sign-in/web/reference
-    ;(js/gapi.auth2.init (->js (select-keys credentials [:client_id]))) ;required to get userinfo
     (swap! token-client* assoc :gapi? true)
     (start-after-init!)))
 
 (defn gapi-load!
   "Google API load"
-  [credentials]
+  []
   (trace log)
-  (js/gapi.load "client:auth2:picker" (partial gapi-init! credentials)))
+  (js/gapi.load "client:picker" gapi-init!))
 
 (defn gis-init!
   "Google Identity Service init"

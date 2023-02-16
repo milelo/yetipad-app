@@ -235,7 +235,7 @@
                                      ;is this just when switching documents?
                                      (warn log "Doc changed during file-synch" \n
                                            (trace-diff :app-doc app-doc :updated-doc updated-doc))
-                                     
+
                                      (store/app-status status-message :error))
                                    ;
                                    (and status-message
@@ -285,7 +285,7 @@
                    )))))
 
 (defn sign-in! []
-  (drive/$ensure-authentication?))
+  (drive/$ensure-authorized?))
 
 (defn sign-out! []
   (drive/sign-out!))
@@ -458,7 +458,7 @@
                 (start-edit! item-id)))))
 
 (defn start-edit-new-note! []
-  (println :start-edit-new-note)
+  (trace log)
   (start-edit-new! :note))
 
 (defn accept-edit! [item-id]
@@ -541,7 +541,7 @@
   ;write content only after accept-edit
   (db/update-db! 'new-content!
                  (fn [db]
-     ;potentially saves to new-id if original has external change.
+                   ;potentially saves to new-id if original has external change.
                    (if-let [item-id (get-in db [:editing item-id :accept-as])]
                      (update-in db [:doc item-id] (fn [{:keys [mchange] old-content :content :as item}]
                                                     (let [content (not-empty content)]
@@ -661,8 +661,8 @@
 
 (defn- $finish-move-items! [{:keys [doc] :as db} target-doc move-items]
       ;(debug log ::finish-move-items- 'target-doc (pprintl target-doc))
-  (p/let [authenticated? (drive/$ensure-authentication?)]
-    (when authenticated?
+  (p/let [authorized? (drive/$ensure-authorized?)]
+    (when authorized?
       (p/do
         (store/$sync-drive-file target-doc
                                 {:on-sync-status #(info log 'target-sync-status %)})

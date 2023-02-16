@@ -137,7 +137,7 @@
 
 (def sync-status* (db/atom
                    (fn [db]
-                     (and (:online? db) (-> db :online-status (= :authenticated)) (:sync-status db)))))
+                     (and (:online? db) (-> db :online-status (= :authorized)) (:sync-status db)))))
 
 (def doc-list* (db/atom
                 (fn [{:keys [doc-file-index]}]

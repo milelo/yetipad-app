@@ -57,7 +57,7 @@
                        (events/signed-in signed-in?))))
 
 (defn ^:export gapi-load []
-  (drive/gapi-load! app.credentials/yetipad-credentials))
+  (drive/gapi-load!))
 
 (defn ^:export gis-init []
   (p/let [{:keys [email]} (ls/$get-data :*user-info)]
