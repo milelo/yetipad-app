@@ -53,7 +53,6 @@
 (def clean-db
   {:doc            nil
    :persist-doc    nil
-   :persist-device nil
    :editing        {}
    :open-items     nil
    :save-pending?  false
@@ -71,9 +70,17 @@
                               :online?            false?
                               :online-status      nil
                               :sync-status        false
-                              :keep-doc-in-sync?  true
+                              :keep-doc-in-sync?  true 
+                              :persist-device     nil
                               :platform           platform}
                           clean-db))))
+
+(defn init-persist-device!! []
+  ($do-sync 'init-persist-device!!
+            (fn [_db] 
+              (p/let [persist-device (store/$read-persist-device)]
+                (update-db! (fn [db]
+                              (assoc db :persist-device persist-device)))))))
 
 ;----------app-status----------------
 
@@ -569,21 +576,27 @@
             (fn [db]
               (store/$rename-file (get-in db [:doc :doc-id]) params)) {:on-success $sync-doc-index}))
 
-(defn options! [options-update]
+(defn doc-options! [options-update]
   ;write options only after accept-edit
-  (update-db! 'options!
+  (update-db! 'doc-options!
               (fn [db]
                 (if (and (get-in db [:editing :options]) (not-empty options-update))
       ;the initial save will just have the :change entry so need to add the id.
-                  (let [old-options (get-in db [:doc :options])
+                  (let [old-options (get-in db [:doc :options]) 
                         options (merge old-options options-update)
                         on-change (fn [path] (let [v (get-in options path)]
                                                (when (not= (get-in old-options path) v)
                                                  v)))]
+                    (trace log :options-update options-update)
                     (when (or (on-change [:doc-title]) (on-change [:doc-subtitle]))
                       (rename-file!! options))
                     (update-in db [:doc :options] merge options))
                   db))))
+
+(defn device-options! [options-update]
+  (update-db! 'device-options!
+              (fn [db]
+                (update db :persist-device merge options-update))))
 
 (defn set-log-config! [log-config]
   ;write options only after accept-edit
@@ -709,10 +722,8 @@
 
 ;===============================================================
 
-(defn on-authorized! [{:keys [token email]}]
+(defn on-authorized! [{:keys [token]}]
   (trace log "token:" (-> token bean pprintl))
-  (when email
-    (ls/$put-data :*user-info {:email email}))
   ($do-sync 'got-access-token!
             (fn [{doc :doc}]
               (when (drive/allow-drive-request?)

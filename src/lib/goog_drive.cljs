@@ -207,14 +207,6 @@
 (comment
   (get-status))
 
-(defn basic-user-profile []
-  (let [google-auth (js/gapi.auth2.getAuthInstance)]
-    (-> google-auth .-currentUser .get .getBasicProfile)))
-
-(defn get-user-email []
-  ;(.getEmail (basic-user-profile))
-  nil)
-
 (defn allow-drive-request?
   "Allow a request that may succeed or trigger a user sign-in or authentication request."
   []
@@ -291,7 +283,7 @@
       ;sign-in or presses the
       ;online sync status button.
       (when (and ($ensure-authorized?) on-authorized)
-        (on-authorized {:token (get-token) :email (get-user-email)})
+        (on-authorized {:token (get-token)})
         ;(on-authorized {:token (get-token)})
         ))))
 

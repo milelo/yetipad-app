@@ -41,6 +41,7 @@
 (defn init []
   (trace log :init)
   (events/initialize-db!)
+  (events/init-persist-device!!)
   (dev-setup)
   (mount-root)
   (debug log :add-focus-listener)
@@ -51,17 +52,12 @@
   (events/logger-config! @log/config*)
   (events/init-navigation!))
 
-#_(defn ^:export handle-client-load []
-  (trace log :handle-client-load)
-  (store/load-client (fn [signed-in?]
-                       (events/signed-in signed-in?))))
-
 (defn ^:export gapi-load []
   (drive/gapi-load!))
 
 (defn ^:export gis-init []
-  (p/let [{:keys [email]} (ls/$get-data :*user-info)]
-    (trace log 'email email)
-    (drive/gis-init! (into app.credentials/yetipad-credentials [(when email [:hint email])])
+  (p/let [{:keys [sign-in-email]} (store/$read-persist-device)]
+    (trace log :sign-in-email sign-in-email)
+    (drive/gis-init! (into app.credentials/yetipad-credentials [(when sign-in-email [:hint sign-in-email])])
                      events/on-authorized!)))
 

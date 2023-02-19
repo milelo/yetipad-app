@@ -233,6 +233,10 @@
                        (fn [logger-config]
                          (filter symbol? (keys logger-config)))))
 
+(def sign-in-email* (db/atom
+                     (fn [db]
+                       (get-in db [:persist-device :sign-in-email]))))
+
 (def log-level (db/atomfn
                 (fn [db]
                   (:logger-config db))

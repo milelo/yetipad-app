@@ -93,13 +93,17 @@
                                  [table title options editing? values*]
                                  )
        :component-will-unmount (fn [_this]
-                                 (events/options! @values*))
+                                 (let [doc-options (select-keys @values* [:doc-title :doc-subtitle :compress-file?])
+                                       device-options (select-keys @values* [:sign-in-email])]
+                                   (events/doc-options! doc-options)
+                                   (events/device-options! device-options)))
        })))
 
 (defn content [editing?]
   (let [doc-options @subs/doc-options*
         doc-id @subs/doc-id*
         {:keys [file-id]} @(subs/file-index-entry doc-id)
+        email @subs/sign-in-email*
         ]
     [:<>
      ;[options-table "Device options" [] editing?]
@@ -117,8 +121,11 @@
                                          :name   "Compress file?"
                                          :value  (:compress-file? doc-options)
                                          :editor checkbox-editor
-                                         :viewer checkbox-viewer
-                                         }                      
+                                         :viewer checkbox-viewer}
+                                        {:id     :sign-in-email
+                                         :name   "Sign-in email"
+                                         :value  email
+                                         :editor string-editor}
                                         {:id    :doc-id
                                          :name  "Document ID"
                                          :value doc-id
