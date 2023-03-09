@@ -124,21 +124,22 @@
 
 (defn after-db-change! [old-db db]
   (run-later
-   (let [on-change (fn [path] (let [v (get-in db path)]
-                                (when-not (identical? (get-in old-db path) v)
-                                  v)))]
-     (when (and db (not (identical? old-db db)))
-       (let [ms (get-in old-db [:status :time-ms])]
-         (when (and ms (> (time-now-ms) (+ ms min-status-display-time-ms)))
-           (clear-app-status!))
-         (save-on-doc-change-interceptor! old-db db)
-         (navbar-interceptor! old-db db)
-         (when-let [persist-doc (on-change [:persist-doc])]
+   (fn []
+     (let [on-change (fn [path] (let [v (get-in db path)]
+                                  (when-not (identical? (get-in old-db path) v)
+                                    v)))]
+       (when (and db (not (identical? old-db db)))
+         (let [ms (get-in old-db [:status :time-ms])]
+           (when (and ms (> (time-now-ms) (+ ms min-status-display-time-ms)))
+             (clear-app-status!))
+           (save-on-doc-change-interceptor! old-db db)
+           (navbar-interceptor! old-db db)
+           (when-let [persist-doc (on-change [:persist-doc])]
            ;Write persistent data to the doc
-           (store/$write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
-         (when-let [persist-device (on-change [:persist-device])]
+             (store/$write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
+           (when-let [persist-device (on-change [:persist-device])]
            ;Write persistent data to this device
-           (store/$write-persist-device persist-device)))))))
+             (store/$write-persist-device persist-device))))))))
 
 (add-watch db/db* :db-monitor (fn [k r o n]
                                 (when (not= o n)
