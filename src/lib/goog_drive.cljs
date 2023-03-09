@@ -198,7 +198,7 @@
                  (not (and gapi? token-client)) ::initialising
                  aborted-sign-in? ::aborted-sign-in
                  (not token) ::sign-in-pending
-                 (and token (hasGrantedAllScopes token "https://www.googleapis.com/auth/drive.file")) ::authorized
+                 (hasGrantedAllScopes token "https://www.googleapis.com/auth/drive.file") ::authorized
                  :else ::failed-authorization)]
     (trace log :status status)
     (swap! online-status* assoc :status status)
@@ -216,10 +216,9 @@
   "Ensure or attempt Drive access authorization.
    Return true if successful."
   []
-  (when-let [{:keys [^js/Object token-client on-authorized]} @token-client*]
+  (when-let [{:keys [token-client]} @token-client*]
     (trace log)
     ;For prompt values see: https://developers.google.com/identity/oauth2/web/reference/js-reference#TokenClientConfig
-    ;ALWAYS PROMPTS with localhost: https://stackoverflow.com/questions/73519031/how-do-i-let-the-browser-store-my-login-status-with-google-identity-services
     (let [status (get-status)]
       (cond
         (= status ::authorized) (p/resolved true)
@@ -264,7 +263,7 @@
      (when (and revoke-authorization? token)
        (js/google.accounts.oauth2.revoke access-token (fn [response]
                                                         (let [response (->clj response)]
-                                                          (info log :response response)
+                                                          (info log :revoke-response response)
                                                          ;currently doesn't report an error
                                                          ;so can't update offline-status*
                                                           )))

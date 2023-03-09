@@ -222,6 +222,7 @@
   []
   (p/let [files ($list-app-drive-files
                  {:fields "files(id, name, description, modifiedTime, trashed, appProperties)"})]
+    ;(debug log :files (pprintl files))
     (into {} (for [file-meta files
                    :let [{:keys [doc-id] :as data} (file-meta>data file-meta)]
                    :when doc-id]
@@ -677,7 +678,7 @@
                      nil)
                    (p/rejected e))))))
 
-(defn- $create-file [file-name doc-id]
+(defn- $create-drive-file [file-name doc-id]
   (p/let [file-name (str file-name ".ydn")
           _ (trace log file-name)
           file-meta (drive/$create-file {:file-name  file-name
@@ -744,8 +745,7 @@
         (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
         nil)
       :overwrite-file ;overwrite localstore and drive file with doc
-      (p/let [created-file-id ($create-file (or doc-title doc-subtitle doc-id) doc-id)
-              file-id (or file-id created-file-id)]
+      (p/let [file-id (or file-id ($create-drive-file (or doc-title doc-subtitle doc-id) doc-id))]
         (and on-synced-file (on-synced-file doc))
         (p/all [($write-local-doc doc)
                 ($write-drive-file-content file-id doc {:update-index true})])

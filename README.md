@@ -46,7 +46,7 @@ Edge | ok | -
 * On mobile browsers use the save desktop icon option in the browser menu to provide access as an app loaded with the
   current document.
 * Documents initially display their weak-uuid as their title. Give the document a title using the settings pane; open it from the button near the bottom of the left drawer. I intend to enhance the rename functionality to automatically rename the drive-document-files to match the document title.
-* The app doesn't have an explicit new-document function at the moment, navigate to the base url to create one, use the link on the 'about-app' page, or create your own note with a link to https://yetipad.mikelongworth.uk.
+* The app doesn't have an explicit new-document function at the moment, navigate to the base url to create one, use the link on the 'about-app' page, or create your own note with a link to https://yetipad..
 * All documents created with the app can be viewed and selected in the document index tab in the index drawer (right hand side drawer).
 * Deleting documents doesn't request confirmation at the moment. To un-delete a document restore it from the trash in the google drive app. Google drive also keeps revisions, I've not evaluated this with the app yet to figure out the best way of utilising the feature.
 * Deleting items moves them to the in-app trash. The empty trash button doesn't currently ask for confirmation.
