@@ -1,11 +1,10 @@
 /out/
 /resources/public/js/compiled/
-/yetipad/js
-/yetipad/service-worker*
-/yetipad/workbox-*
 /*-init.clj
 /*.loggit
 /.nrepl-port
+/.tmp*
+*.zip
 
 # Node.js dependencies
 /node_modules/
