@@ -1,3 +1,6 @@
+# Original discontinued version
+. Uses now unsupported Google API's.
+. Based on re-frame - now removed
 # yetipad-app
 
 This project is probably suitable for evaluation but is under active development.
