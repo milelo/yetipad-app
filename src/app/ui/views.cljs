@@ -221,7 +221,7 @@
                    :flex-direction :column
                    :padding        "0 8px"}}
      [:> List
-      [menu-list-item close-all-icon "Close all" #(events/close-all-items!)]
+      [menu-list-item close-all-icon "Close all" events/close-all-items!]
       [menu-list-item new-note-icon "New note" events/start-edit-new-note!]]
      [:> Paper {:style {:width "100%"}}
       [:> Tabs {:value    (case index-view :index-history 0 :index-title 1 :index-docs 2)
@@ -354,10 +354,8 @@
       [:> AppBar
        {:position :sticky
         :color    :inherit
-        :style    {:flex-direction :row
-                   :padding        "0 10px"}}
-       (let [menu-btn-style {:margin-left  "-10px"
-                             :margin-right "20px"}]
+        :style    {:flex-direction :row}}
+       (let [menu-btn-style {}]
          [:> Toolbar {:style {:flex 1}}
           (if page-item
             [:> IconButton {:title    "back"
