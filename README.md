@@ -23,10 +23,9 @@ Many years ago I used [Tiddlywiki] for keeping notes. For all its limitations it
 
 ## Usage
 
-There are currently outstanding app issues with its google-drive authentication from some browsers. For the moment I
-only recommend Chrome for desktop and particularly mobile. See the table below.
+There are currently outstanding app issues with its google-drive authentication from some browsers. For the moment I only recommend Chrome or Edge for desktop and Chrome for mobile. See the table below.
 
-To load and open the app with a new document visit https://yetipad.mikelongworth.uk with your browser. **enable
+To load and open the app with a new document visit https://yetipad.milelo.uk with your browser. **enable
 pop-ups** to see the google-drive authentication window.
 
 Note, this is the current release build of the project that is in active development without any formal testing. I will
