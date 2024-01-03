@@ -140,7 +140,7 @@
         (reset! allocated id)
         (to-str-36 id)))))
 
-(defn- new-item-num [docs]
+(defn new-item-num [docs]
   ;tags may contain a deleted item id that can't be reused.
   (let [new-item-num (fn [doc]
                        (inc (reduce-kv (fn [i id {:keys [tags]}]
