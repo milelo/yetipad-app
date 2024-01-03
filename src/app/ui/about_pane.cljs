@@ -32,7 +32,7 @@
         ]
     [ui/viewer-pane item
      {:body    (let [home "https://github.com/milelo/yetipad-app"
-                     app "https://yetipad.mikelongworth.uk"
+                     app "https://yetipad.milelo.uk"
                      ]
                  [table [{:title "Home-page" :content [:a {:href home} home]}
                          {:title "App: new document" :content [:a {:href app} app]}
