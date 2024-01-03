@@ -1,5 +1,6 @@
 {
-  "comment": "v3",
+  "manifest_version": 3,
+  "version": "18",
   "name": "YetiPad",
   "short_name": "",
   "start_url-disabled": "./",
