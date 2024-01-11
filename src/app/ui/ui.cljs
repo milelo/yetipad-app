@@ -53,9 +53,6 @@
 (defn edit-button [item-id]
   [item-button edit-icon "edit" #(events/start-edit! item-id)])
 
-(defn slate-edit-button [item-id]
-  [item-button slate-edit-icon "slate-edit" #(events/start-slate-edit! item-id)])
-
 (defn fullscreen-button [item-id]
   [item-button fullscreen-icon "full-screen" #(swap! item-state* update item-id assoc :open true)])
 
@@ -134,7 +131,7 @@
      [error-boundary ::viewer-content body]
      (when footer [:div {:style {:margin-top 4}} footer])]]])
 
-(def standard-viewer-buttons [edit-button slate-edit-button fullscreen-button])
+(def standard-viewer-buttons [edit-button fullscreen-button])
 
 (defn viewer-pane
   ([{:keys [trashed] :as item} {:keys [body footer buttons]}]
