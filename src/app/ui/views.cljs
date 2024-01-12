@@ -20,40 +20,40 @@
    [app.ui.utils :as ui-utils :refer [create-mui-theme color
                                       show-empty-title no-title]]
    [app.ui.ui :as ui]
-   ["@material-ui/core" :refer [AppBar Drawer Divider Toolbar Paper Typography Avatar Icon
-                                Button IconButton Badge Tooltip
-                                List ListItem ListItemIcon ListItemText ListItemSecondaryAction
-                                Grid GridList GridListTile GridListTileBar
-                                Card CardMedia CardContent CardActions
-                                BottomNavigation BottomNavigationAction
-                                Tabs Tab
-                                Dialog DialogTitle
-                                TextField InputBase
-                                CssBaseline MuiThemeProvider
-                                MobileStepper]]
-   ["@material-ui/icons/MenuRounded" :default menu-icon]
-   ["@material-ui/icons/AccountTreeOutlined" :default tree-menu-icon]
-   ["@material-ui/icons/KeyboardBackspace" :default keyboard-backspace]
-   ["@material-ui/icons/ChevronLeft" :default chevron-left-icon]
-   ["@material-ui/icons/ChevronRight" :default chevron-right-icon]
+   ["@mui/material" :refer [AppBar Drawer Divider Toolbar Paper Typography Avatar Icon
+                            Button IconButton Badge Tooltip
+                            List ListItem ListItemIcon ListItemText ListItemSecondaryAction
+                            Grid GridList GridListTile GridListTileBar
+                            Card CardMedia CardContent CardActions
+                            BottomNavigation BottomNavigationAction
+                            Tabs Tab
+                            Dialog DialogTitle
+                            TextField InputBase
+                            CssBaseline MuiThemeProvider
+                            MobileStepper]]
+   ["@mui/icons-material/MenuRounded" :default menu-icon]
+   ["@mui/icons-material/AccountTreeOutlined" :default tree-menu-icon]
+   ["@mui/icons-material/KeyboardBackspace" :default keyboard-backspace]
+   ["@mui/icons-material/ChevronLeft" :default chevron-left-icon]
+   ["@mui/icons-material/ChevronRight" :default chevron-right-icon]
 
-   ["@material-ui/icons/AccountCircle" :default account-icon]
-   ["@material-ui/icons/SearchOutlined" :default search-icon]
-   ["@material-ui/icons/ClearOutlined" :default clear-search-icon]
+   ["@mui/icons-material/AccountCircle" :default account-icon]
+   ["@mui/icons-material/SearchOutlined" :default search-icon]
+   ["@mui/icons-material/ClearOutlined" :default clear-search-icon]
     ;-------------toolbar status--------------------
-   ["@material-ui/icons/CloudDoneOutlined" :default synced-icon]
-   ["@material-ui/icons/CloudOffOutlined" :default signed-out-icon]
-   ["@material-ui/icons/CloudOutlined" :default signed-in-icon]
-   ["@material-ui/icons/CloudUploadOutlined" :default uploading-icon]
-   ["@material-ui/icons/CloudDownloadOutlined" :default downloading-icon]
-   ["@material-ui/icons/SyncAltOutlined" :default syncing-icon]
-   ["@material-ui/icons/ErrorOutlineOutlined" :default online-error-icon]
+   ["@mui/icons-material/CloudDoneOutlined" :default synced-icon]
+   ["@mui/icons-material/CloudOffOutlined" :default signed-out-icon]
+   ["@mui/icons-material/CloudOutlined" :default signed-in-icon]
+   ["@mui/icons-material/CloudUploadOutlined" :default uploading-icon]
+   ["@mui/icons-material/CloudDownloadOutlined" :default downloading-icon]
+   ["@mui/icons-material/SyncAltOutlined" :default syncing-icon]
+   ["@mui/icons-material/ErrorOutlineOutlined" :default online-error-icon]
     ;---------------main-menu--------------------------
-   ["@material-ui/icons/CloseOutlined" :default close-all-icon]
-   ["@material-ui/icons/NoteAddOutlined" :default new-note-icon]
-   ["@material-ui/icons/FolderOpenOutlined" :default open-file-icon]
-   ["@material-ui/icons/DeleteOutlineOutlined" :default delete-document-icon]
-   ["@material-ui/icons/ArchiveOutlined" :default move-items-icon]
+   ["@mui/icons-material/CloseOutlined" :default close-all-icon]
+   ["@mui/icons-material/NoteAddOutlined" :default new-note-icon]
+   ["@mui/icons-material/FolderOpenOutlined" :default open-file-icon]
+   ["@mui/icons-material/DeleteOutlineOutlined" :default delete-document-icon]
+   ["@mui/icons-material/ArchiveOutlined" :default move-items-icon]
     ;-------------
    )
   (:import
@@ -339,6 +339,22 @@
     [:> ListItem
      [:> ListItemText {:primary "List item"}]]]])
 
+(defn app-rootx []
+  [ui/error-boundary ::app-route
+   [:link {:rel "stylesheet" :href "/goog.css"}]
+   [:base {:target "_blank"}]
+   [:div;> MuiThemeProvider {:theme mui-theme}
+         ;{:theme (aget js/MaterialUIStyles "DarkRawTheme")}
+    [:> CssBaseline]
+    [set-tab-title]
+    [:> AppBar
+     {:position :sticky
+      :color    :inherit
+      :style    {:flex-direction :row
+                 :padding        "0 10px"}}
+     [:> Toolbar {:style {:flex 1}}]]
+    [:h1 "Hello"]]])
+
 (defn app-root []
   (let [page-item false
         app-status @subs/app-status*
@@ -347,61 +363,61 @@
     [ui/error-boundary ::app-route
      [:link {:rel "stylesheet" :href "/goog.css"}]
      [:base {:target "_blank"}]
-     [:> MuiThemeProvider {:theme mui-theme}
+     [:div ;:> MuiThemeProvider {:theme mui-theme}
       ;{:theme (aget js/MaterialUIStyles "DarkRawTheme")}
       [:> CssBaseline]
       [set-tab-title]
       [:> AppBar
-       {:position :sticky
-        :color    :inherit
-        :style    {:flex-direction :row}}
-       (let [menu-btn-style {}]
-         [:> Toolbar {:style {:flex 1}}
-          (if page-item
-            [:> IconButton {:title    "back"
-                            :color    :inherit
-                            :style    menu-btn-style
-                            :on-click #(js/window.history.back)} [:> keyboard-backspace]]
-            [:> IconButton {:title    "Open drawer"
-                            :color    :inherit
-                            :style    menu-btn-style
-                            :on-click #(events/open-tag-drawer! true)} [:> tree-menu-icon]])
-          [:> Tooltip {:title (or @subs/doc-subtitle* "")}
-           [:> Typography {:variant :h6
-                           :color   :inherit
-                           :style   {:flex        1
-                                     :line-height :normal
+         {:position :sticky
+          :color    :inherit
+          :style    {:flex-direction :row}}
+         (let [menu-btn-style {}]
+           [:> Toolbar {:style {:flex 1}}
+            (if page-item
+              [:> IconButton {:title    "back"
+                              :color    :inherit
+                              :style    menu-btn-style
+                              :on-click #(js/window.history.back)} [:> keyboard-backspace]]
+              [:> IconButton {:title    "Open drawer"
+                              :color    :inherit
+                              :style    menu-btn-style
+                              :on-click #(events/open-tag-drawer! true)} [:> tree-menu-icon]])
+            [:> Tooltip {:title (or @subs/doc-subtitle* "")}
+             [:> Typography {:variant :h6
+                             :color   :inherit
+                             :style   {:flex        1
+                                       :line-height :normal
                                      ;;:font-weight :bold
-                                     }}@subs/doc-title*]]
-          [:> IconButton {:title    "sync status"
-                          :color    :inherit
-                          :style    {:flex 0}
-                          :on-click events/sync-doc!!}
-           (case sync-status
-             :syncing [:> syncing-icon]
-             :uploading [:> uploading-icon]
-             :downloading [:> downloading-icon]
-             :synced [:> synced-icon]
-             :online [:> signed-in-icon]
-             :error [:> online-error-icon]
-             false [:> signed-out-icon]    ;offline
-             (warn log ::sync-status-unknown sync-status))]
+                                       }}@subs/doc-title*]]
+            [:> IconButton {:title    "sync status"
+                            :color    :inherit
+                            :style    {:flex 0}
+                            :on-click events/sync-doc!!}
+             (case sync-status
+               :syncing [:> syncing-icon]
+               :uploading [:> uploading-icon]
+               :downloading [:> downloading-icon]
+               :synced [:> synced-icon]
+               :online [:> signed-in-icon]
+               :error [:> online-error-icon]
+               false [:> signed-out-icon]    ;offline
+               (warn log ::sync-status-unknown sync-status))]
           ;variant ["h1","h2","h3","h4","h5","h6","subtitle1","subtitle2","body1","body2","caption","button","overline","srOnly","inherit"]
           ;valid colours: ["initial","inherit","primary","secondary","textPrimary","textSecondary","error"]
-          [:> Typography {:variant :subtitle2
-                          :color   (case (:type app-status)
-                                     :info :primary
-                                     :warn :error
-                                     :error :error
-                                     :error)
-                          :style   {:flex        1
-                                    :line-height :normal
+            [:> Typography {:variant :subtitle2
+                            :color   (case (:type app-status)
+                                       :info :primary
+                                       :warn :error
+                                       :error :error
+                                       :error)
+                            :style   {:flex        1
+                                      :line-height :normal
                                     ;;:font-weight :bold
-                                    }}(:text app-status)]
-          [:> IconButton {:title    "index menu"
-                          :color    :inherit
-                          :style    menu-btn-style
-                          :on-click #(events/open-index-drawer! true)} [:> menu-icon]]])]
+                                      }}(:text app-status)]
+            [:> IconButton {:title    "index menu"
+                            :color    :inherit
+                            :style    menu-btn-style
+                            :on-click #(events/open-index-drawer! true)} [:> menu-icon]]])]
 
       [ui/error-boundary ::tag-drawer [tag-drawer]]
       [ui/error-boundary ::index-drawer [index-drawer]]

@@ -11,8 +11,8 @@
     [app.ui.registry :as reg]
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
     [app.ui.note-editor :refer [content-editor]]
-    ["@material-ui/core" :refer [TextField]]
-    ["@material-ui/icons/NotesTwoTone" :default note-icon]
+    ["@mui/material" :refer [TextField]]
+    ["@mui/icons-material/NotesTwoTone" :default note-icon]
     ))
 
 (def log (log/logger 'app.ui.note-pane))

@@ -8,18 +8,19 @@
 		"build-sw": "npx browserslist@latest --update-db && node ./build-service-worker.js"
 	},
 	"dependencies": {
-		"@material-ui/core": "^4.12.3",
-		"@material-ui/icons": "^4.9.1",
-		"@material-ui/lab": "^4.0.0-alpha.56",
-		"fontsource-roboto": "^4.0.0",
+		"@emotion/react": "^11.11.3",
+		"@emotion/styled": "^11.11.0",
+		"@mui/icons-material": "^5.15.4",
+		"@mui/material": "^5.15.4",
 		"highlight.js": "11.1.0",
 		"localforage": "^1.9.0",
 		"lz-string": "^1.4.4",
 		"ping.js": "^0.3.0",
-		"react-device-detect": "^2.0.0"
+		"react-device-detect": "^2.0.0",
+		"react-quill": "^2.0.0"
 	},
 	"devDependencies": {
-		"shadow-cljs": "^2.20.16",
+		"shadow-cljs": "^2.20.18",
 		"workbox-build": "^7.0.0"
 	}
 }

@@ -6,6 +6,7 @@
    [reagent.core :as reagent]
    [promesa.core :as p]
    [reagent.dom :as rdom]
+   [reagent.dom.client :as rdomc]
    [app.events :as events]
    [app.ui.views :as views]
    [app.config :as config]
@@ -30,7 +31,9 @@
 (defn ^:dev/after-load mount-root []
   (let [root-el (.getElementById js/document "app")]
     (rdom/unmount-component-at-node root-el)
-    (rdom/render [views/app-root] root-el)))
+    (rdomc/render (rdomc/create-root root-el) [views/app-root])
+    ;(rdom/render [views/app-root] root-el)
+    ))
 
 (defn on-window-focus [_e]
   ;(js/console.log js/document.activeElement)

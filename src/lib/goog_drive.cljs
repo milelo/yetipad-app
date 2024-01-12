@@ -216,7 +216,7 @@
   "Ensure or attempt Drive access authorization.
    Return true if successful."
   []
-  (when-let [{:keys [token-client]} @token-client*]
+  (when-let [{:keys [^Object token-client]} @token-client*]
     (trace log)
     ;For prompt values see: https://developers.google.com/identity/oauth2/web/reference/js-reference#TokenClientConfig
     (let [status (get-status)]

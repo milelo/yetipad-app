@@ -256,6 +256,7 @@
   "
   [file-id & [{:keys [update-index]}]]
   (trace log [file-id update-index])
+;  (stack log [file-id update-index])
   ;todo can <read-file-content also read meta-data
   (p/let [edn (drive/$read-file-edn file-id)
           doc (or (decode edn) {})]

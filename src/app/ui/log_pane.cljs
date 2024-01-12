@@ -12,11 +12,11 @@
     [app.events :as events]
     [app.ui.ui :as ui :refer [error-boundary]]
     [app.ui.registry :as reg]
-    ["@material-ui/core" :refer [Icon IconButton Tooltip Typography Paper Dialog
+    ["@mui/material" :refer [Icon IconButton Tooltip Typography Paper Dialog
                                  Toolbar AppBar TextareaAutosize
                                  ]]
-    ["@material-ui/icons/BugReport" :default log-icon]
-    ["@material-ui/icons/AssignmentReturnedTwoTone" :default read-log-icon]
+    ["@mui/icons-material/BugReport" :default log-icon]
+    ["@mui/icons-material/AssignmentReturnedTwoTone" :default read-log-icon]
     [clojure.string :as str]))
 
 (def log (log/logger 'app.ui.log-pane))

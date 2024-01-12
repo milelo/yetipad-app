@@ -7,8 +7,8 @@
     [app.subs :as subs]
     [app.events :as events]
     [cljs.pprint :refer [pprint]]
-    ["@material-ui/core" :refer [MenuList MenuItem Popover Typography]]
-    ["@material-ui/icons/ArrowForwardIos" :default more-icon]
+    ["@mui/material" :refer [MenuList MenuItem Popover Typography]]
+    ["@mui/icons-material/ArrowForwardIos" :default more-icon]
     ))
 
 (def log (log/logger 'app.ui.tagmenu))

@@ -9,23 +9,23 @@
    [app.config :as config]
    [lib.debug :as debug :refer [we wd wee expose]]
    [app.ui.utils :as ui-utils :refer [show-empty-title no-title]]
-   ["@material-ui/core" :refer [Icon IconButton Tooltip Typography Paper Dialog
+   ["@mui/material" :refer [Icon IconButton Tooltip Typography Paper Dialog
                                 Toolbar AppBar]]
     ;-------------Item control icons----------
-   ["@material-ui/icons/EditTwoTone" :default edit-icon]
-   ["@material-ui/icons/Edit" :default slate-edit-icon]
-    ;["@material-ui/icons/PageviewTwoTone" :default accept-edit-icon]
-   ["@material-ui/icons/CheckTwoTone" :default accept-edit-icon]
-    ;["@material-ui/icons/CancelTwoTone" :default cancel-edit-icon]
-   ["@material-ui/icons/CloseTwoTone" :default cancel-edit-icon]
-   ["@material-ui/icons/DeleteTwoTone" :default delete-icon]
-   ["@material-ui/icons/RemoveFromQueueTwoTone" :default close-icon]
-   ["@material-ui/icons/CenterFocusStrongTwoTone" :default close-other-icon]
-   ["@material-ui/icons/BugReportTwoTone" :default inspect-content-icon]
-   ["@material-ui/icons/FullscreenTwoTone" :default fullscreen-icon]
-   ["@material-ui/icons/FullscreenExitTwoTone" :default fullscreen-exit-icon]
-   ["@material-ui/icons/RestoreFromTrash" :default restore-icon]
-   ["@material-ui/icons/DeleteForever" :default delete-permanent-icon]
+   ["@mui/icons-material/EditTwoTone" :default edit-icon]
+   ["@mui/icons-material/Edit" :default slate-edit-icon]
+    ;["@mui/icons-material/PageviewTwoTone" :default accept-edit-icon]
+   ["@mui/icons-material/CheckTwoTone" :default accept-edit-icon]
+    ;["@mui/icons-material/CancelTwoTone" :default cancel-edit-icon]
+   ["@mui/icons-material/CloseTwoTone" :default cancel-edit-icon]
+   ["@mui/icons-material/DeleteTwoTone" :default delete-icon]
+   ["@mui/icons-material/RemoveFromQueueTwoTone" :default close-icon]
+   ["@mui/icons-material/CenterFocusStrongTwoTone" :default close-other-icon]
+   ["@mui/icons-material/BugReportTwoTone" :default inspect-content-icon]
+   ["@mui/icons-material/FullscreenTwoTone" :default fullscreen-icon]
+   ["@mui/icons-material/FullscreenExitTwoTone" :default fullscreen-exit-icon]
+   ["@mui/icons-material/RestoreFromTrash" :default restore-icon]
+   ["@mui/icons-material/DeleteForever" :default delete-permanent-icon]
    [app.ui.registry :as reg]))
 
 (defonce item-state* (r/atom {}))

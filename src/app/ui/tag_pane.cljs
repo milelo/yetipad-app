@@ -13,9 +13,9 @@
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
     [app.ui.note-editor :refer [content-editor]]
     [app.ui.note-pane :refer [note-editor]]
-    ["@material-ui/core" :refer [TextField List ListItem ListItemText ListItemIcon]]
-    ["@material-ui/icons/LabelTwoTone" :default tag-icon]
-    ["@material-ui/icons/OpenInNewTwoTone" :default open-all-icon]
+    ["@mui/material" :refer [TextField List ListItem ListItemText ListItemIcon]]
+    ["@mui/icons-material/LabelTwoTone" :default tag-icon]
+    ["@mui/icons-material/OpenInNewTwoTone" :default open-all-icon]
     ))
 
 (def log (log/logger 'app.ui.tag-pane))

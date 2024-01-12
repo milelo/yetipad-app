@@ -9,11 +9,11 @@
     [app.events :as events]
     [app.ui.ui :as ui]
     [app.ui.registry :as reg]
-    ["@material-ui/core" :refer [Tooltip TextField Typography Checkbox
+    ["@mui/material" :refer [Tooltip TextField Typography Checkbox
                                  TableContainer TableBody Table TableHead TableRow TableCell
+                                 Autocomplete
                                  ]]
-    ["@material-ui/lab" :refer [Autocomplete]]
-    ["@material-ui/icons/SettingsTwoTone" :default options-icon]
+    ["@mui/icons-material/SettingsTwoTone" :default options-icon]
     ))
 
 (def log (log/logger 'app.ui.options-pane))
@@ -62,7 +62,7 @@
                     :on-change         (fn [_e value reason]
                                          (let [value (keyword value)]
                                            (trace log :combo-on-change id value reason)
-                                           (when (= reason "select-option")
+                                           (when (= reason "selectOption")
                                              (swap! values* assoc id value)
                                              )))
                     :input-value       (name (or (get @values* id) default))

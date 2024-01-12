@@ -12,11 +12,11 @@
     [app.ui.ui :as ui :refer [error-boundary]]
     [app.ui.registry :as reg]
     [app.ui.options-pane :as op]
-    ["@material-ui/core" :refer [Icon IconButton Tooltip Typography Paper Dialog
+    ["@mui/material" :refer [Icon IconButton Tooltip Typography Paper Dialog
                                  Toolbar AppBar TextareaAutosize
                                  ]]
-    ["@material-ui/icons/SettingsTwoTone" :default debug-settings-icon]
-    ["@material-ui/icons/SettingsBackupRestore" :default restore-defaults-icon]
+    ["@mui/icons-material/SettingsTwoTone" :default debug-settings-icon]
+    ["@mui/icons-material/SettingsBackupRestore" :default restore-defaults-icon]
     ))
 
 (def log (log/logger 'app.ui.log-config-pane))

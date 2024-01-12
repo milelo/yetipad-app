@@ -6,10 +6,9 @@
     [clojure.walk :refer [postwalk]]
     [goog.object :as gobject]
     [lib.debug :as debug :refer [we wd wee expose]]
-    [clojure.string :as str]
     [cljs.pprint :refer [pprint]]
-    ["@material-ui/core/styles" :refer [createTheme]]
-    ["@material-ui/core/colors" :as mui-colors]
+    ["@mui/material/styles" :refer [createTheme]]
+    ["@mui/material/colors" :as mui-colors]
     ["react" :as react]
     ))
 

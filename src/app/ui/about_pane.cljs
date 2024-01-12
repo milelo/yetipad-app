@@ -3,11 +3,11 @@
     [app.ui.registry :as reg]
     [app.ui.ui :as ui]
     [lib.utils :as utils :refer-macros [for-all]]
-    ["@material-ui/core" :refer [Tooltip Typography
+    ["@mui/material" :refer [Tooltip Typography
                                  TableContainer TableBody Table TableHead TableRow TableCell
                                  ]]
-    ["@material-ui/icons/Info" :default about-icon]
-    ["@material-ui/icons/SystemUpdateTwoTone" :default update-icon]))
+    ["@mui/icons-material/Info" :default about-icon]
+    ["@mui/icons-material/SystemUpdateTwoTone" :default update-icon]))
 
 (defn table [data]
   [:<>

@@ -10,10 +10,10 @@
     [app.ui.ui :as ui]
     [app.ui.utils :as ui-utils :refer [no-title]]
     [app.ui.registry :as reg]
-    ["@material-ui/core" :refer [Tooltip Typography
+    ["@mui/material" :refer [Tooltip Typography
                                  TextField List ListItem ListItemText ListItemIcon
                                  ]]
-    ["@material-ui/icons/DeleteOutline" :default trash-icon]
+    ["@mui/icons-material/DeleteOutline" :default trash-icon]
     ))
 
 (def log (log/logger 'app.ui.trash-pane))

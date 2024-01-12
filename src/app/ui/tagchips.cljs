@@ -8,8 +8,7 @@
     [app.subs :as subs]
     [cljs.pprint :refer [pprint]]
     [app.events :as events]
-    ["@material-ui/core" :refer [Chip Tooltip TextField]]
-    ["@material-ui/lab" :refer [Autocomplete]]
+    ["@mui/material" :refer [Chip Tooltip TextField Autocomplete]]
     ))
 
 (def log (log/logger 'app.ui.tagchips))
@@ -63,17 +62,17 @@
                                                (r/create-element TextField params)
                                                )
                            :on-input-change  (fn [_e value reason]
-                                               ;(println :on-input-change value reason)
+                                               (trace log :on-input-change :reason reason)
                                                (when (and (#{"input" "clear"} reason) (-> value (str/includes? \/) not))
                                                  (reset! value* value)
                                                  ))
                            :on-change        (fn [_e value reason]
-                                               ;(println :on-change (:id (js->cljs value)) reason)
-                                               (when (= reason "select-option")
+                                               (trace log :on-change :reason reason)
+                                               (when (= reason "selectOption")
                                                  (swap! tag-ids* conj (-> value js->cljs :id))
                                                  (reset! value* "")
                                                  )
-                                               (when (= reason "create-option")
+                                               (when (= reason "createOption")
                                                  (swap! new-tags* assoc value {:title value :new-tag? true})
                                                  (reset! value* "")
                                                  ))
