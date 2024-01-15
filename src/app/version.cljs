@@ -1,2 +1,2 @@
 (ns app.version)
-(def app-version "v0.2.0")
+(def app-version "v0.2.1")
