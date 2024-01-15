@@ -11,7 +11,7 @@
     [app.ui.utils :as ui-utils :refer [no-title]]
     [app.ui.registry :as reg]
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
-    [app.ui.note-editor :refer [content-editor]]
+    [app.ui.note-editor-goog :refer [content-editor]]
     [app.ui.note-pane :refer [note-editor]]
     ["@mui/material" :refer [TextField List ListItem ListItemText ListItemIcon]]
     ["@mui/icons-material/LabelTwoTone" :default tag-icon]

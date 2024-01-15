@@ -1,9 +1,9 @@
-(ns app.ui.note-editor
+(ns app.ui.note-editor-goog
   (:require
     [reagent.core :refer [create-class as-element]]
     [reagent.dom :as rdom :refer [dom-node]]
     ;[hickory.core :refer [parse-fragment as-hiccup]]        ;https://github.com/davidsantiago/hickory
-    [app.ui.editor :refer [create-editor editor-buttons-standard]]
+    [app.ui.editor-goog :refer [create-editor editor-buttons-standard]]
     [app.ui.utils :as ui-utils]
     [app.ui.ui :as ui :refer [error-boundary]]
     [lib.log :as log :refer-macros [trace debug info warn error fatal]]
@@ -14,7 +14,7 @@
     ))
 ;(-> "<a href=\"foo\">foo</a>" parse as-hiccup)
 
-(def log (log/logger 'app.note-editor))
+(def log (log/logger 'app.ui.note-editor-goog))
 
 (defn not-empty-content [content]
   (when (some #(if (vector? %)

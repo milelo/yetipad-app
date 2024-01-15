@@ -339,22 +339,6 @@
     [:> ListItem
      [:> ListItemText {:primary "List item"}]]]])
 
-(defn app-rootx []
-  [ui/error-boundary ::app-route
-   [:link {:rel "stylesheet" :href "/goog.css"}]
-   [:base {:target "_blank"}]
-   [:div;> MuiThemeProvider {:theme mui-theme}
-         ;{:theme (aget js/MaterialUIStyles "DarkRawTheme")}
-    [:> CssBaseline]
-    [set-tab-title]
-    [:> AppBar
-     {:position :sticky
-      :color    :inherit
-      :style    {:flex-direction :row
-                 :padding        "0 10px"}}
-     [:> Toolbar {:style {:flex 1}}]]
-    [:h1 "Hello"]]])
-
 (defn app-root []
   (let [page-item false
         app-status @subs/app-status*
@@ -366,6 +350,7 @@
      [:div ;:> MuiThemeProvider {:theme mui-theme}
       ;{:theme (aget js/MaterialUIStyles "DarkRawTheme")}
       [:> CssBaseline]
+      [:style ".ql-toolbar {position: sticky; top: 64px; background-color: white; z-index: 1;}"]
       [set-tab-title]
       [:> AppBar
          {:position :sticky

@@ -39,7 +39,7 @@
                 (fn [editing item-id]
                   ;a copy of the original item being edited
                   (let [entry (get editing item-id)]
-                    (and (not (:accept-as entry)) (:source entry))))))
+                    (and (not (:accept-as entry)) entry)))))
 
 (def can-reload?* (db/atom
                    (fn [db]

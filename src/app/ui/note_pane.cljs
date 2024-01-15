@@ -10,7 +10,8 @@
     [app.ui.ui :as ui :refer [error-boundary]]
     [app.ui.registry :as reg]
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
-    [app.ui.note-editor :refer [content-editor]]
+    [app.ui.note-editor-goog :as note-editor-goog]
+   [app.ui.note-editor-quill :as note-editor-quill]
     ["@mui/material" :refer [TextField]]
     ["@mui/icons-material/NotesTwoTone" :default note-icon]
     ))
@@ -47,11 +48,14 @@
                    (events/new-title! id @new-title*)
                    )})]))
 
-(defn note-editor [{:keys [id] :as item} & [options]]
+(defn note-editor [{{:keys [id] :as item} :source :keys [editor]} & [options]]
   [ui/editor-pane item (merge {:body [:<>
                                       ^{:key :title-e} [title-editor item]
                                       ^{:key :cont-e} [error-boundary ::note-editor
-                                                       [content-editor item]]
+                                                       [(case editor
+                                                          :goog-editor note-editor-goog/content-editor
+                                                          :quill-editor note-editor-quill/content-editor
+                                                          ) item]]
                                       ^{:key :tags-e} [:div {:style {:margin-top 5}} [tag-editor id]]
                                       ]
                                } options)])

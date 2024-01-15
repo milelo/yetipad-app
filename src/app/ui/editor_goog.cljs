@@ -1,4 +1,4 @@
-(ns app.ui.editor
+(ns app.ui.editor-goog
   (:require
     [reagent.core :as reagent]
     [lib.log :as log :refer-macros [trace debug info warn error fatal]]
@@ -20,7 +20,7 @@
     ))
 
 
-(def log (log/logger 'app.ui.editor))
+(def log (log/logger 'app.ui.editor-goog))
 
 (def editor-buttons-standard [
                               Command.FORMAT_BLOCK

@@ -58,7 +58,7 @@
 
 (defn inspect-button [item-id]
   (when config/debug?
-    [item-button inspect-content-icon "inspect content" events/dump-item-content item-id]))
+    [item-button inspect-content-icon "inspect content" #(events/dump-item-content item-id)]))
 
 (defn close-button [item-id]
   [item-button close-icon "close" #(events/close-item! item-id)])
