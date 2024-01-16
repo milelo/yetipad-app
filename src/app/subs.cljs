@@ -237,6 +237,11 @@
                      (fn [db]
                        (get-in db [:persist-device :sign-in-email]))))
 
+
+(def content-editor* (db/atom
+                      (fn [db]
+                        (get-in db [:persist-device :content-editor] :goog-editor))))
+
 (def log-level (db/atomfn
                 (fn [db]
                   (:logger-config db))

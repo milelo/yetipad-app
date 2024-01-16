@@ -44,7 +44,7 @@
                                         :margin-top 10
                                         }
                     :size              :small
-                    :default-value     (name (or value default))
+                    :default-value     (some-> (or value default) name)
                     :render-input      (fn [^js params]
                                          ;; Don't call js->clj because that would recursively
                                          ;; convert all JS objects (e.g. React ref objects)
@@ -65,7 +65,7 @@
                                            (when (= reason "selectOption")
                                              (swap! values* assoc id value)
                                              )))
-                    :input-value       (name (or (get @values* id) default))
+                    :input-value       (some-> (or (get @values* id) default) name)
                     }])
 
 (defn table [title options editing? values*]
@@ -94,7 +94,8 @@
                                  )
        :component-will-unmount (fn [_this]
                                  (let [doc-options (select-keys @values* [:doc-title :doc-subtitle :compress-file?])
-                                       device-options (select-keys @values* [:sign-in-email])]
+                                       device-options (select-keys @values* [:sign-in-email :content-editor])]
+                                   (trace log 'device-options device-options)
                                    (events/doc-options! doc-options)
                                    (events/device-options! device-options)))
        })))
@@ -126,6 +127,11 @@
                                          :name   "Sign-in email"
                                          :value  email
                                          :editor string-editor}
+                                        {:id    :content-editor
+                                         :name  "Content Editor"
+                                         :value  @subs/content-editor*
+                                         :editor (partial combo-editor [:goog-editor :quill-editor] :goog-editor)
+                                         }
                                         {:id    :doc-id
                                          :name  "Document ID"
                                          :value doc-id

@@ -48,11 +48,11 @@
                    (events/new-title! id @new-title*)
                    )})]))
 
-(defn note-editor [{{:keys [id] :as item} :source :keys [editor]} & [options]]
+(defn note-editor [{{:keys [id] :as item} :source} & [options]]
   [ui/editor-pane item (merge {:body [:<>
                                       ^{:key :title-e} [title-editor item]
                                       ^{:key :cont-e} [error-boundary ::note-editor
-                                                       [(case editor
+                                                       [(case @subs/content-editor*
                                                           :goog-editor note-editor-goog/content-editor
                                                           :quill-editor note-editor-quill/content-editor
                                                           ) item]]
