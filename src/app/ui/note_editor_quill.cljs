@@ -14,6 +14,10 @@
   ; ["quill-mobile-view" :as mobile-view]
    [goog.debug :as gdebug]))
 
+;Note this doesn't support true nested lists it just indents with {:class "ql-indent-1"}
+;maybe this will be fixed in quill release 2.0
+;https://github.com/quilljs/quill/issues/979
+
 (def log (log/logger 'app.ui.note-editor-quill))
 
 (def expose gdebug/expose)

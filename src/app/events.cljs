@@ -29,8 +29,6 @@
 
 (def log (log/logger 'app.events))
 
-(def editor-type :quill-editor #_:goog-editor)
-
 (def platform {:browser-name         browserName
                :browser-version      browserVersion
                :full-browser-version fullBrowserVersion
@@ -453,7 +451,7 @@
                 (update-in db [:editing] (fn [editing]
                                ;remove completed edits and add new
                                            (assoc (into {} (filter #(-> % second :accept-as not) editing))
-                                                  item-id {:source (or (get-in db [:doc item-id]) {}) :editor editor-type}))))))
+                                                  item-id {:source (or (get-in db [:doc item-id]) {}) :editor #_:quill-editor :goog-editor}))))))
 
 (defn start-edit-new! [kind]
   (do-async 'start-edit-new!
