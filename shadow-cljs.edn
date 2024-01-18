@@ -3,8 +3,7 @@
 
  :dependencies
  [[reagent "1.2.0"]
-  [funcool/promesa "10.0.594"] 
-  ;[funcool/promesa "11.0.678"] ;Breaking changes!
+  [funcool/promesa "11.0.678"]
   [cljs-bean "1.9.0"]
   [binaryage/devtools "1.0.7"]
   [com.taoensso/truss "1.11.0"]
@@ -25,10 +24,6 @@
   ;com.lucasbradstreet/cljs-uuid-utils            {:mvn/version "1.0.2"}
   ]
 
- :nrepl  {:port 8778
-          ;:port 8779
-          ;:cider false ;doesn't seem to be required any more
-          },
  :builds {:app
           {:target           :browser,
            :output-dir       "resources/public/js/compiled",
@@ -36,7 +31,8 @@
            :compiler-options {:output-feature-set :es6}
            :devtools         {:http-root "resources/public"
                               ;:http-port 8281
-                              :http-port 8282
+                              ;:http-port 8282
+                              :http-port 8000
                               :preloads [devtools.preload]}
            :modules          {:app {:init-fn  app.core/init}}
            :dev              {:compiler-options

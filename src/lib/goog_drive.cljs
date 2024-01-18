@@ -12,6 +12,13 @@
 (def ydn-mime "application/vnd.google.drive.ext-type.ydn")
 (def text-mime "text/plain")
 
+(defn $fix-promise [p]
+  ;https://github.com/funcool/promesa/issues/149
+  (p/create (fn [resolve reject]
+              (-> p
+                  (.then resolve)
+                  (.catch reject)))))
+
 (defn read-string [s]
   (try
     (reader/read-string s)
@@ -26,6 +33,7 @@
   (assert (fn? request))
   (when opt (trace log 'request-opt opt))
   (-> (request)
+      $fix-promise
       (p/then (fn [response]
                 (trace log 'response return-type)
                 (let [response (case return-type
@@ -289,8 +297,8 @@
 (defn- gapi-init! []
   (trace log)
   (p/do
-    (js/gapi.client.init #js {})
-    (js/gapi.client.load "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest")
+    ($fix-promise (js/gapi.client.init #js {}))
+    ($fix-promise (js/gapi.client.load "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"))
     (swap! token-client* assoc :gapi? true)
     (start-after-init!)))
 
@@ -310,3 +318,9 @@
                         (->js (select-keys credentials [:client_id :scope :hint])))
          :on-authorized on-authorized)
   (start-after-init!))
+
+(comment
+  (let [$f #(js/gapi.client.drive.files.get #js {:fileId "1CQXBtftHN-cUxgC-Au9-VpuWKyJbLxjc", :fields "id, name, modifiedTime, trashed, appProperties"})]
+    (-> ($f)
+        (.then #(prn :v (-> % ->clj)))
+        (.catch #(prn :e (-> % ->clj))))))
