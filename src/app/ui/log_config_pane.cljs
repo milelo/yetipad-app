@@ -26,7 +26,6 @@
 (defn options-table [title options editing?]
   (r/create-class
     {:reagent-render         (fn [title options editing?]
-                               (trace log :reagent-render (pprintl @values*))
                                [op/table title options editing? values*]
                                )
      :component-will-unmount (fn [_this]
@@ -39,6 +38,7 @@
                                      {
                                       :id     package
                                       :name   package
+                                      :label  :log-level
                                       :value  @(subs/log-level package)
                                       :editor (partial op/combo-editor log/log-levels :default)
                                       }) editing?]

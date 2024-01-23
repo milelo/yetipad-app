@@ -603,11 +603,10 @@
   ;write options only after accept-edit
   (update-db! 'set-log-config!
               (fn [db]
-                (if (get-in db [:editing :log-config])
-                  (do
-                    (trace log log-config)
-                    (log/set-config! log-config))
-                  db))))
+                (when (get-in db [:editing :log-config])
+                  (info log :log-config (pprintl log-config))
+                  (log/set-config! log-config)
+                  (update db :logger-config merge log-config)))))
 
 (defn new-tags! [item-id tag-ids new-tags]
   (update-db! 'new-tags!

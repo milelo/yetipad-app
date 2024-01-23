@@ -16,22 +16,22 @@
 
 (def log (log/logger 'app.ui.options-pane))
 
-(defn string-editor [id value values*]
+(defn string-editor [{:keys [id value]} values*]
   [:> TextField {;:variant   :outlined
                  :size          :small
                  :margin        :dense
                  :default-value value
                  :on-change     #(swap! values* assoc id (not-empty (.-target.value ^js %)))}])
 
-(defn checkbox-editor [id value values*]
+(defn checkbox-editor [{:keys [id value]} values*]
   [:> Checkbox {:color :primary
                 :default-checked value
                 :on-change #(swap! values* assoc id (.-target.checked ^js %))}])
 
-(defn checkbox-viewer [_id value]
+(defn checkbox-viewer [{:keys [value]}]
   (str (boolean value)))
 
-(defn combo-editor [options default id value values*]
+(defn combo-editor [options default {:keys [id value label]} values*]
   [:> Autocomplete {:options           (map name options)
                     :disable-clearable true
                     :style             {:width      300
@@ -46,17 +46,20 @@
                                          ;; pass the JS params to it.
                                          ;; Use JS interop to modify params.
                                          ;(set! (.-variant params) "outlined")
-                                         (set! (.-label params) "log-level")
+                                         (when label
+                                           (set! (.-label params) (name label)))
                                          (r/create-element TextField params))
-                    :on-input-change   (fn [_e value reason]
-                                         (trace log :on-input-change value reason)
-                                         (swap! values* assoc id (keyword value)))
                     :on-change         (fn [_e value reason]
                                          (let [value (keyword value)]
                                            (trace log :combo-on-change id value reason)
                                            (when (= reason "selectOption")
                                              (swap! values* assoc id value))))
-                    :input-value       (some-> (or (get @values* id) default) name)}])
+                    ;; :on-input-change   (fn [_e value reason]
+                    ;;                      (trace log :on-input-change value reason)
+                    ;;                     ;(swap! values* assoc id (keyword value))
+                    ;;                      ) 
+                    ;; :input-value       (some-> (or (get @values* id) default) name)
+                    }])
 
 (defn table [title options editing? values*]
   [:<>
@@ -64,14 +67,14 @@
    [:> TableContainer
     [:> Table {:size :small}
      [:> TableBody
-      (for-all [{:keys [id name value editor viewer]} options]
+      (for-all [{:keys [id name value editor viewer] :as options} options]
                ^{:key id} [:> TableRow
                            [:> TableCell name]
                            [:> TableCell
                             (if (and editing? editor)
-                              [editor id value values*]
+                              [editor options values*]
                               (if viewer
-                                [viewer id value]
+                                [viewer options]
                                 value))]])]]]])
 
 (defn options-table [title options editing?]
@@ -120,7 +123,10 @@
                                       {:id    :content-editor
                                        :name  "Content Editor"
                                        :value  @subs/content-editor*
-                                       :editor (partial combo-editor [:goog-editor :quill-editor] :goog-editor)}]
+                                       :editor (partial combo-editor [:goog-editor
+                                                                      :ck-editor
+                                                                      :quill-editor]
+                                                        :goog-editor)}]
       editing?]]))
 
 (defn options-pane [_context]
