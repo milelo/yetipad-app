@@ -11,7 +11,8 @@
     [app.ui.registry :as reg]
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
     [app.ui.note-editor-goog :as note-editor-goog]
-   [app.ui.note-editor-quill :as note-editor-quill]
+    [app.ui.note-editor-quill :as note-editor-quill]
+    [app.ui.note-editor-ck :as note-editor-ck]
     ["@mui/material" :refer [TextField]]
     ["@mui/icons-material/NotesTwoTone" :default note-icon]
     ))
@@ -55,6 +56,7 @@
                                                        [(case @subs/content-editor*
                                                           :goog-editor note-editor-goog/content-editor
                                                           :quill-editor note-editor-quill/content-editor
+                                                          :ck-editor note-editor-ck/content-editor
                                                           ) item]]
                                       ^{:key :tags-e} [:div {:style {:margin-top 5}} [tag-editor id]]
                                       ]

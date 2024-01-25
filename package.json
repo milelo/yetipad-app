@@ -8,6 +8,8 @@
 		"build-sw": "npx browserslist@latest --update-db && node ./build-service-worker.js"
 	},
 	"dependencies": {
+		"@ckeditor/ckeditor5-build-classic": "^40.2.0",
+		"@ckeditor/ckeditor5-react": "^6.2.0",
 		"@emotion/react": "^11.11.3",
 		"@emotion/styled": "^11.11.0",
 		"@mui/icons-material": "^5.15.4",
