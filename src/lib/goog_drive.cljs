@@ -83,9 +83,9 @@
                   :fields        "id, appProperties"
                   :appProperties properties
                   :parents       (cond
-                                   parents (clj->js parents)
+                                   parents (->js parents)
                                    app-data? ["appDataFolder"])}]
-    ($request #(js/gapi.client.drive.files.create (clj->js metadata)) :result)))
+    ($request #(js/gapi.client.drive.files.create (->js metadata)) :result)))
 
 (defn $list-app-data-files [{:keys [query]}]
   (trace log query)
@@ -94,7 +94,7 @@
                 :fields "files(id, name, modifiedTime, appProperties)"
                 :q      query}]
     ;https://developers.google.com/drive/api/v3/reference/files/list
-    ($request #(js/gapi.client.drive.files.list (clj->js params)) :result)))
+    ($request #(js/gapi.client.drive.files.list (->js params)) :result)))
 
 (defn $list-app-files [{:keys [query fields]}]
   (trace log query)
@@ -104,7 +104,7 @@
                 ;https://developers.google.com/drive/api/v3/search-files
                 :q      query}]
     ;https://developers.google.com/drive/api/v3/reference/files/list
-    ($request #(js/gapi.client.drive.files.list (clj->js params)) :result)))
+    ($request #(js/gapi.client.drive.files.list (->js params)) :result)))
 
 (defn $write-file-content
   "Write or overwrite the content of an existing file."
@@ -123,7 +123,7 @@
                     :body   body                            ;string | object	The HTTP request body (applies to PUT or POST).
                     }]
     ;https://github.com/google/google-api-javascript-client/blob/master/docs/reference.md
-    ($request #(js/gapi.client.request (clj->js req-params)) :result)))
+    ($request #(js/gapi.client.request (->js req-params)) :result)))
 
 (defn $read-file-edn [file-id & [options]]
   (trace log file-id)
@@ -131,7 +131,7 @@
   ;https://developers.google.com/drive/api/v3/manage-downloads
   (let [params {:fileId file-id
                 :alt    "media"}]
-    ($request #(js/gapi.client.drive.files.get (clj->js params)) :body-edn options)))
+    ($request #(js/gapi.client.drive.files.get (->js params)) :body-edn options)))
 
 (defn $get-file-meta
   ;warning: on error, doesn't respond
@@ -142,7 +142,7 @@
                 :fields (or (and (vector? fields) (str/join \, (map name fields)))
                             fields)}]
     ;https://developers.google.com/drive/api/v3/fields-parameter
-    ($request #(js/gapi.client.drive.files.get (clj->js params)) :result)))
+    ($request #(js/gapi.client.drive.files.get (->js params)) :result)))
 
 (defn $delete-file
   "Permanently deletes a file owned by the user without moving it to the trash."
@@ -150,7 +150,7 @@
   [file-id]
   ;https://developers.google.com/drive/api/v3/reference/files/delete
   (let [params {:fileId file-id}]
-    ($request #(js/gapi.client.drive.files.delete (clj->js params)) :result)))
+    ($request #(js/gapi.client.drive.files.delete (->js params)) :result)))
 
 (defn $trash-file [file-id]
   (trace log file-id)
@@ -158,7 +158,7 @@
   ;https://developers.google.com/drive/api/v3/reference/files#resource-representations
   (let [params {:fileId  file-id
                 :trashed true}]
-    ($request #(js/gapi.client.drive.files.update (clj->js params)) :result)))
+    ($request #(js/gapi.client.drive.files.update (->js params)) :result)))
 
 (defn $add-properties
   "Add custom properties to the file as a map.
@@ -171,7 +171,7 @@
   (let [params {:fileId        file-id
                 :appProperties property-map
                 :fields        "appProperties, id, name"}]
-    ($request #(js/gapi.client.drive.files.update (clj->js params)) :result)))
+    ($request #(js/gapi.client.drive.files.update (->js params)) :result)))
 
 (defn $update-file
   "Sets a files metadata like file-name and description.
@@ -188,7 +188,7 @@
                       [:mimeType mime-type]
                       [:fields (and fields (str/join \, (map cljs.core/name fields)))]]
         params (into {} (for [f field-values, :when (second f)] f))]
-    ($request #(js/gapi.client.drive.files.update (clj->js params)) :result)))
+    ($request #(js/gapi.client.drive.files.update (->js params)) :result)))
 
 ;======================================= Authentication =============================================
 (defonce token-client* (atom {}))
