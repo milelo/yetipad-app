@@ -5,7 +5,7 @@
 		"watch": "shadow-cljs watch app",
 		"release": "shadow-cljs release app && npm run build-sw",
 		"release-with-docs": "shadow-cljs release docs",
-		"build-sw": "npx browserslist@latest --update-db && node ./build-service-worker.js"
+		"build-sw": "npx browserslist@latest --update-db && nbb ./build-service-worker.cljs"
 	},
 	"dependencies": {
 		"@ckeditor/ckeditor5-build-classic": "^40.2.0",
