@@ -13,7 +13,6 @@
    [cljs.pprint :refer [pprint]]
    [app.subs :as subs]
    [app.events :as events]
-   [app.version :refer [app-version]]
    [app.ui.registry :as reg]
    [app.ui.tagmenu :refer [tag-menu]]
    [app.ui.theme :as theme :refer [theme]]
@@ -60,8 +59,6 @@
    ["@fontsource/roboto/300.css"]))
 
 (def log (log/logger 'app.ui.views))
-
-(info log app-version)
 
 (defn on-before-unload [e]
   (when-not @subs/can-reload?*
@@ -277,7 +274,7 @@
       [menu-list-item account-icon "Sign-in" events/sign-in!]
       [static-pane-list-item :about]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
-      [:> ListItem [:> ListItemText {:primary app-version}]]
+      [:> ListItem [:> ListItemText {:primary @subs/app-version*}]]
       (when config/debug?
         [:<>
          [:> Divider]

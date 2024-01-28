@@ -21,6 +21,10 @@
                        (fn [db]
                          (:index-drawer-open? db))))
 
+(def app-version* (db/atom
+                   (fn [db]
+                     (get-in db [:manifest :version]))))
+
 (def local-file-dialog* (db/atom
                          (fn [db _]
                            (:local-file-dialog db))))

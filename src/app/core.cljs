@@ -45,6 +45,7 @@
   (trace log :init)
   (events/initialize-db!)
   (events/init-persist-device!!)
+  (events/init-manifest!!)
   (dev-setup)
   (mount-root)
   (debug log :add-focus-listener)

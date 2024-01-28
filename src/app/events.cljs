@@ -82,6 +82,16 @@
                 (update-db! (fn [db]
                               (assoc db :persist-device persist-device)))))))
 
+(defn init-manifest!! []
+  ($do-sync 'init-manifest!!
+            (fn [_db]
+              (p/let [f (js/fetch "manifest.json")
+                      json (.json f)
+                      manifest (->clj json)]
+                (info log 'app-version (:version manifest))
+                (update-db! (fn [db]
+                              (assoc db :manifest manifest)))))))
+
 ;----------app-status----------------
 
 (def min-status-display-time-ms 5000)
