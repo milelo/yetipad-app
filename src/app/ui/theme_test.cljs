@@ -1,0 +1,22 @@
+(ns app.ui.theme-test
+  (:require
+   [cljs.test :refer [deftest is testing]]
+   [app.ui.theme :as theme :refer [theme]]))
+
+(deftest sticky-pane-toolbar-markup-test
+  (testing "pane toolbars expose the reusable sticky toolbar contract"
+    (let [{:keys [class style]} (theme ::theme/pane-buttons)]
+      (is (= "pane-toolbar" class))
+      (is (= :sticky (:position style)))
+      (is (= 0 (:top style)))
+      (is (= 1 (:z-index style)))
+      (is (= :white (:background-color style)))
+      (is (= :flex (:display style)))
+      (is (= :flex-end (:justify-content style))))))
+
+(deftest items-scroll-container-markup-test
+  (testing "open items render inside the fixed-height scroll container"
+    (let [{:keys [id style]} (theme ::theme/items)]
+      (is (= "items" id))
+      (is (= "calc(100vh - 64px)" (:height style)))
+      (is (= :auto (:overflow-y style))))))

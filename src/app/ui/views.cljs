@@ -238,7 +238,7 @@
        :index-docs [doc-index-pane])]))
 
 (defn items-pane []
-  [:> Paper
+  [:> Paper (theme ::theme/items)
    (for [{:keys [id kind] :as item} @subs/open-items-with-trash*]
      ^{:key id} [(reg/rget kind :pane) {:item item}])])
 

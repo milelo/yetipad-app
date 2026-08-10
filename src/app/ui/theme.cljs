@@ -6,7 +6,14 @@
 (def theme {::small-icon   {:style {:font-size 18}}
             ::index-list   {:style {:padding "0 0 0 8px"}}
             ::pane         {:style {:margin-top 10}}
-            ::pane-buttons {:style {:display         :flex
+            ::items        {:id    "items"
+                            :style {:height     "calc(100vh - 64px)"
+                                    :overflow-y :auto}}
+            ::pane-buttons {:class "pane-toolbar"
+                            :style {:display         :flex
                                     :justify-content :flex-end
-                                    }}
+                                    :position        :sticky
+                                    :top             0
+                                    :z-index         1
+                                    :background-color :white}}
             })
