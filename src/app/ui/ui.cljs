@@ -81,10 +81,12 @@
 (defn fullscreen-exit-button [item-id]
   [item-button fullscreen-exit-icon "exit full-screen" #(swap! item-state* update item-id assoc :open false)])
 
-(defn title-bar [{:keys [id title kind]}]
-  [:div {:style {:display         :flex
-                 :align-items     :center
-                 :text-decoration :underline}}
+(defn title-bar [{:keys [id title kind]} & [{:keys [toolbar?]}]]
+  [:div {:style (merge {:display         :flex
+                        :align-items     :center
+                        :text-decoration :underline}
+                       (when toolbar? {:flex-grow 1
+                                       :padding   "0 10px"}))}
    [:> (reg/rget kind :icon) (theme ::theme/small-icon)]
    [:> Tooltip {:title id}
     [:> Typography {:variant :subtitle1
@@ -123,11 +125,11 @@
 (defn- viewer-inline [{:keys [id] :as item} body footer buttons]
   [:div (theme ::theme/pane)
    [:div (theme ::theme/pane-buttons)
+    [title-bar item {:toolbar? true}]
     (for-all [button buttons]
              ^{:key button} [button id])]
    [:div
     [:> Paper {:style {:padding "0 10px 10px 10px"}}
-     [title-bar item]
      [error-boundary ::viewer-content body]
      (when footer [:div {:style {:margin-top 4}} footer])]]])
 
@@ -150,10 +152,10 @@
 (defn editor-pane [{:keys [id] :as item} {:keys [body buttons]}]
   [:div (theme ::theme/pane)
    [:div (theme ::theme/pane-buttons)
+    [title-bar item {:toolbar? true}]
     (for-all [button (conj (vec (concat [accept-edit-button cancel-edit-button] buttons))
                            inspect-button trash-item-button close-other-button)]
              ^{:key button} [button id])]
    [:> Paper {:style {:padding "0 10px 10px 10px"}}
-    [title-bar item]
     [error-boundary ::editor-content body]]])
 
