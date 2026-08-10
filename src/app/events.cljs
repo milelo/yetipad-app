@@ -275,6 +275,18 @@
                    (trace log :status status)
                    (assoc db :sync-status status))))
 
+(defn- sync-progress-status [drive-sync-status]
+  ({:overwrite-from-file :downloading
+    :overwrite-file :uploading
+    :resolve-conflicts :syncing}
+   drive-sync-status))
+
+(defn- $run-drive-sync [local-doc-or-id]
+  (p/let [{:keys [status] :as sync-plan} (store/$prepare-drive-sync local-doc-or-id)
+          _ (when-let [progress-status (sync-progress-status status)]
+              (set-sync-status! progress-status))]
+    (store/$execute-drive-sync sync-plan)))
+
 (defn $sync-drive-file
   "app-doc: doc loaded in the app.
    local-doc: doc in the localstore shared by local doc instances on a common domain.
@@ -282,7 +294,7 @@
    "
   [local-doc-or-id {:keys [src]}]
   (trace log src)
-  (-> (p/let [{:keys [status doc] :as result} (store/$sync-drive-file local-doc-or-id)]
+  (-> (p/let [{:keys [status doc] :as result} ($run-drive-sync local-doc-or-id)]
         (case status
           :overwrite-from-file (update-active-doc! doc "Updated from Drive")
           :overwrite-file (set-app-status! "Drive updated" :info)
@@ -341,15 +353,16 @@
                                                   db)))
                                 sync-result (if (and (not= (drive/get-status) ::drive/initialising)
                                                       (drive/allow-drive-request?))
-                                               (-> (store/$sync-drive-file local-doc)
-                                                   (p/catch (fn [e]
+                                                (-> ($run-drive-sync local-doc)
+                                                    (p/catch (fn [e]
                                                               (warn log 'offline-drive-sync e)
                                                               (update-db! 'offline-drive-sync
                                                                           (fn [db]
                                                                             (assoc db :sync-status :error)))
-                                                              nil)))
-                                               (p/resolved nil))
-                                loaded-doc (or (:doc sync-result) local-doc)]
+                                                               nil)))
+                                                (p/resolved nil))
+                                loaded-doc (or (:doc sync-result) local-doc)
+                                _ (when sync-result (set-sync-status! :synced))]
                           ($sync-doc-index)
                           (when (and (:doc sync-result) (not= loaded-doc local-doc))
                             (update-db! 'commit-synced-doc-load
@@ -747,17 +760,19 @@
                                                                   (-> % source-doc :kind (not= :tag)))
                                                             open-items))]
                      (p/let [online? (drive/allow-drive-request?)
-                             sync-result (when online? (store/$sync-drive-file target-doc-id))
+                             sync-result (when online? ($run-drive-sync target-doc-id))
                              local-target (when-not (:doc sync-result)
                                             (store/$read-local-doc target-doc-id))
                              target-doc (or (:doc sync-result) local-target {:doc-id target-doc-id})
                              target-doc (store/$copy-items source-doc target-doc move-items)]
                        (when online?
-                         (store/$sync-drive-file target-doc))
+                         ($run-drive-sync target-doc)
+                         (set-sync-status! :synced))
                        ($sync-doc-index)
                        (finish-move-items! move-items)))))
       (p/catch (fn [error]
                  (warn log 'move-items-error error)
+                 (set-sync-status! :error)
                  (set-app-status! "Copy failed" :warn)
                  (update-db! (fn [db] (assoc db :moving-items? false)))
                  nil))))

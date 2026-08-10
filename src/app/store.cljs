@@ -714,11 +714,12 @@
   ;index-entry provides the file-change timestamp of the previous sync so it can be compared with the current
   ;file-change timestamp from the drive file-meta.
   ;If there is a mismatch local doc and Drive doc need to be synchronised.
-  [index-entry file-metadata {:keys [doc-id options] :as doc}]
+  [index-entry file-metadata {:keys [doc-id options] :as doc} sync-status]
   (let [{:keys [doc-title doc-subtitle]} options
         file-id (:file-id file-metadata)
         {:keys [doc-changes]} index-entry
-        [status _ :as change-status] (drive-change-status file-metadata index-entry)]
+        [detected-status _ :as change-status] (drive-change-status file-metadata index-entry)
+        status (or sync-status detected-status)]
       ;(debug log '$sync-drive-file!- 'file-metadata file-metadata)
     (info log 'sync-status doc-id change-status)
     (case status
@@ -742,10 +743,9 @@
                 ($write-drive-file-content file-id synched-doc {:update-index true})])
         {:status status :doc synched-doc}))))
 
-(defn $sync-drive-file
-  "Synchronises local doc with its Drive file doc.
-  If doc-or-id is a doc-id then doc is read from localstore.
-  "
+(defn $prepare-drive-sync
+  "Reads the state needed for a Drive sync and returns its direction before any
+  upload or download begins."
   ;To perform the sync we need the local doc index-entry & file-metadata doc to check the sync status.
   ;index-entry provides the file-meta of the previous sync so it can be compared with the current file-meta
   ;to check if the Drive file has been updated from another device.
@@ -761,9 +761,24 @@
           {:keys [file-id] :as index-entry} (get index doc-id)
              ;If this device has seen the file before it will be in the index otherwise search Drive
           file-metadata (and file-id ($file-data file-id))
-          file-metadata (or file-metadata (and doc-id ($find-file-data doc-id)) nil)]
-         ;(debug log '$sync-drive-file 'file-data (pprintl file-data))
-    ($sync-drive-file- index-entry file-metadata doc)))
+          file-metadata (or file-metadata (and doc-id ($find-file-data doc-id)) nil)
+          [status _ :as change-status] (drive-change-status file-metadata index-entry)]
+    (info log 'sync-status doc-id change-status)
+    {:status status
+     :doc doc
+     :index-entry index-entry
+     :file-metadata file-metadata}))
+
+(defn $execute-drive-sync
+  "Executes a Drive sync plan returned by $prepare-drive-sync."
+  [{:keys [index-entry file-metadata doc status]}]
+  ($sync-drive-file- index-entry file-metadata doc status))
+
+(defn $sync-drive-file
+  "Synchronises local doc with its Drive file doc."
+  [local-doc-or-id]
+  (p/let [sync-plan ($prepare-drive-sync local-doc-or-id)]
+    ($execute-drive-sync sync-plan)))
 
 (defn sync-drive-file!
   "Synchronises local doc with its Drive file doc.
