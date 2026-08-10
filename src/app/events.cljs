@@ -324,11 +324,13 @@
   ([doc-id {:keys [open-items]}]
    (trace log)
    (assert (string? doc-id))
-   (let [token (utils/simple-uuid)]
-     (update-db! 'request-doc-load
-                 (fn [db]
-                   (assoc db :doc-load {:token token :doc-id doc-id})))
-     (-> ($enqueue! 'read-doc-by-id!!
+   (if (= doc-id (get-in @db/db* [:doc-load :doc-id]))
+     (trace log 'document-load-already-pending doc-id)
+     (let [token (utils/simple-uuid)]
+       (update-db! 'request-doc-load
+                   (fn [db]
+                     (assoc db :doc-load {:token token :doc-id doc-id})))
+       (-> ($enqueue! 'read-doc-by-id!!
                     (fn [{{old-doc-id :doc-id :as app-doc} :doc}]
                       (if (= old-doc-id doc-id)
                         (update-db! (fn [db]
@@ -344,12 +346,11 @@
                                 _ (update-db! 'commit-local-doc-load
                                               (fn [db]
                                                 (if (= token (get-in db [:doc-load :token]))
-                                                  (assoc db
-                                                         :doc local-doc
-                                                         :persist-doc persist-doc
-                                                         :editing {}
-                                                         :doc-load nil
-                                                         :open-items (verified-open-items local-doc open-items))
+                                                   (assoc db
+                                                          :doc local-doc
+                                                          :persist-doc persist-doc
+                                                          :editing {}
+                                                          :open-items (verified-open-items local-doc open-items))
                                                   db)))
                                 sync-result (if (and (not= (drive/get-status) ::drive/initialising)
                                                       (drive/allow-drive-request?))
@@ -363,21 +364,22 @@
                                                 (p/resolved nil))
                                 loaded-doc (or (:doc sync-result) local-doc)
                                 _ (when sync-result (set-sync-status! :synced))]
-                          ($sync-doc-index)
-                          (when (and (:doc sync-result) (not= loaded-doc local-doc))
-                            (update-db! 'commit-synced-doc-load
-                                        (fn [db]
-                                          (if (= token (get-in db [:doc-load :token]))
-                                            (assoc db :doc loaded-doc
-                                                   :open-items (verified-open-items loaded-doc open-items))
-                                            db))))))))
+                           ($sync-doc-index)
+                           (update-db! 'finish-doc-load
+                                       (fn [db]
+                                         (if (= token (get-in db [:doc-load :token]))
+                                           (assoc db
+                                                  :doc loaded-doc
+                                                  :doc-load nil
+                                                  :open-items (verified-open-items loaded-doc open-items))
+                                           db)))))))
          (p/catch (fn [e]
                     (update-db! 'doc-load-error
                                 (fn [db]
                                   (if (= token (get-in db [:doc-load :token]))
                                     (assoc db :doc-load nil :status (store/app-status e :error))
                                     db)))
-                    nil)))))
+                    nil))))))
   ([doc-id] (read-doc-by-id!! doc-id nil)))
 
 (defn- new-local-doc!
