@@ -45,7 +45,6 @@
   (trace log :init)
   (events/initialize-db!)
   (events/init-persist-device!!)
-  (events/init-manifest!!)
   (dev-setup)
   (mount-root)
   (debug log :add-focus-listener)
@@ -54,7 +53,9 @@
                                            (when-not (identical? o n)
                                              (events/logger-config! n))))
   (events/logger-config! @log/config*)
-  (events/init-navigation!))
+  (events/init-navigation!)
+  ; Manifest metadata is optional and must never delay local document startup.
+  (events/init-manifest!!))
 
 (defn ^:export gapi-load []
   (drive/gapi-load!))

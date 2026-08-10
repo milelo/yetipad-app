@@ -40,6 +40,9 @@
                                    :globDirectory target-dir
                                    :globPatterns cache-patterns
                                    :maximumFileSizeToCacheInBytes (* 50 1024 1024)
+                                   :skipWaiting true
+                                   :clientsClaim true
+                                   :cleanupOutdatedCaches true
                                    :additionalManifestEntries external
                                    :runtimeCaching [{:urlPattern #".*"
                                                      :handler "CacheFirst"

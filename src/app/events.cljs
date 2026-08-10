@@ -93,12 +93,15 @@
 (defn init-manifest!! []
   ($enqueue! 'init-manifest!!
             (fn [_db]
-              (p/let [f (js/fetch "manifest.json")
-                      json (.json f)
-                      manifest (->clj json)]
-                (info log 'app-version (:version manifest))
-                (update-db! (fn [db]
-                              (assoc db :manifest manifest)))))))
+              (-> (p/let [f (js/fetch "manifest.json")
+                          json (.json f)
+                          manifest (->clj json)]
+                    (info log 'app-version (:version manifest))
+                    (update-db! (fn [db]
+                                  (assoc db :manifest manifest))))
+                  (p/catch (fn [e]
+                             (warn log 'manifest-unavailable e)
+                             nil))))))
 
 ;----------app-status----------------
 
@@ -217,11 +220,14 @@
 ;----------------------localstore-------------------
 
 (defn $sync-doc-index []
-  (p/let [doc-index (store/$sync-doc-index)]
-    (update-db! '$sync-doc-index
-                (fn [db]
-                  (assoc db :doc-file-index doc-index)))
-    doc-index))
+  (-> (p/let [doc-index (store/$sync-doc-index)]
+        (update-db! '$sync-doc-index
+                    (fn [db]
+                      (assoc db :doc-file-index doc-index)))
+        doc-index)
+      (p/catch (fn [e]
+                 (warn log 'sync-doc-index-unavailable e)
+                 (:doc-file-index @db/db*)))))
 
 (declare $sync-drive-file)
 
@@ -323,20 +329,35 @@
                                 local-doc (or local-doc {:doc-id doc-id})
                                 persist-doc (store/$read-persist-doc doc-id)
                                 persist-doc (or persist-doc {})
-                                sync-result (when-not (= (drive/get-status) ::drive/initialising)
-                                              (store/$sync-drive-file local-doc))
+                                _ (update-db! 'commit-local-doc-load
+                                              (fn [db]
+                                                (if (= token (get-in db [:doc-load :token]))
+                                                  (assoc db
+                                                         :doc local-doc
+                                                         :persist-doc persist-doc
+                                                         :editing {}
+                                                         :doc-load nil
+                                                         :open-items (verified-open-items local-doc open-items))
+                                                  db)))
+                                sync-result (if (and (not= (drive/get-status) ::drive/initialising)
+                                                      (drive/allow-drive-request?))
+                                               (-> (store/$sync-drive-file local-doc)
+                                                   (p/catch (fn [e]
+                                                              (warn log 'offline-drive-sync e)
+                                                              (update-db! 'offline-drive-sync
+                                                                          (fn [db]
+                                                                            (assoc db :sync-status :error)))
+                                                              nil)))
+                                               (p/resolved nil))
                                 loaded-doc (or (:doc sync-result) local-doc)]
                           ($sync-doc-index)
-                          (update-db! 'commit-doc-load
-                                      (fn [db]
-                                        (if (= token (get-in db [:doc-load :token]))
-                                          (assoc db
-                                                 :doc loaded-doc
-                                                 :persist-doc persist-doc
-                                                 :editing {}
-                                                 :doc-load nil
-                                                 :open-items (verified-open-items loaded-doc open-items))
-                                          db)))))))
+                          (when (and (:doc sync-result) (not= loaded-doc local-doc))
+                            (update-db! 'commit-synced-doc-load
+                                        (fn [db]
+                                          (if (= token (get-in db [:doc-load :token]))
+                                            (assoc db :doc loaded-doc
+                                                   :open-items (verified-open-items loaded-doc open-items))
+                                            db))))))))
          (p/catch (fn [e]
                     (update-db! 'doc-load-error
                                 (fn [db]

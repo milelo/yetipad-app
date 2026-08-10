@@ -218,7 +218,8 @@
 (defn allow-drive-request?
   "Allow a request that may succeed or trigger a user sign-in or authentication request."
   []
-  (#{::sign-in-pending ::authorized} (get-status)))
+  (and (not= false (.-onLine js/navigator))
+       (#{::sign-in-pending ::authorized} (get-status))))
 
 (defn $ensure-authorized?
   "Ensure or attempt Drive access authorization.

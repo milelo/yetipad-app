@@ -19,12 +19,9 @@
   <script async defer src="https://apis.google.com/js/api.js" onload="app.core.gapi_load()"></script>
   <script async defer src="https://accounts.google.com/gsi/client" onload="app.core.gis_init()"></script>
 <script>
-// Check that service workers are supported
+// Register as early as possible so the next navigation is controlled offline.
 if ('serviceWorker' in navigator) {
-  // Use the window load event to keep the page load performant
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js');
-  });
+  navigator.serviceWorker.register('./service-worker.js');
 }
 </script>
 </body>
