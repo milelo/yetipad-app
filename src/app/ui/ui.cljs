@@ -122,6 +122,9 @@
                    :border-top "solid 1px LightGrey"}}
      [error-boundary ::viewer-footer footer]]]])
 
+(defn pane-tags [content]
+  [:div (theme ::theme/pane-tags) content])
+
 (defn- viewer-inline [{:keys [id] :as item} body footer buttons]
   [:div (theme ::theme/pane)
    [:div (theme ::theme/pane-buttons)
@@ -129,9 +132,9 @@
     (for-all [button buttons]
              ^{:key button} [button id])]
    [:div
-    [:> Paper {:style {:padding "0 10px 10px 10px"}}
+     [:> Paper {:style {:padding "0 10px 10px 10px"}}
      [error-boundary ::viewer-content body]
-     (when footer [:div {:style {:margin-top 4}} footer])]]])
+     (when footer [pane-tags footer])]]])
 
 (def standard-viewer-buttons [edit-button fullscreen-button])
 

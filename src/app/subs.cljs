@@ -246,6 +246,10 @@
                       (fn [db]
                         (get-in db [:persist-device :content-editor] :goog-editor))))
 
+(def sticky-editor-tags?* (db/atom
+                            (fn [db]
+                              (get-in db [:persist-device :sticky-editor-tags?] true))))
+
 (def log-level (db/atomfn
                 (fn [db]
                   (:logger-config db))

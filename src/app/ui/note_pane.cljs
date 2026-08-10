@@ -50,17 +50,20 @@
                    )})]))
 
 (defn note-editor [{{:keys [id] :as item} :source} & [options]]
-  [ui/editor-pane item (merge {:body [:<>
-                                      ^{:key :title-e} [title-editor item]
-                                      ^{:key :cont-e} [error-boundary ::note-editor
-                                                       [(case @subs/content-editor*
-                                                          :goog-editor note-editor-goog/content-editor
-                                                          :quill-editor note-editor-quill/content-editor
-                                                          :ck-editor note-editor-ck/content-editor
-                                                          ) item]]
-                                      ^{:key :tags-e} [:div {:style {:margin-top 5}} [tag-editor id]]
-                                      ]
-                               } options)])
+  (let [tag-bar (if @subs/sticky-editor-tags?*
+                  [ui/pane-tags [tag-editor id]]
+                  [:div {:style {:margin-top 5}} [tag-editor id]])]
+    [ui/editor-pane item (merge {:body [:<>
+                                        ^{:key :title-e} [title-editor item]
+                                        ^{:key :cont-e} [error-boundary ::note-editor
+                                                         [(case @subs/content-editor*
+                                                            :goog-editor note-editor-goog/content-editor
+                                                            :quill-editor note-editor-quill/content-editor
+                                                            :ck-editor note-editor-ck/content-editor
+                                                            ) item]]
+                                        ^{:key :tags-e} tag-bar
+                                        ]
+                                 } options)]))
 
 (defn note-pane [{:keys [item]}]
   (if-let [edit-item @(subs/edit-item (:id item))]

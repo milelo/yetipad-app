@@ -84,7 +84,7 @@
                                 [table title options editing? values*])
       :component-will-unmount (fn [_this]
                                 (let [doc-options (select-keys @values* [:doc-title :doc-subtitle :compress-file?])
-                                      device-options (select-keys @values* [:sign-in-email :content-editor])]
+                                      device-options (select-keys @values* [:sign-in-email :content-editor :sticky-editor-tags?])]
                                   (trace log 'device-options device-options)
                                   (events/doc-options! doc-options)
                                   (events/device-options! device-options)))})))
@@ -126,7 +126,12 @@
                                        :editor (partial combo-editor [:goog-editor
                                                                       :ck-editor
                                                                       :quill-editor]
-                                                        :goog-editor)}]
+                                                        :goog-editor)}
+                                      {:id    :sticky-editor-tags?
+                                       :name  "Sticky editor tag bar"
+                                       :value @subs/sticky-editor-tags?*
+                                       :editor checkbox-editor
+                                       :viewer checkbox-viewer}]
       editing?]]))
 
 (defn options-pane [_context]
