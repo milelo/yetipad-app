@@ -6,6 +6,7 @@
     [app.ui.editor-goog :refer [create-editor editor-buttons-standard]]
     [app.ui.utils :as ui-utils]
     [app.ui.ui :as ui :refer [error-boundary]]
+    [app.ui.theme :as app-theme :refer [theme]]
     [lib.log :as log :refer-macros [trace debug info warn error fatal]]
     [cljs.pprint :refer [pprint]]
     [lib.html-parse :as hp]
@@ -43,7 +44,7 @@
         ]
     ;Doesn't re-render when title is edited so inner render function not required.
     [:div.content-editor
-     [:div {:id toolbar-id}]
+     [:div (merge {:id toolbar-id} (theme ::app-theme/editor-toolbar))]
      [(with-meta (fn [] ^{:key :content} [:div {:id editor-id :style {:min-height "6em"}} content])
                  {:component-did-mount
                   (fn [_this]

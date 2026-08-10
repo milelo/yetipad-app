@@ -2,6 +2,7 @@
   (:require
    [clojure.string :as str]
    [cljs.pprint :refer [pprint]]
+   [goog.object :as gobject]
    [reagent.core :as r]
    [app.events :as events]
    [lib.utils :as utils :refer-macros [for-all]]
@@ -29,6 +30,22 @@
    [app.ui.registry :as reg]))
 
 (defonce item-state* (r/atom {}))
+
+(defn- set-pane-toolbar-height! [pane]
+  (when pane
+    (when-let [toolbar (.querySelector pane ".pane-toolbar")]
+      (let [height (.-height (.getBoundingClientRect toolbar))]
+        (.setProperty (.-style pane) "--pane-toolbar-height" (str height "px"))))))
+
+(defn- pane-ref [pane]
+  (when pane
+    (set-pane-toolbar-height! pane)
+    (when (.-ResizeObserver js/window)
+      (let [observer (js/ResizeObserver.
+                      (fn [_entries]
+                        (set-pane-toolbar-height! pane)))]
+        (.observe observer (.querySelector pane ".pane-toolbar"))
+        (gobject/set pane "paneToolbarResizeObserver" observer)))))
 
 (defn error-boundary
   [disp-name & children]
@@ -153,7 +170,7 @@
   [item-button cancel-edit-icon "cancel edit" #(events/cancel-edit! id)])
 
 (defn editor-pane [{:keys [id] :as item} {:keys [body buttons]}]
-  [:div (theme ::theme/pane)
+  [:div (assoc (theme ::theme/pane) :ref pane-ref)
    [:div (theme ::theme/pane-buttons)
     [title-bar item {:toolbar? true}]
     (for-all [button (conj (vec (concat [accept-edit-button cancel-edit-button] buttons))

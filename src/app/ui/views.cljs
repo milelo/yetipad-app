@@ -347,7 +347,7 @@
      [:div ;:> MuiThemeProvider {:theme mui-theme}
       ;{:theme (aget js/MaterialUIStyles "DarkRawTheme")}
       [:> CssBaseline]
-      [:style ".ql-toolbar {position: sticky; top: 64px; background-color: white; z-index: 1;}"]
+      [:style ".ql-toolbar, .ck-toolbar {position: sticky; top: var(--pane-toolbar-height, 48px); background-color: white; z-index: 2;} "]
       [set-tab-title]
       [:> AppBar
          {:position :sticky

@@ -17,6 +17,11 @@
                                     :margin-top      4
                                     :padding         10
                                     :border-top      "solid 1px LightGrey"}}
+            ::editor-toolbar {:class "editor-toolbar"
+                              :style {:position         :sticky
+                                      :top              "var(--pane-toolbar-height, 48px)"
+                                      :z-index          2
+                                      :background-color :white}}
             ::pane-buttons {:class "pane-toolbar"
                             :style {:display         :flex
                                     :justify-content :flex-end

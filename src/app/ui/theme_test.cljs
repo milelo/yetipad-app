@@ -36,3 +36,12 @@
 (deftest sticky-editor-tags-option-test
   (testing "the editor tag-bar setting defaults to enabled"
     (is (true? @subs/sticky-editor-tags?*))))
+
+(deftest sticky-editor-toolbar-markup-test
+  (testing "editor toolbars share the below-pane-toolbar contract"
+    (let [{:keys [class style]} (theme ::theme/editor-toolbar)]
+      (is (= "editor-toolbar" class))
+      (is (= :sticky (:position style)))
+      (is (= "var(--pane-toolbar-height, 48px)" (:top style)))
+      (is (= 2 (:z-index style)))
+      (is (= :white (:background-color style))))))
