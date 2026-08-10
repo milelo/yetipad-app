@@ -93,8 +93,8 @@
         ($write-local-index (assoc idx doc-id updated))))))
 
 (defn- index-entry-merge! [doc-id updates]
-  (db/$do-sync 'index-entry-merge!
-               #(index-entry-merge doc-id updates)))
+  (db/$enqueue! 'index-entry-merge!
+                #(index-entry-merge doc-id updates)))
 
 (defn $read-local-doc
   "Return the doc or false"
@@ -139,10 +139,9 @@
 
 (defn write-local-doc!!
   "Write doc to localstore and update the localstore index."
-  [doc & [options]]
-  (db/$do-sync 'write-local-doc!!
-               #($write-local-doc doc)
-               options))
+  [doc]
+  (db/$enqueue! 'write-local-doc!!
+                #($write-local-doc doc)))
 
 (let [queryfn (fn [qstr]
                 (fn [v] (cl-format false qstr v)))
@@ -536,10 +535,10 @@
     ($write-local-doc target-doc)
     target-doc))
 
-(defn copy-items! [source-doc target-doc-or-id item-ids listeners]
+(defn copy-items! [source-doc target-doc-or-id item-ids]
   (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])
-  (db/$do-sync 'copy-items!
-               #($copy-items source-doc target-doc-or-id item-ids) listeners))
+  (db/$enqueue! 'copy-items!
+                #($copy-items source-doc target-doc-or-id item-ids)))
 
 (defn- sync-doc-content
   "Merge drive doc-file and app doc changes."
@@ -608,21 +607,19 @@
                  (and (not= file-change idx-file-change) doc-changes) [:resolve-conflicts :both-changed debug-data])]
     status))
 
-(defn $open-local-file [db {:keys [doc-id] :as doc} {:keys [on-show-dialog on-open-doc]}]
+(defn $open-local-file [_db {:keys [doc-id] :as doc}]
   (p/let [index ($read-local-index)
           doc-id-exists? (some (partial = doc-id) (keys index))]
-    (if doc-id-exists?
-      (and on-show-dialog (on-show-dialog doc))
-      (and on-open-doc (on-open-doc doc)))))
+    {:doc doc :conflict? (boolean doc-id-exists?)}))
 
-(defn open-local-file! [db doc listeners]
-  (db/$do-sync 'open-local-file!
-               #($open-local-file db doc listeners) listeners))
+(defn open-local-file! [db doc]
+  (db/$enqueue! 'open-local-file!
+                #($open-local-file db doc)))
 
 (defn $sync-doc-index
   "Gets the Drive file list and updates db.
   "
-  [{:keys [on-doc-status]}]
+  []
   (-> (p/let [local-index ($read-local-index)
               files-data ($read-drive-file-data-list)
               doc-status (into {} (for [doc-id (distinct (concat (keys local-index) (keys files-data)))
@@ -654,7 +651,6 @@
                                                :status           status
                                                :file-id          file-id}])))]
                   ;If a file has been trashed by another device it needs removing from this devices localstore 
-        (on-doc-status doc-status)
         (when-let [remove-doc-ids (not-empty
                                    (for [{trashed-doc-id :doc-id :as trashed-file-data} (filter :trashed (vals files-data))
                                          :let [idx-entry (get local-index trashed-doc-id)]
@@ -667,7 +663,7 @@
              (for [doc-id remove-doc-ids]
                (ls/$remove-item doc-id)))
             ($write-local-index (apply dissoc local-index remove-doc-ids))))
-        nil)
+        doc-status)
       (p/catch (fn [e]
                  (if (= (:id e) ::drive/access-denied)
                    (p/let [local-index ($read-local-index)
@@ -675,8 +671,7 @@
                                                  [doc-id (assoc (select-keys (get local-index doc-id) [:doc-id :title :subtitle])
                                                                 :status :offline)]))]
                      (trace log "authentication required")
-                     (on-doc-status doc-status)
-                     nil)
+                     doc-status)
                    (p/rejected e))))))
 
 (defn- $create-drive-file [file-name doc-id]
@@ -699,10 +694,10 @@
   "Checks for external localstore changes (from another browser instance).
   Reads localstore doc compares with specified doc change date.
   "
-  [{:keys [doc-id] active-doc-change :change} {:keys [on-ls-change on-in-sync on-virgin-doc]}]
+  [{:keys [doc-id] active-doc-change :change}]
   {:pre [(string? doc-id)]}
   (if (not active-doc-change)
-    (p/do (and on-virgin-doc (on-virgin-doc)));new unchanged doc (only save after change)
+    (p/resolved {:status :virgin-doc})
     (p/let [idx ($read-local-index)
             {idx-doc-change :doc-change :as idx-entry} (get idx doc-id)]
       (trace log 'idx-entry idx-entry)
@@ -710,8 +705,8 @@
         (trace log 'doc-change [idx-doc-change active-doc-change doc-changed?])
         (if doc-changed?
           (p/let [local-doc ($read-local-doc doc-id)]
-            (and on-ls-change (on-ls-change local-doc)))
-          (and on-in-sync (on-in-sync)))))))
+            {:status :local-change :doc local-doc})
+          {:status :in-sync})))))
 
 (defn- $sync-drive-file-
   "Sync doc with its drive file and updates localstore and drive accordingly."
@@ -719,49 +714,33 @@
   ;index-entry provides the file-change timestamp of the previous sync so it can be compared with the current
   ;file-change timestamp from the drive file-meta.
   ;If there is a mismatch local doc and Drive doc need to be synchronised.
-  [index-entry file-metadata {:keys [doc-id options] :as doc} {:keys [on-sync-status
-                                                                      on-in-sync
-                                                                      on-overwrite-from-file
-                                                                      on-overwrite-file
-                                                                      on-conflicts-resolved
-                                                                      on-synced-file
-                                                                      src]}]
+  [index-entry file-metadata {:keys [doc-id options] :as doc}]
   (let [{:keys [doc-title doc-subtitle]} options
         file-id (:file-id file-metadata)
         {:keys [doc-changes]} index-entry
         [status _ :as change-status] (drive-change-status file-metadata index-entry)]
       ;(debug log '$sync-drive-file!- 'file-metadata file-metadata)
-    (info log src 'sync-status doc-id change-status)
-    (and on-sync-status (on-sync-status status))
+    (info log 'sync-status doc-id change-status)
     (case status
       :in-sync
-      (p/do
-        (and on-in-sync (on-in-sync))
-        (and on-synced-file (on-synced-file doc))
-        nil)
+      (p/resolved {:status status :doc doc})
       :overwrite-from-file ;overwrite localstore file with drive file
       (p/let [drive-doc ($read-drive-file-content file-id {:update-index true})]
-        (and on-synced-file (on-synced-file drive-doc))
         ($write-local-doc drive-doc) ;wait for completion 
-        (and on-overwrite-from-file (on-overwrite-from-file drive-doc))
-        nil)
+        {:status status :doc drive-doc})
       :overwrite-file ;overwrite localstore and drive file with doc
       (p/let [file-id (or file-id ($create-drive-file (or doc-title doc-subtitle doc-id) doc-id))]
-        (and on-synced-file (on-synced-file doc))
         (p/all [($write-local-doc doc)
                 ($write-drive-file-content file-id doc {:update-index true})])
-        (and on-overwrite-file (on-overwrite-file))
-        nil)
+        {:status status :doc doc})
       :resolve-conflicts
       (p/let [drive-doc ($read-drive-file-content file-id)
               content-changed? (not= (get drive-doc :change) (get doc :change))
               ;verify doc content has changed rather than just file modifiedTime
               synched-doc (if content-changed? (sync-doc-content doc-changes drive-doc doc) doc)]
-        (and on-synced-file (on-synced-file synched-doc))
         (p/all [($write-local-doc synched-doc)
                 ($write-drive-file-content file-id synched-doc {:update-index true})])
-        (and on-conflicts-resolved (on-conflicts-resolved synched-doc))
-        nil))))
+        {:status status :doc synched-doc}))))
 
 (defn $sync-drive-file
   "Synchronises local doc with its Drive file doc.
@@ -771,8 +750,8 @@
   ;index-entry provides the file-meta of the previous sync so it can be compared with the current file-meta
   ;to check if the Drive file has been updated from another device.
   ;If there is a mismatch local doc and Drive doc need to be synchronised.
-  [local-doc-or-id listeners]
-  (assert (or (string? local-doc-or-id) (map? local-doc-or-id)) {:doc-or-id local-doc-or-id :src (:src listeners)})
+  [local-doc-or-id]
+  (assert (or (string? local-doc-or-id) (map? local-doc-or-id)) {:doc-or-id local-doc-or-id})
   (p/let [local-doc (when-not (map? local-doc-or-id)
                       ($read-local-doc local-doc-or-id))
           [doc doc-id] (if (map? local-doc-or-id)
@@ -784,7 +763,7 @@
           file-metadata (and file-id ($file-data file-id))
           file-metadata (or file-metadata (and doc-id ($find-file-data doc-id)) nil)]
          ;(debug log '$sync-drive-file 'file-data (pprintl file-data))
-    ($sync-drive-file- index-entry file-metadata doc listeners)))
+    ($sync-drive-file- index-entry file-metadata doc)))
 
 (defn sync-drive-file!
   "Synchronises local doc with its Drive file doc.
@@ -794,9 +773,9 @@
   ;index-entry provides the file-meta of the previous sync so it can be compared with the current file-meta
   ;to check if the Drive file has been updated from another device.
   ;If there is a mismatch local doc and Drive doc need to be synchronised.
-  [doc-or-id listeners]
-  (db/$do-sync 'sync-drive-file!
-               #($sync-drive-file doc-or-id listeners) listeners))
+  [doc-or-id]
+  (db/$enqueue! 'sync-drive-file!
+                #($sync-drive-file doc-or-id)))
 
 (defn- $drive-data-file-id
   "Searches for the apps drive-data-file and returns its id.

@@ -23,7 +23,11 @@
   ;com.lucasbradstreet/cljs-uuid-utils            {:mvn/version "1.0.2"}
   ]
 
- :builds {:app
+ :builds {:test
+          {:target :node-test
+           :output-to "target/tests.js"
+           :ns-regexp "-test$"}
+          :app
           {:target           :browser,
            :output-dir       "resources/public/js/compiled",
            :asset-path       "/js/compiled",

@@ -1,0 +1,4 @@
+{:tasks
+ {dev
+  {:doc "Start the Shadow CLJS development server with hot reload."
+   :task (shell "npm run watch")}}}

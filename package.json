@@ -2,6 +2,7 @@
 	"name": "yetipad-app",
 	"scripts": {
 		"compile": "shadow-cljs compile app",
+		"test": "shadow-cljs compile test && node target/tests.js",
 		"watch": "shadow-cljs watch app",
 		"release": "shadow-cljs release app && npm run build-sw",
 		"release-with-docs": "shadow-cljs release docs",

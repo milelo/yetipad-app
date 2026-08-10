@@ -1,6 +1,6 @@
 (ns app.events
   (:require
-   [lib.db :as db :refer [$do-sync do-async update-db!]]
+   [lib.db :as db :refer [$enqueue! update-db!]]
     ;[cljs-uuid-utils.core :as uuid]
    [lib.log :as log :refer-macros [trace stack debug info warn error fatal] :refer [pprintl trace-diff]]
    [lib.debug :as debug :refer [we wd]]
@@ -29,6 +29,13 @@
 
 (def log (log/logger 'app.events))
 
+(defn- run-now! [label f]
+  (try
+    (trace log 'start label)
+    (f @db/db*)
+    (catch :default e
+      (error log label e))))
+
 (def platform {:browser-name         browserName
                :browser-version      browserVersion
                :full-browser-version fullBrowserVersion
@@ -55,6 +62,7 @@
    :persist-doc    nil
    :editing        {}
    :open-items     nil
+   :doc-load       nil
    :save-pending?  false
    :saving?        false})
 
@@ -76,14 +84,14 @@
                           clean-db))))
 
 (defn init-persist-device!! []
-  ($do-sync 'init-persist-device!!
+  ($enqueue! 'init-persist-device!!
             (fn [_db] 
               (p/let [persist-device (store/$read-persist-device)]
                 (update-db! (fn [db]
                               (assoc db :persist-device persist-device)))))))
 
 (defn init-manifest!! []
-  ($do-sync 'init-manifest!!
+  ($enqueue! 'init-manifest!!
             (fn [_db]
               (p/let [f (js/fetch "manifest.json")
                       json (.json f)
@@ -209,57 +217,50 @@
 ;----------------------localstore-------------------
 
 (defn $sync-doc-index []
-  (store/$sync-doc-index
-   {:on-doc-status (fn [doc-index]
-                     (update-db! '$sync-doc-index
-                                 (fn [db]
-                                   ;(trace log 'updated-index (pprintl doc-index))
-                                   (assoc db :doc-file-index doc-index))))}))
+  (p/let [doc-index (store/$sync-doc-index)]
+    (update-db! '$sync-doc-index
+                (fn [db]
+                  (assoc db :doc-file-index doc-index)))
+    doc-index))
 
 (declare $sync-drive-file)
 
 (defn- save-doc-with-sync!! []
-  ($do-sync 'save-doc-with-sync!!
-            (fn [{active-doc :doc :as db}]
-              (info log "saving doc...")
-              (p/do
-                (store/$write-local-doc active-doc)
-                ($sync-drive-file active-doc active-doc {:src ::save-doc-with-sync-})
-                (update-db! (fn [db]
-                              (assoc db
-                                     :save-pending? false
-                                     :saving? false))))) {:label 'save-doc-with-sync-}))
+  (-> ($enqueue! 'save-doc-with-sync!!
+                 (fn [{active-doc :doc}]
+                   (info log "saving doc...")
+                   (p/do
+                     (store/$write-local-doc active-doc)
+                     ($sync-drive-file active-doc {:src ::save-doc-with-sync-})
+                     (update-db! (fn [db]
+                                   (assoc db
+                                          :save-pending? false
+                                          :saving? false))))))
+      (p/catch (fn [e]
+                 (update-db! 'save-doc-with-sync-error
+                             (fn [db]
+                               (assoc db
+                                      :save-pending? true
+                                      :saving? false
+                                      :status (store/app-status e :error))))
+                 nil))))
 
 (defn sync-doc-index!! []
-  (do-async 'sync-doc-index!
-            $sync-doc-index))
+  ($enqueue! 'sync-doc-index! (fn [_] ($sync-doc-index))))
 
 (comment
   (:sync-status @db/db*))
 
-(defn- $update-doc
-  "Update the app doc"
-  [updated-doc app-doc status-message]
+(defn- update-active-doc!
+  "Replace the active document from within a serialized document operation."
+  [updated-doc status-message]
   (update-db! '$update-doc
               (fn [{:keys [doc open-items] :as db}]
-                (let [;doc-change-during-sync? (and app-doc (not (identical? doc app-doc)))
-                      doc-change-during-sync? false]
-                  (assoc db
-                         :doc updated-doc
-                         :open-items (verified-open-items updated-doc open-items)
-                         :status (cond
-                                   doc-change-during-sync?
-                                   (do
-                                     ;is this just when switching documents?
-                                     (warn log "Doc changed during file-synch" \n
-                                           (trace-diff :app-doc app-doc :updated-doc updated-doc))
-
-                                     (store/app-status status-message :error))
-                                   ;
-                                   (and status-message
-                                        (not doc-change-during-sync?))
-                                   (store/app-status status-message :info))))))
-  ($sync-doc-index))
+                (assoc db
+                       :doc updated-doc
+                       :open-items (verified-open-items updated-doc open-items)
+                       :status (when status-message
+                                 (store/app-status status-message :info))))))
 
 (defn set-sync-status! [status]
   (db/update-db! 'set-sync-status!
@@ -273,34 +274,22 @@
    local-doc: doc in the localstore shared by local doc instances on a common domain.
    drive-doc: doc stored on google-drive.
    "
-  [app-doc local-doc-or-id {:keys [src]}]
-  (p/do
-    (trace log)
-    (-> (store/$sync-drive-file local-doc-or-id
-                                {:src                    src
-                                 :on-sync-status         (fn [sync-status]
-                                                           (when-let [status ({:overwrite-from-file :downloading
-                                                                               :overwrite-file      :uploading
-                                                                               :resolve-conflicts   :syncing} sync-status)]
-                                                             (set-sync-status! status)))
-                                 :on-in-sync             $sync-doc-index
-                                 :on-overwrite-from-file (fn [drive-doc]
-                                                           ($update-doc drive-doc app-doc "Updated from Drive"))
-                                 :on-overwrite-file      (fn []
-                                                           (set-app-status! "Drive updated" :info)
-                                                           ($sync-doc-index))
-                                 :on-conflicts-resolved  (fn [synched-doc]
-                                                           ($update-doc synched-doc app-doc "Synched with Drive"))})
-        (p/then (fn [r]
-                  (set-sync-status! :synced)
-                  r))
-        (p/catch (fn [error]
-                   (warn log 'sync error)
-                   (set-sync-status! :error)
-                   (set-app-status! (or (:message error) (:status error) (str error)) :error)
-                   error
-                   ;(p/rejected error)
-                   )))))
+  [local-doc-or-id {:keys [src]}]
+  (trace log src)
+  (-> (p/let [{:keys [status doc] :as result} (store/$sync-drive-file local-doc-or-id)]
+        (case status
+          :overwrite-from-file (update-active-doc! doc "Updated from Drive")
+          :overwrite-file (set-app-status! "Drive updated" :info)
+          :resolve-conflicts (update-active-doc! doc "Synched with Drive")
+          nil)
+        ($sync-doc-index)
+        (set-sync-status! :synced)
+        result)
+      (p/catch (fn [error]
+                 (warn log 'sync error)
+                 (set-sync-status! :error)
+                 (set-app-status! (or (:message error) (:status error) (str error)) :error)
+                 (p/rejected error)))))
 
 (defn sign-in! []
   (drive/$ensure-authorized?))
@@ -308,52 +297,77 @@
 (defn sign-out! []
   (drive/sign-out!))
 
-(defn trash-files-pending!! [listeners]
-  (db/$do-sync 'trash-files-pending!!
-               store/$trash-files-pending listeners))
+(defn trash-files-pending!! []
+  ($enqueue! 'trash-files-pending!!
+             (fn [_] (store/$trash-files-pending))))
 
 (defn read-doc-by-id!!
   ;""
   ([doc-id {:keys [open-items]}]
    (trace log)
-   (do-async 'read-doc-by-id!!
-             (fn  [{{old-doc-id :doc-id :as app-doc} :doc}]
-               (assert (string? doc-id))
-               (if (= old-doc-id doc-id)
-                 (update-db! (fn [db] (assoc db :open-items (verified-open-items app-doc open-items))))
-                 ($do-sync
-                  (fn [_db]
-                    (p/let [local-doc (store/$read-local-doc doc-id)
-                            local-doc (or local-doc {:doc-id doc-id})
-                            persist-doc (store/$read-persist-doc doc-id)
-                            persist-doc (or persist-doc {})]
-                      (update-db! (fn [db] (assoc db
-                                                  :doc local-doc
-                                                  :persist-doc persist-doc
-                                                  :open-items (verified-open-items local-doc open-items))))
-                      (when-not (= (drive/get-status) ::drive/initialising)
-                        ($sync-drive-file app-doc local-doc {:src ::read-doc-by-id!!})))))))))
+   (assert (string? doc-id))
+   (let [token (utils/simple-uuid)]
+     (update-db! 'request-doc-load
+                 (fn [db]
+                   (assoc db :doc-load {:token token :doc-id doc-id})))
+     (-> ($enqueue! 'read-doc-by-id!!
+                    (fn [{{old-doc-id :doc-id :as app-doc} :doc}]
+                      (if (= old-doc-id doc-id)
+                        (update-db! (fn [db]
+                                      (if (= token (get-in db [:doc-load :token]))
+                                        (assoc db
+                                               :doc-load nil
+                                               :open-items (verified-open-items app-doc open-items))
+                                        db)))
+                        (p/let [local-doc (store/$read-local-doc doc-id)
+                                local-doc (or local-doc {:doc-id doc-id})
+                                persist-doc (store/$read-persist-doc doc-id)
+                                persist-doc (or persist-doc {})
+                                sync-result (when-not (= (drive/get-status) ::drive/initialising)
+                                              (store/$sync-drive-file local-doc))
+                                loaded-doc (or (:doc sync-result) local-doc)]
+                          ($sync-doc-index)
+                          (update-db! 'commit-doc-load
+                                      (fn [db]
+                                        (if (= token (get-in db [:doc-load :token]))
+                                          (assoc db
+                                                 :doc loaded-doc
+                                                 :persist-doc persist-doc
+                                                 :editing {}
+                                                 :doc-load nil
+                                                 :open-items (verified-open-items loaded-doc open-items))
+                                          db)))))))
+         (p/catch (fn [e]
+                    (update-db! 'doc-load-error
+                                (fn [db]
+                                  (if (= token (get-in db [:doc-load :token]))
+                                    (assoc db :doc-load nil :status (store/app-status e :error))
+                                    db)))
+                    nil)))))
   ([doc-id] (read-doc-by-id!! doc-id nil)))
 
 (defn- new-local-doc!
   []
-  (update-db! 'new-local-doc!
-              (fn [db]
-                (merge db clean-db {:doc {:doc-id (utils/simple-uuid)}}))))
+  ($enqueue! 'new-local-doc!
+             (fn [_]
+               (update-db! 'new-local-doc!
+                           (fn [db]
+                             (merge db clean-db {:doc {:doc-id (utils/simple-uuid)}}))))))
 
 (defn delete-doc!! [options]
-  ($do-sync 'delete-doc!!
+  ($enqueue! 'delete-doc!!
             (fn [{{:keys [doc-id]} :doc}]
               (p/do
                 (store/$delete-doc doc-id options)
            ;Replace deleted doc with a new one: 
-                (new-local-doc!)
+                (update-db! 'new-local-doc-after-delete
+                            (fn [db]
+                              (merge db clean-db {:doc {:doc-id (utils/simple-uuid)}})))
                 ($sync-doc-index)))))
 
 (defn sync-doc!! []
-  ($do-sync 'sync-doc!!
+  ($enqueue! 'sync-doc!!
             (fn [{:keys [saving?] app-doc :doc}]
-              (debug log :nesting (:nesting db/*context*))
          ;Check for external changes and sync if required:
     ;localstore - by another browser window - Just replace doc if it has changed. conflicts with open editors
     ;must be resolved on save, just compare change times and disable save. warning could be given on focus.
@@ -361,26 +375,17 @@
     ;faster to check localstore first
     ;first merge localstore than sync with the drive file
               (when-not saving?
-                (store/$sync<-localstore app-doc {:on-ls-change  (fn [ls-doc]
-                                                                   (p/do
-                                                                     (trace log :on-ls-change)
-                                                                     ($update-doc ls-doc app-doc "Updated from Localstore")
-                                                                ;re-enter to check for file changes
-                                                                     (run-later sync-doc!!)))
-                                                  :on-in-sync    (fn []
-                                                                   (p/do
-                                                                     (trace log :on-in-sync)
-                                                                ;now sync with Drive
-                                                                     ($sync-drive-file app-doc app-doc {:src ::sync-local})
-                                                                 ;(run-later #(sync-drive-file!! app-doc {:src ::sync-local}));
-                                                                     ))
-                                                  :on-virgin-doc (fn []
-                                                                   (trace log :on-virgin-doc)
-                                                               ;new doc - don't save until changed
-                                                                   (info log "no localstore entry")
-                                                                   ($sync-doc-index)
-                                                               ;(run-later #(sync-doc-index!!));
-                                                                   )})))))
+                (p/let [{:keys [status doc]} (store/$sync<-localstore app-doc)
+                        sync-doc (or doc app-doc)]
+                  (case status
+                    :local-change (do
+                                    (trace log :on-ls-change)
+                                    (update-active-doc! sync-doc "Updated from Localstore")
+                                    ($sync-drive-file sync-doc {:src ::sync-local}))
+                    :in-sync ($sync-drive-file sync-doc {:src ::sync-local})
+                    :virgin-doc (do
+                                  (info log "no localstore entry")
+                                  ($sync-doc-index))))))))
 
 
 (defn window-focused []
@@ -406,13 +411,15 @@
 
 ;-------------------view-item---------------
 
+(declare enqueue-db-update!)
+
 (defn- editing? [db item-id]
   (let [e (get-in db [:editing item-id])]
     (and e (not (:accept-as e)))))
 
 (defn open-item!
   ([item-id {:keys [disable-toggle]}]
-   (update-db! 'open-item!
+   (enqueue-db-update! 'open-item!
                (fn [{:keys [open-items] :as db}]
                  (assoc db :open-items (if (and (= (first open-items) item-id) (not (editing? db item-id)))
                                          (if disable-toggle open-items (drop 1 open-items))
@@ -420,7 +427,7 @@
   ([item-id] (open-item! item-id nil)))
 
 (defn open-tag-children! [tag-id]
-  (update-db! 'open-tag-children!
+  (enqueue-db-update! 'open-tag-children!
               (fn [{:keys [doc open-items] :as db}]
                 (assoc db :open-items (distinct (concat
                                                  open-items
@@ -431,57 +438,61 @@
 ;---------------close-item------------
 
 (defn close-item! [item-id]
-  (update-db! 'close-item!
+  (enqueue-db-update! 'close-item!
               (fn [{:keys [open-items editing] :as db}]
                 (assoc db :open-items (filter #(or (not= item-id %) (editing? db %))
                                               open-items)))))
 
 (defn close-other-items! [item-id]
-  (update-db! 'close-other-items!
+  (enqueue-db-update! 'close-other-items!
               (fn [{:keys [open-items] :as db}]
                 (assoc db :open-items (filter #(or (= item-id %) (editing? db %))
                                               open-items)))))
 
 (defn close-all-items! []
-  (update-db! 'close-all-items!
+  (enqueue-db-update! 'close-all-items!
               (fn [{:keys [open-items] :as db}]
                 (assoc db :open-items (filter #(editing? db %)
                                               open-items)))))
 
 (defn close-trashed! []
-  (update-db! 'close-trashed!
+  (enqueue-db-update! 'close-trashed!
               (fn [{:keys [open-items doc] :as db}]
                 (assoc db :open-items (remove #(-> % doc :trashed) open-items)))))
 
 ;---------------------edit-item---------
 
+(defn- enqueue-db-update! [label f]
+  ($enqueue! label (fn [_] (update-db! label f))))
+
 (defn start-edit! [item-id]
-  (update-db! 'start-edit!
-              (fn [db]
-                (update-in db [:editing] (fn [editing]
-                               ;remove completed edits and add new
-                                           (assoc (into {} (filter #(-> % second :accept-as not) editing))
-                                                  item-id {:source (or (get-in db [:doc item-id]) {}) :editor #_:quill-editor :goog-editor}))))))
+  (enqueue-db-update! 'start-edit!
+                      (fn [db]
+                        (update-in db [:editing] (fn [editing]
+                                                  (assoc (into {} (filter #(-> % second :accept-as not) editing))
+                                                         item-id {:source (or (get-in db [:doc item-id]) {})
+                                                                  :editor :goog-editor}))))))
 
 (defn start-edit-new! [kind]
-  (do-async 'start-edit-new!
-            (fn [{doc :doc}]
-              (let [item-id (new-item-id doc)
-                    iso-date-time (utils/iso-time-now)]
-                (db/update-db! (fn [db]
-                                 (assoc-in db [:doc item-id] {:id     item-id
-                                                              :kind   kind
-                                                              :create iso-date-time})))
-                (open-item! item-id)
-                (start-edit! item-id)))))
+  ($enqueue! 'start-edit-new!
+             (fn [{doc :doc}]
+               (let [item-id (new-item-id doc)
+                     item {:id item-id :kind kind :create (utils/iso-time-now)}]
+                 (db/update-db! 'start-edit-new!
+                                (fn [db]
+                                  (-> db
+                                      (assoc-in [:doc item-id] item)
+                                      (update :open-items #(distinct (conj % item-id)))
+                                      (assoc-in [:editing item-id]
+                                                {:source item :editor :goog-editor}))))))))
 
 (defn start-edit-new-note! []
   (trace log)
   (start-edit-new! :note))
 
 (defn accept-edit! [item-id]
-  (update-db! 'accept-edit!
-              (fn [{:keys [doc editing] :as db}]
+  (enqueue-db-update! 'accept-edit!
+              (fn [{:keys [doc editing open-items] :as db}]
      ;initiates a save:
      ; set editing to ::accept-edit > close-editor > editor sends event like ::new-content > save new content to doc
      ;(debug log ::accept-edit 'editing (get-in db [:editing]))
@@ -495,33 +506,38 @@
                                       ;give changes to new item id
                                                   (let [nid (new-item-id doc)
                                                         doc (assoc doc nid (assoc base-item :id nid :conflict-id item-id))]
-                                                    (set-app-status! "Edit conflict: item branched" :warn)
                                                     [nid item-id doc])
                                                   [item-id item-id doc])]
                     (info log :saving)
-                    (when (not= item-id o-item-id) (open-item! item-id))
                     (assoc db
                            :doc (store/update-timestamps! doc [item-id])
                            :editing (assoc-in editing [o-item-id :accept-as] item-id)
+                           :open-items (if (not= item-id o-item-id)
+                                         (conj (filter #(not= item-id %) open-items) item-id)
+                                         open-items)
+                           :status (when (not= item-id o-item-id)
+                                     (store/app-status "Edit conflict: item branched" :warn))
                            :saving? true))))))
 
 (defn cancel-edit! [item-id]
-  (update-db! 'cancel-edit!
+  (enqueue-db-update! 'cancel-edit!
               (fn [db]
                 (update-in db [:editing] dissoc item-id))))
 
 ;--------------------------update-doc--------------------------
 
 (defn delete-item-permanent!! [item-id]
-  ($do-sync 'delete-item-permanent!!
+  ($enqueue! 'delete-item-permanent!!
             (fn [{:keys [doc]}]
               (let [doc (store/update-timestamps! (dissoc doc item-id) [item-id])]
-       ;(dispatch! [::cancel-edit item-id])
-                (close-item! item-id)
-                (update-db! (fn [db] (assoc db :doc doc)))))))
+                (update-db! (fn [db]
+                              (-> db
+                                  (assoc :doc doc)
+                                  (update :editing dissoc item-id)
+                                  (update :open-items #(remove #{item-id} %)))))))))
 
 (defn empty-trash!! []
-  ($do-sync 'empty-trash!!
+  ($enqueue! 'empty-trash!!
             (fn [{:keys [doc open-items] :as db}]
               (if-let [trashed-ids (not-empty (keep #(when (:trashed %) (:id %)) (vals doc)))]
                 (let [doc (apply dissoc doc trashed-ids)
@@ -532,23 +548,26 @@
                                        :open-items (verified-open-items doc open-items)))))))))
 
 (defn trash-item! [item-id]
-  (db/update-db! 'trash-item!
-                 (fn [{:keys [doc] :as db}]
-                   (if (string? item-id)
-                     (let [doc (update doc item-id assoc :trashed true)]
-                       (assoc db :doc (store/update-timestamps! doc [item-id])))
-                     db)))
-  (cancel-edit! item-id)
-  (close-item! item-id))
+  (enqueue-db-update! 'trash-item!
+                      (fn [{:keys [doc] :as db}]
+                        (if (string? item-id)
+                          (let [doc (-> doc
+                                        (update item-id assoc :trashed true)
+                                        (store/update-timestamps! [item-id]))]
+                            (-> db
+                                (assoc :doc doc)
+                                (update :editing dissoc item-id)
+                                (update :open-items #(remove #{item-id} %))))
+                          db))))
 
 (defn restore-item! [item-id]
-  (db/update-db! 'restore-item!
+  (enqueue-db-update! 'restore-item!
                  (fn [{:keys [doc] :as db}]
                    (let [doc (update doc item-id dissoc :trashed)]
                      (assoc db :doc (store/update-timestamps! doc [item-id]))))))
 
 (defn restore-all-trashed! []
-  (db/update-db!
+  (enqueue-db-update! 'restore-all-trashed!
    (fn [{:keys [doc] :as db}]
      (let [trashed-ids (map :id (filter :trashed (vals doc)))
            doc (reduce (fn [doc id]
@@ -557,7 +576,7 @@
 
 (defn new-content! [item-id content]
   ;write content only after accept-edit
-  (db/update-db! 'new-content!
+  (enqueue-db-update! 'new-content!
                  (fn [db]
                    ;potentially saves to new-id if original has external change.
                    (if-let [item-id (get-in db [:editing item-id :accept-as])]
@@ -571,7 +590,7 @@
 
 (defn new-title! [item-id title]
   ;write content only after accept-edit
-  (db/update-db! 'new-title!
+  (enqueue-db-update! 'new-title!
                  (fn [db]
      ;potentially saves to new-id if original has external change.
                    (if-let [item-id (get-in db [:editing item-id :accept-as])]
@@ -583,13 +602,15 @@
                      db))))
 
 (defn rename-file!! [params]
-  ($do-sync 'rename-file!!
-            (fn [db]
-              (store/$rename-file (get-in db [:doc :doc-id]) params)) {:on-success $sync-doc-index}))
+  ($enqueue! 'rename-file!!
+             (fn [db]
+               (p/do
+                 (store/$rename-file (get-in db [:doc :doc-id]) params)
+                 ($sync-doc-index)))))
 
 (defn doc-options! [options-update]
   ;write options only after accept-edit
-  (update-db! 'doc-options!
+  (enqueue-db-update! 'doc-options!
               (fn [db]
                 (if (and (get-in db [:editing :options]) (not-empty options-update))
       ;the initial save will just have the :change entry so need to add the id.
@@ -619,7 +640,7 @@
                   (update db :logger-config merge log-config)))))
 
 (defn new-tags! [item-id tag-ids new-tags]
-  (update-db! 'new-tags!
+  (enqueue-db-update! 'new-tags!
               (fn [{:keys [doc] :as db}]
                 (if (get-in db [:editing item-id])
                   (let [new-tags (when (not-empty new-tags)
@@ -643,29 +664,33 @@
                 (assoc db :local-file-dialog {}))))
 
 (defn finish-open-doc-file! [doc {:keys [new-doc-id?]}]
-  (update-db! 'finish-open-doc-file!!
-              (fn [db]
-                (let [doc (if new-doc-id?
-                            (assoc doc :doc-id (utils/simple-uuid))
-                            doc)]
-                  (assoc db
-                         :doc doc
-                         :persist-doc nil
-                         :open-items (verified-open-items doc (:open-items db)))))))
+  (enqueue-db-update! 'finish-open-doc-file!!
+                      (fn [db]
+                        (let [doc (if new-doc-id?
+                                    (assoc doc :doc-id (utils/simple-uuid))
+                                    doc)]
+                          (assoc db
+                                 :doc doc
+                                 :persist-doc nil
+                                 :editing {}
+                                 :open-items (verified-open-items doc (:open-items db)))))))
 
 (defn open-doc-file!! [content]
-  ($do-sync 'open-doc-file!!
-            (fn [db]
-              (let [doc (store/decode content)]
-                #_(store/open-local-file! db doc {:on-success #(dispatch! [::finish-open-doc-file- doc])
-                                                  :local-file-dialog-open? #()
-                                      ;:on-error #()
-                                                  })
-                (store/$open-local-file db doc {:on-show-dialog #(open-doc-file-dialog! %)
-                                                :on-open-doc #(finish-open-doc-file! % {})
-                                                :on-error (fn [error]
-                                                            (warn log 'sync error)
-                                                            (set-app-status! error))})))))
+  (-> ($enqueue! 'open-doc-file!!
+                 (fn [db]
+                   (p/let [{:keys [doc conflict?]} (store/$open-local-file db (store/decode content))]
+                     (if conflict?
+                       (open-doc-file-dialog! doc)
+                       (update-db! 'finish-open-doc-file!!
+                                   (fn [db]
+                                     (assoc db
+                                            :doc doc
+                                            :persist-doc nil
+                                            :editing {}
+                                            :open-items (verified-open-items doc (:open-items db)))))))))
+      (p/catch (fn [error]
+                 (warn log 'open-file-error error)
+                 (set-app-status! error :error)))))
 
 ;----------------------------------------------------
 
@@ -682,65 +707,51 @@
      (update db :moving-items? (fn [moving?] (boolean (and (not moving?)
                                                            (some string? (:open-items db)))))))))
 
-(defn- $finish-move-items! [{:keys [doc] :as db} target-doc move-items]
-      ;(debug log ::finish-move-items- 'target-doc (pprintl target-doc))
-  (p/let [authorized? (drive/$ensure-authorized?)]
-    (when authorized?
-      (p/do
-        (store/$sync-drive-file target-doc
-                                {:on-sync-status #(info log 'target-sync-status %)})
-        ($sync-doc-index)))
-    (update-db! '$finish-move-items!
-                (fn [{:keys [open-items doc] :as db}]
-                  (let [;trash moved items
-                        doc-cleaned (reduce (fn [doc id]
-                                              (assoc-in doc [id :trashed] :moved)) doc move-items)]
-                    (assoc db
-              ;close trashed
-                           :open-items (remove #(-> % doc :trashed) open-items)
-                           :doc (store/update-timestamps! doc-cleaned move-items)))))))
+(defn- finish-move-items! [move-items]
+  (update-db! '$finish-move-items!
+              (fn [{:keys [open-items doc] :as db}]
+                (let [doc-cleaned (reduce (fn [doc id]
+                                            (assoc-in doc [id :trashed] :moved)) doc move-items)
+                      updated-doc (store/update-timestamps! doc-cleaned move-items)]
+                  (assoc db
+                         :moving-items? false
+                         :open-items (remove #(-> % updated-doc :trashed) open-items)
+                         :doc updated-doc)))))
 
 (defn move-items!! [target-doc-id]
-  ($do-sync 'move-items!!
-            (fn [{:keys [moving-items? open-items] source-doc :doc :as db}]
-              (assert (and moving-items? (not= (:doc-id source-doc) target-doc-id)))
-            ;first sync target doc
-              (when-let [;exclude source tags; moved-item tags are copied by default.
-                         move-items (not-empty (filter #(and (string? %)
-                                                             (-> % source-doc :kind (not= :tag))) open-items))]
-                (if (drive/allow-drive-request?)
-                  (store/$sync-drive-file
-                   target-doc-id
-                   {:src            ::move-items
-                    :on-sync-status #(info log 'target-sync-status %)
-                    :on-success     $sync-doc-index
-                    :on-synced-file (fn [target-doc]
-                                      (store/copy-items! source-doc target-doc move-items
-                                                         {:on-success #($finish-move-items! db % move-items)
-                                                          :on-error   (fn [error]
-                                                                        (warn log 'copy error)
-                                                                        (set-app-status! "Copy failed" :warn))}))})
-                  (p/do
-                    (p/catch
-                     (p/let [target-doc (store/$copy-items source-doc target-doc-id move-items)]
-                       ($finish-move-items! db target-doc move-items))
-                     (fn [error]
-                       (warn log 'copy-offline error)
-                       (set-app-status! "Copy failed" :warn)))
-                    (update-db! (fn [db]
-                                  (assoc db :moving-items? false)))))))))
+  (-> ($enqueue! 'move-items!!
+                 (fn [{:keys [moving-items? open-items] source-doc :doc}]
+                   (assert (and moving-items? (not= (:doc-id source-doc) target-doc-id)))
+                   (when-let [move-items (not-empty (filter #(and (string? %)
+                                                                  (-> % source-doc :kind (not= :tag)))
+                                                            open-items))]
+                     (p/let [online? (drive/allow-drive-request?)
+                             sync-result (when online? (store/$sync-drive-file target-doc-id))
+                             local-target (when-not (:doc sync-result)
+                                            (store/$read-local-doc target-doc-id))
+                             target-doc (or (:doc sync-result) local-target {:doc-id target-doc-id})
+                             target-doc (store/$copy-items source-doc target-doc move-items)]
+                       (when online?
+                         (store/$sync-drive-file target-doc))
+                       ($sync-doc-index)
+                       (finish-move-items! move-items)))))
+      (p/catch (fn [error]
+                 (warn log 'move-items-error error)
+                 (set-app-status! "Copy failed" :warn)
+                 (update-db! (fn [db] (assoc db :moving-items? false)))
+                 nil))))
 
 ;===============================================================
 
 (defn on-authorized! [{:keys [token]}]
   (trace log "token:" (-> token bean pprintl))
-  ($do-sync 'got-access-token!
+  ($enqueue! 'got-access-token!
             (fn [{doc :doc}]
               (when (drive/allow-drive-request?)
                 (trace log "can sync drive file")
                 (p/do (when (:doc-id doc)
                         (store/$trash-files-pending)
-                        ($sync-drive-file doc (get doc :doc-id) {:src ::signed-in}))
+                        ($sync-drive-file doc {:src ::signed-in}))
                       #_(update-db! (fn [db]
                                       (assoc db :sync-status :online))))))))
 
@@ -749,7 +760,7 @@
 ;------------------debug-support---------------------
 
 (defn dump-doc-meta []
-  (do-async 'dump-doc-meta
+  (run-now! 'dump-doc-meta
             (fn [{doc :doc :as db}]
      ;(go (utils/throw-error "e1"))
               (let [doc-meta (select-keys doc (filter keyword? (keys doc)))]
@@ -757,7 +768,7 @@
                 (pprint doc-meta)))))
 
 (defn dump-doc []
-  (do-async 'dump-doc
+  (run-now! 'dump-doc
             (fn [{doc :doc :as db}]
               (pprint doc))))
 
@@ -774,7 +785,7 @@
     content))
 
 (defn check-doc []
-  (do-async 'check-doc
+  (run-now! 'check-doc
             (fn [{doc :doc :as db}]
               (println "==== check-doc ====")
     ;(dispatch! [::close-all-items])
@@ -788,7 +799,7 @@
               db)))
 
 (defn fix-doc []
-  (do-async 'fix-doc
+  (run-now! 'fix-doc
             (fn [{doc :doc :as db}]
               (println "fix-doc====")
               (close-all-items!)
@@ -833,7 +844,7 @@
                 ))))
 
 (defn dump-file-meta []
-  (do-async 'dump-file-meta
+  (run-now! 'dump-file-meta
             (fn [{{:keys [doc-id]} :doc :as db}]
               (p/let [idx (store/$read-local-index)
                       {:keys [file-id] :as idxe} (get idx doc-id)
@@ -852,14 +863,14 @@
     (pprint files)))
 
 (defn dump-item-content [item-id]
-  (do-async 'dump-item-content
+  (run-now! 'dump-item-content
             (fn [db]
               (println "vvvvvvvvvvvvvvvv")
               (pprint (get-in db [:doc item-id]))
               (println "^^^^^^^^^^^^^^^^"))))
 
 (defn dump-index []
-  (do-async 'dump-index
+  (run-now! 'dump-index
             (fn [{{:keys [doc-id]} :doc :as db}]
               (p/let [local-index (store/$read-local-index)
                       file-data-list (store/$read-drive-file-data-list)]
@@ -895,7 +906,7 @@
       (info log response))))
 
 (defn debug-file-compress []
-  (do-async 'debug-file-compress
+  (run-now! 'debug-file-compress
             (fn [db]
               (p/let [;file-id (store/create-file "compress-test" nil)
                       value (fn [c] (.charCodeAt c 0))
@@ -926,9 +937,9 @@
                 (info log 'compare (pprintl compare))))))
 
 (defn debug-rename-file!! []
-  (db/$do-sync 'debug-rename-file!!
-               (fn [] (store/$rename-file "klhurigk" {:title "My File Name"}))
-               {:on-success #(debug log 'response %)}))
+  (p/then (db/$enqueue! 'debug-rename-file!!
+                        (fn [_] (store/$rename-file "klhurigk" {:title "My File Name"})))
+          #(debug log 'response %)))
 
 (defn debug-add-properties []
   (p/let [file-id "1R8JZWxzjLAWYCXIb5Y493AemAoj9G-8W"     ;"kgrsc300.ydn"
