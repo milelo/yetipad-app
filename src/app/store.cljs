@@ -534,8 +534,15 @@
                          (or local-doc {:doc-id target-doc-or-id})))
           [target-doc target-change-ids] (copy-items- source-doc target-doc item-ids)
           target-doc (update-timestamps! target-doc target-change-ids)]
-    ($write-local-doc target-doc)
-    target-doc))
+    ;update-timestamps! queues the index write for normal edits. A move must
+    ;commit this metadata before the target is synchronised, otherwise the
+    ;Drive sync can incorrectly decide that the target is already in sync.
+    (p/do
+      (index-entry-merge (:doc-id target-doc)
+                         {:doc-change (:change target-doc)
+                          :doc-changes (:doc-changes target-doc)})
+      ($write-local-doc target-doc)
+      target-doc)))
 
 (defn copy-items! [source-doc target-doc-or-id item-ids]
   (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])

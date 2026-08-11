@@ -766,6 +766,8 @@
                               (map? source-doc)
                               (string? target-doc-id)
                               (not= (:doc-id source-doc) target-doc-id))
+                     (info log 'move-items 'source-doc-id (:doc-id source-doc)
+                           'target-doc-id target-doc-id)
                      (when-let [move-items (not-empty (filter #(and (string? %)
                                                                     (-> % source-doc :kind (not= :tag)))
                                                               open-items))]
@@ -779,6 +781,8 @@
                          ($run-drive-sync target-doc)
                          (set-sync-status! :synced))
                        ($sync-doc-index)
+                       (info log 'move-items-complete target-doc-id target-doc-id
+                             'item-ids move-items)
                        (finish-move-items! move-items))))))
       (p/catch (fn [error]
                  (warn log 'move-items-error error)
