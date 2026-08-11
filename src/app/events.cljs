@@ -762,10 +762,13 @@
 (defn move-items!! [target-doc-id]
   (-> ($enqueue! 'move-items!!
                  (fn [{:keys [moving-items? open-items] source-doc :doc}]
-                   (assert (and moving-items? (not= (:doc-id source-doc) target-doc-id)))
-                   (when-let [move-items (not-empty (filter #(and (string? %)
-                                                                  (-> % source-doc :kind (not= :tag)))
-                                                            open-items))]
+                   (when (and moving-items?
+                              (map? source-doc)
+                              (string? target-doc-id)
+                              (not= (:doc-id source-doc) target-doc-id))
+                     (when-let [move-items (not-empty (filter #(and (string? %)
+                                                                    (-> % source-doc :kind (not= :tag)))
+                                                              open-items))]
                      (p/let [online? (drive/allow-drive-request?)
                              sync-result (when online? ($run-drive-sync target-doc-id))
                              local-target (when-not (:doc sync-result)
@@ -776,7 +779,7 @@
                          ($run-drive-sync target-doc)
                          (set-sync-status! :synced))
                        ($sync-doc-index)
-                       (finish-move-items! move-items)))))
+                       (finish-move-items! move-items))))))
       (p/catch (fn [error]
                  (warn log 'move-items-error error)
                  (set-sync-status! :error)
