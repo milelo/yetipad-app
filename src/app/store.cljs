@@ -93,8 +93,8 @@
         ($write-local-index (assoc idx doc-id updated))))))
 
 (defn- index-entry-merge! [doc-id updates]
-  (db/$enqueue! 'index-entry-merge!
-                #(index-entry-merge doc-id updates)))
+  (db/$enqueue-local! 'index-entry-merge!
+                      #(index-entry-merge doc-id updates)))
 
 (defn $read-local-doc
   "Return the doc or false"
@@ -140,8 +140,8 @@
 (defn write-local-doc!!
   "Write doc to localstore and update the localstore index."
   [doc]
-  (db/$enqueue! 'write-local-doc!!
-                #($write-local-doc doc)))
+  (db/$enqueue-local! 'write-local-doc!!
+                      #($write-local-doc doc)))
 
 (let [queryfn (fn [qstr]
                 (fn [v] (cl-format false qstr v)))
@@ -546,8 +546,8 @@
 
 (defn copy-items! [source-doc target-doc-or-id item-ids]
   (assert (or (map? target-doc-or-id) (string? target-doc-or-id)) [target-doc-or-id])
-  (db/$enqueue! 'copy-items!
-                #($copy-items source-doc target-doc-or-id item-ids)))
+  (db/$enqueue-local! 'copy-items!
+                      #($copy-items source-doc target-doc-or-id item-ids)))
 
 (defn- sync-doc-content
   "Merge drive doc-file and app doc changes."
@@ -622,8 +622,8 @@
     {:doc doc :conflict? (boolean doc-id-exists?)}))
 
 (defn open-local-file! [db doc]
-  (db/$enqueue! 'open-local-file!
-                #($open-local-file db doc)))
+  (db/$enqueue-local! 'open-local-file!
+                      #($open-local-file db doc)))
 
 (defn $sync-doc-index
   "Gets the Drive file list and updates db.
@@ -783,6 +783,56 @@
   [{:keys [index-entry file-metadata doc status]}]
   ($sync-drive-file- index-entry file-metadata doc status))
 
+(defn $fetch-drive-sync-candidate
+  "Fetches and calculates a download/merge candidate without changing local
+  storage or the index. Upload-only plans return their existing document."
+  [{:keys [index-entry file-metadata doc status]}]
+  (let [file-id (:file-id file-metadata)]
+    (case status
+      :overwrite-from-file
+      (p/let [drive-doc ($read-drive-file-content file-id)]
+        {:status status :doc drive-doc})
+
+      :resolve-conflicts
+      (p/let [drive-doc ($read-drive-file-content file-id)
+              content-changed? (not= (:change drive-doc) (:change doc))
+              merged-doc (if content-changed?
+                           (sync-doc-content (:doc-changes index-entry) drive-doc doc)
+                           doc)]
+        {:status status :doc merged-doc})
+
+      {:status status :doc doc})))
+
+(defn $upload-drive-sync-doc
+  "Uploads exactly doc and returns Drive metadata. It deliberately leaves the
+  local index untouched; recording completion is generation checked separately."
+  [{:keys [file-metadata]} {:keys [doc-id options] :as doc}]
+  (let [{:keys [doc-title doc-subtitle]} options]
+    (p/let [file-id (or (:file-id file-metadata)
+                        ($create-drive-file (or doc-title doc-subtitle doc-id) doc-id))
+            file-data ($write-drive-file-content file-id doc)]
+      (assoc file-data :file-id file-id :doc-id doc-id))))
+
+(defn $record-drive-download
+  "Persists an accepted Drive candidate and its metadata locally."
+  [{:keys [file-metadata]} {:keys [doc-id change] :as doc}]
+  (p/do
+    ($write-local-doc doc)
+    (index-entry-merge doc-id
+                       (merge (select-keys file-metadata [:file-change :file-id])
+                              {:doc-change change :doc-changes nil}))))
+
+(defn $record-drive-upload
+  "Records an upload without clearing edits that were indexed after snapshot."
+  [{:keys [doc-id change]} file-data]
+  (p/let [index ($read-local-index)
+          entry (get index doc-id)
+          uploaded-still-latest? (= change (:doc-change entry))
+          updates (cond-> (select-keys file-data [:file-change :file-id])
+                    uploaded-still-latest? (assoc :doc-changes nil))]
+    (index-entry-merge doc-id updates)
+    uploaded-still-latest?))
+
 (defn $sync-drive-file
   "Synchronises local doc with its Drive file doc."
   [local-doc-or-id]
@@ -798,8 +848,8 @@
   ;to check if the Drive file has been updated from another device.
   ;If there is a mismatch local doc and Drive doc need to be synchronised.
   [doc-or-id]
-  (db/$enqueue! 'sync-drive-file!
-                #($sync-drive-file doc-or-id)))
+  (db/$enqueue-drive! 'sync-drive-file!
+                      #($sync-drive-file doc-or-id)))
 
 (defn- $drive-data-file-id
   "Searches for the apps drive-data-file and returns its id.

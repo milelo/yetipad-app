@@ -20,26 +20,48 @@
 ;====================================operation queue============================================
 
 (defonce operation-tail* (operation-queue/create))
+(defonce local-operation-tail* (operation-queue/create))
+(defonce drive-operation-tail* (operation-queue/create))
+
+(defn- $enqueue-on!
+  [tail* queue-label label f]
+  (assert (fn? f))
+  (-> (operation-queue/enqueue!
+       tail*
+       (fn []
+         (trace log 'operation-started queue-label label)
+         (p/let [value (f @db*)]
+           (trace log 'operation-complete queue-label label)
+           value)))
+      (p/catch (fn [e]
+                 (error log '$enqueue-on! queue-label label e)
+                 (p/rejected e)))))
 
 (defn $enqueue!
   "Runs f after every previously enqueued operation has settled. f receives the
   latest db value when it starts and may return a value or a Promise. A failure
   rejects only the returned operation Promise; the shared queue remains usable."
   [label f]
-  (assert (fn? f))
-  (-> (operation-queue/enqueue!
-       operation-tail*
-       (fn []
-         (trace log 'operation-started label)
-         (p/let [value (f @db*)]
-           (trace log 'operation-complete label)
-           value)))
-      (p/catch (fn [e]
-                 (error log '$enqueue! label e)
-                 (p/rejected e)))))
+  ($enqueue-on! operation-tail* :document label f))
+
+(defn $enqueue-local!
+  "Serializes localForage work independently from document commands and Drive."
+  [label f]
+  ($enqueue-on! local-operation-tail* :local label f))
+
+(defn $enqueue-drive!
+  "Serializes Drive requests independently from document commands and local persistence."
+  [label f]
+  ($enqueue-on! drive-operation-tail* :drive label f))
 
 (defn $queue-idle []
   (operation-queue/idle operation-tail*))
+
+(defn $local-queue-idle []
+  (operation-queue/idle local-operation-tail*))
+
+(defn $drive-queue-idle []
+  (operation-queue/idle drive-operation-tail*))
 
 ;====================================operation queue============================================
 

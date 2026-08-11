@@ -105,25 +105,70 @@
                      (js/clearTimeout timer)
                      (done)))))))
 
-(deftest mutation-waits-for-save-test
+(deftest stalled-drive-does-not-block-commands-or-local-saving-test
   (async done
     (let [timer (watchdog done)
-          {:keys [tail state]} (test-context {:doc {:doc-id "doc"} :saved []})
-          save-gate (deferred)
-          save-op (queue/enqueue! tail
-                                  (fn []
-                                    (let [{:keys [doc]} @state]
-                                      (p/let [_ save-gate]
-                                        (swap! state update :saved conj doc)))))
-          mutation-op (queue/enqueue! tail
-                                    (fn []
-                                      (swap! state assoc-in [:doc "note"] {:id "note"})))]
-      (is (nil? (get-in @state [:doc "note"])))
-      (p/resolve! save-gate true)
-      (-> (p/all [save-op mutation-op])
+          command-tail (queue/create)
+          local-tail (queue/create)
+          drive-tail (queue/create)
+          state (atom {:doc {:doc-id "doc"} :saved []})
+          drive-gate (deferred)
+          drive-op (queue/enqueue! drive-tail (fn [] drive-gate))
+          mutation-op (queue/enqueue! command-tail
+                                      (fn []
+                                        (swap! state assoc-in [:doc "note"] {:id "note"})))
+          local-save (queue/enqueue! local-tail
+                                     (fn []
+                                       (swap! state update :saved conj (:doc @state))))]
+      (-> (p/all [mutation-op local-save])
           (p/then (fn [_]
-                    (is (= [{:doc-id "doc"}] (:saved @state)))
                     (is (= "note" (get-in @state [:doc "note" :id])))
+                    (is (= "note" (get-in @state [:saved 0 "note" :id])))
+                    (p/resolve! drive-gate true)
+                    drive-op))
+          (p/then (fn [_]
+                    (js/clearTimeout timer)
+                    (done)))
+          (p/catch (fn [e]
+                     (is false (str e))
+                     (js/clearTimeout timer)
+                     (done)))))))
+
+(deftest stale-download-is-discarded-and-latest-revision-reruns-test
+  (async done
+    (let [timer (watchdog done)
+          command-tail (queue/create)
+          drive-tail (queue/create)
+          download-gate (deferred)
+          state (atom {:doc-session :session-1
+                       :doc-revision 0
+                       :doc {:doc-id "doc" "remote" {:id "remote"}}})
+          snapshot {:session :session-1 :revision 0}
+          current? #(and (= (:session %) (:doc-session @state))
+                         (= (:revision %) (:doc-revision @state)))
+          drive-op (queue/enqueue!
+                    drive-tail
+                    (fn []
+                      (p/let [candidate download-gate]
+                        (queue/enqueue!
+                         command-tail
+                         (fn []
+                           (if (current? snapshot)
+                             (swap! state assoc :doc candidate)
+                             (swap! state assoc :rerun? true)))))))]
+      (-> (queue/enqueue! command-tail
+                          (fn []
+                            (swap! state #(-> %
+                                              (assoc-in [:doc "local"] {:id "local"})
+                                              (update :doc-revision inc)))))
+          (p/then (fn [_]
+                    (p/resolve! download-gate
+                                {:doc-id "doc" "downloaded" {:id "downloaded"}})
+                    drive-op))
+          (p/then (fn [_]
+                    (is (= "local" (get-in @state [:doc "local" :id])))
+                    (is (nil? (get-in @state [:doc "downloaded"])))
+                    (is (true? (:rerun? @state)))
                     (js/clearTimeout timer)
                     (done)))
           (p/catch (fn [e]
