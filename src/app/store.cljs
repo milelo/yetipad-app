@@ -313,25 +313,27 @@
 
 (defn $delete-doc [doc-id {:keys [keep-file]}]
   (p/let [local-index ($read-local-index)]
-    ;p/let body items wait for promise to resolve like a p/do
-    ($write-local-index (dissoc local-index doc-id))
-    (ls/$remove-item doc-id)
-    (when-not keep-file
-      (if (drive/allow-drive-request?)
-        (when-let [file-id (get-in local-index [doc-id :file-id])]
-                  ;file may me local only
-          (drive/$trash-file file-id))
-        (p/let [trashed ($get-trashed)]
-          ($put-trashed (conj trashed doc-id)))))
-    nil))
+    (let [file-id (get-in local-index [doc-id :file-id])]
+      ($write-local-index (dissoc local-index doc-id))
+      (ls/$remove-item doc-id)
+      (when-not keep-file
+        (if (drive/allow-drive-request?)
+          (when file-id (drive/$trash-file file-id))
+          (p/let [trashed ($get-trashed)]
+            ($put-trashed (conj trashed (cond-> {:doc-id doc-id}
+                                          file-id (assoc :file-id file-id)))))))
+      nil)))
 
 (defn $trash-files-pending []
   (p/let [trashed ($get-trashed)]
     (when (not-empty trashed)
       (p/let [idx ($read-local-index)]
         (p/all
-         (for [doc-id trashed]
-           (drive/$trash-file (get-in idx [doc-id :file-id]))))
+         (for [entry trashed
+               :let [doc-id (if (string? entry) entry (:doc-id entry))
+                     file-id (or (:file-id entry) (get-in idx [doc-id :file-id]))]
+               :when file-id]
+           (drive/$trash-file file-id)))
         ($put-trashed nil)
         nil))))
 

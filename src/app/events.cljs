@@ -390,16 +390,18 @@
                            (fn [db]
                              (merge db clean-db {:doc {:doc-id (utils/simple-uuid)}}))))))
 
-(defn delete-doc!! [options]
+(defn delete-doc!! [{:keys [doc-id] :as options}]
   ($enqueue! 'delete-doc!!
-            (fn [{{:keys [doc-id]} :doc}]
-              (p/do
-                (store/$delete-doc doc-id options)
-           ;Replace deleted doc with a new one: 
-                (update-db! 'new-local-doc-after-delete
-                            (fn [db]
-                              (merge db clean-db {:doc {:doc-id (utils/simple-uuid)}})))
-                ($sync-doc-index)))))
+            (fn [{{current-doc-id :doc-id} :doc}]
+              (let [doc-id (or doc-id current-doc-id)]
+                (when (string? doc-id)
+                  (p/do
+                    (store/$delete-doc doc-id options)
+                    (when (= doc-id current-doc-id)
+                      (update-db! 'new-local-doc-after-delete
+                                  (fn [db]
+                                    (merge db clean-db {:doc {:doc-id (utils/simple-uuid)}}))))
+                    ($sync-doc-index)))))))
 
 (defn sync-doc!! []
   ($enqueue! 'sync-doc!!
@@ -741,7 +743,10 @@
   (update-db!
    (fn [db]
      (update db :moving-items? (fn [moving?] (boolean (and (not moving?)
-                                                           (some string? (:open-items db)))))))))
+                                                           (some (fn [id]
+                                                                   (and (string? id)
+                                                                        (not= :tag (get-in db [:doc id :kind]))))
+                                                                 (:open-items db)))))))))
 
 (defn- finish-move-items! [move-items]
   (update-db! '$finish-move-items!

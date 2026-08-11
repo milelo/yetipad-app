@@ -26,7 +26,7 @@
                             Card CardMedia CardContent CardActions
                             BottomNavigation BottomNavigationAction
                             Tabs Tab
-                            Dialog DialogTitle
+                            Dialog DialogTitle DialogContent DialogContentText DialogActions
                             TextField InputBase
                             CssBaseline MuiThemeProvider
                             MobileStepper]]
@@ -118,6 +118,9 @@
                                                   :margin     "0 4px"}}]]))
 
 (defonce search-value* (r/atom ""))
+(defonce selected-doc-id* (r/atom nil))
+(defonce delete-confirmation* (r/atom nil))
+(defonce upload-input* (r/atom nil))
 ;(add-watch search-value* :search-watch (fn [_ v] (println v)))
 
 (defn history-index-pane []
@@ -144,13 +147,14 @@
 
 (defn doc-list-pane []
   (let [docs @subs/doc-list*
-        selected-doc-id @subs/doc-id*]
+        selected-doc-id (or @selected-doc-id* @subs/doc-id*)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [doc-id title subtitle file-id file-name file-description status]} docs]
               ^{:key doc-id} [:> ListItem {:style    {:padding "0 4px"}
                                            :button   true
                                            :selected (= selected-doc-id doc-id)
                                            :on-click (fn []
+                                                       (reset! selected-doc-id* doc-id)
                                                        (if @subs/moving-items?*
                                                   ;source and target must be different
                                                          (when (not= selected-doc-id doc-id)
@@ -168,18 +172,36 @@
    [:> icon (theme ::theme/small-icon)]])
 
 (defn doc-index-toolbar []
-  [:div {:style {:display        :flex
-                 :flex-direction :row}}
-   [doc-index-tool delete-document-icon "Delete current document" #(events/delete-doc!! {})]
-   [:input {:accept    ".edn,.odn"
-            :style     {:display :none}
-            :multiple  false
-            :type      "file"
-            :ref       #(set! (.-upload (js-this)) %)
-            :on-change got-file}]
-   [doc-index-tool open-file-icon "Open file" #(-> (js-this) .-upload .click)]
-   [doc-index-tool move-items-icon "start move open items..." events/toggle-start-move-items!
-    {:selected @subs/moving-items?*}]])
+  (let [docs @subs/doc-list*
+        selected-doc-id (or @selected-doc-id* @subs/doc-id*)
+        selected-doc (some #(when (= selected-doc-id (:doc-id %)) %) docs)]
+    [:<>
+     [:div {:style {:display        :flex
+                    :flex-direction :row}}
+      [doc-index-tool delete-document-icon "Delete document"
+       #(when selected-doc (reset! delete-confirmation* selected-doc))]
+      [:input {:accept ".edn,.odn" :style {:display :none} :multiple false :type "file"
+               :ref #(reset! upload-input* %) :on-change got-file}]
+      [doc-index-tool open-file-icon "Open file"
+       #(when-let [input @upload-input*] (.click input))]
+      [doc-index-tool move-items-icon "start move open items..." events/toggle-start-move-items!
+       {:selected @subs/moving-items?*}]]
+     (when-let [{:keys [doc-id title file-name]} @delete-confirmation*]
+       [:> Dialog {:open true :on-close #(reset! delete-confirmation* nil)
+                   :aria-labelledby "delete-document-title"
+                   :aria-describedby "delete-document-description"}
+        [:> DialogTitle {:id "delete-document-title"} "Delete document?"]
+        [:> DialogContent
+         [:> DialogContentText {:id "delete-document-description"}
+          (str "Delete “" (or title file-name doc-id) "”? The associated file will be moved to trash.")]]
+        [:> DialogActions
+         [:> Button {:on-click #(reset! delete-confirmation* nil)} "Cancel"]
+         [:> Button {:color :error :auto-focus true
+                     :on-click (fn []
+                                 (reset! delete-confirmation* nil)
+                                 (reset! selected-doc-id* nil)
+                                 (events/delete-doc!! {:doc-id doc-id}))}
+          "Delete"]]])]))
 
 (defn doc-index-pane []
   [:<>
