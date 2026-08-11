@@ -3,7 +3,7 @@
 var shadow$provide = {};
 
 var SHADOW_IMPORT_PATH = __dirname + '/../.shadow-cljs/builds/test/dev/out/cljs-runtime';
-if (__dirname == '.') { SHADOW_IMPORT_PATH = "c:\\Users\\mike\\Dev\\yetipad-app\\.shadow-cljs\\builds\\test\\dev\\out\\cljs-runtime"; }
+if (__dirname == '.') { SHADOW_IMPORT_PATH = "C:\\Users\\mike\\Dev\\yetipad-app\\.shadow-cljs\\builds\\test\\dev\\out\\cljs-runtime"; }
 global.$CLJS = global;
 global.shadow$provide = {};
 try {require('source-map-support').install();} catch (e) {console.warn('no "source-map-support" (run "npm install source-map-support --save-dev" to get it)');}

@@ -260,9 +260,11 @@
        :index-docs [doc-index-pane])]))
 
 (defn items-pane []
-  [:> Paper (theme ::theme/items)
-   (for [{:keys [id kind] :as item} @subs/open-items-with-trash*]
-     ^{:key id} [(reg/rget kind :pane) {:item item}])])
+  [:<>
+   [:> Paper (theme ::theme/items)
+    (for [{:keys [id kind] :as item} @subs/open-items-with-trash*]
+      ^{:key id} [(reg/rget kind :pane) {:item item}])]
+   [ui/trash-confirmation-dialog]])
 
 (defn static-pane-list-item [kind]
   (let [{:keys [title icon]} (reg/rget kind)]

@@ -5,13 +5,15 @@
    [goog.object :as gobject]
    [reagent.core :as r]
    [app.events :as events]
+   [app.subs :as subs]
    [lib.utils :as utils :refer-macros [for-all]]
    [app.ui.theme :as theme :refer [theme]]
    [app.config :as config]
    [lib.debug :as debug :refer [we wd wee expose]]
    [app.ui.utils :as ui-utils :refer [show-empty-title no-title]]
    ["@mui/material" :refer [Icon IconButton Tooltip Typography Paper Dialog
-                                Toolbar AppBar]]
+                                DialogTitle DialogContent DialogContentText DialogActions
+                                Button Toolbar AppBar]]
     ;-------------Item control icons----------
    ["@mui/icons-material/EditTwoTone" :default edit-icon]
    ["@mui/icons-material/Edit" :default slate-edit-icon]
@@ -30,6 +32,63 @@
    [app.ui.registry :as reg]))
 
 (defonce item-state* (r/atom {}))
+(defonce trash-confirmation* (r/atom nil))
+(defonce trash-confirmation-in-flight?* (r/atom false))
+
+(defn request-permanent-delete! [item-id]
+  (when (and (string? item-id) (not @trash-confirmation-in-flight?*))
+    (reset! trash-confirmation* {:action :delete-item-permanent
+                                 :item-id item-id})))
+
+(defn request-empty-trash! []
+  (let [item-count (count @subs/deleted-items*)]
+    (when (and (pos? item-count) (not @trash-confirmation-in-flight?*))
+      (reset! trash-confirmation* {:action :empty-trash
+                                   :item-count item-count}))))
+
+(defn- close-trash-confirmation! []
+  (when-not @trash-confirmation-in-flight?*
+    (reset! trash-confirmation* nil)))
+
+(defn- confirm-trash-action! []
+  (when-let [{:keys [action item-id]} @trash-confirmation*]
+    (when-not @trash-confirmation-in-flight?*
+      (reset! trash-confirmation-in-flight?* true)
+      (let [operation (case action
+                        :delete-item-permanent (events/delete-item-permanent!! item-id)
+                        :empty-trash (events/empty-trash!!))]
+        (-> operation
+            (.then (fn [_]
+                     (reset! trash-confirmation-in-flight?* false)
+                     (reset! trash-confirmation* nil)))
+            (.catch (fn [_]
+                      (reset! trash-confirmation-in-flight?* false))))))))
+
+(defn trash-confirmation-dialog []
+  (let [{:keys [action item-id item-count]} @trash-confirmation*
+        item-title (when item-id (:title @(subs/doc-item item-id)))
+        empty-trash? (= action :empty-trash)]
+    (when action
+      [:> Dialog {:open true
+                  :on-close close-trash-confirmation!
+                  :aria-labelledby "trash-confirmation-title"
+                  :aria-describedby "trash-confirmation-description"}
+       [:> DialogTitle {:id "trash-confirmation-title"}
+        (if empty-trash? "Empty trash?" "Permanently delete item?")]
+       [:> DialogContent
+        [:> DialogContentText {:id "trash-confirmation-description"}
+         (if empty-trash?
+           (str "Permanently delete " item-count " trashed "
+                (if (= item-count 1) "item" "items") "? This cannot be undone.")
+           (str "Permanently delete “" (or item-title item-id) "”? This cannot be undone."))]]
+       [:> DialogActions
+        [:> Button {:on-click close-trash-confirmation!
+                   :disabled @trash-confirmation-in-flight?*} "Cancel"]
+        [:> Button {:color :error
+                    :auto-focus true
+                    :disabled @trash-confirmation-in-flight?*
+                    :on-click confirm-trash-action!}
+         (if empty-trash? "Empty trash" "Delete permanently")]]])))
 
 (defn- set-pane-toolbar-height! [pane]
   (when pane
@@ -90,10 +149,10 @@
   [item-button restore-icon "restore from trash" #(events/restore-item! item-id)])
 
 (defn delete-permanent-button [item-id]
-  [item-button delete-permanent-icon "delete permanent" #(events/delete-item-permanent!! item-id)])
+  [item-button delete-permanent-icon "delete permanent" #(request-permanent-delete! item-id)])
 
 (defn empty-trash-button []
-  [item-button delete-permanent-icon "empty trash" events/empty-trash!!])
+  [item-button delete-permanent-icon "empty trash" request-empty-trash!])
 
 (defn fullscreen-exit-button [item-id]
   [item-button fullscreen-exit-icon "exit full-screen" #(swap! item-state* update item-id assoc :open false)])
