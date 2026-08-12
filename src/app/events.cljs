@@ -202,11 +202,7 @@
    (fn []
      (let [on-change (fn [path] (let [v (get-in db path)]
                                   (when-not (identical? (get-in old-db path) v)
-                                    v)))
-           old-doc-id (get-in old-db [:doc :doc-id])
-           doc-id (get-in db [:doc :doc-id])
-           old-open-items (:open-items old-db)
-           open-items (:open-items db)]
+                                    v)))]
        (when (and db (not (identical? old-db db)))
          (let [ms (get-in old-db [:status :time-ms])]
            (when (and ms (> (time-now-ms) (+ ms min-status-display-time-ms)))
@@ -218,8 +214,7 @@
              (store/$write-persist-doc (get-in db [:doc :doc-id]) persist-doc))
            (when-let [persist-device (on-change [:persist-device])]
            ;Write persistent data to this device
-             (store/$write-persist-device persist-device))
-           ))))))
+             (store/$write-persist-device persist-device))))))))
 
 (add-watch db/db* :db-monitor (fn [k r o n]
                                 (when (not= o n)

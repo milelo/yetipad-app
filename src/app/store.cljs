@@ -137,18 +137,26 @@
      :open-items (vec (:open-items session))}))
 
 (defn $write-active-session
-  "Write the document and open-item selection to be restored on app start."
+  "Synchronously write the document and open-item selection for app relaunch.
+   Fall back to localForage when Web Storage is unavailable."
   [{:keys [doc-id open-items] :as session}]
   (trace log)
   (when-let [session (normalize-active-session session)]
-    (ls/$put-data active-session-key session)))
+    (if (ls/put-data-sync! active-session-key session)
+      (p/resolved session)
+      (ls/$put-data active-session-key session))))
 
 (defn $read-active-session
-  "Read the last active document and its open items, or nil if unavailable/invalid."
+  "Read the last active document and its open items. Fall back to the legacy
+   localForage value and migrate it to synchronous Web Storage."
   []
   (trace log)
-  (p/let [session (ls/$get-data active-session-key)]
-    (normalize-active-session session)))
+  (if-let [session (normalize-active-session (ls/get-data-sync active-session-key))]
+    (p/resolved session)
+    (p/let [session (normalize-active-session (ls/$get-data active-session-key))]
+      (when session
+        (ls/put-data-sync! active-session-key session))
+      session)))
 
 (defn $write-persist-device [data]
   (trace log)

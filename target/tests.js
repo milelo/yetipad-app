@@ -1504,6 +1504,7 @@ SHADOW_IMPORT("shadow.js.shim.module$$mui$icons_material$HelpTwoTone.js");
 SHADOW_IMPORT("app.ui.registry.js");
 SHADOW_IMPORT("app.subs.js");
 SHADOW_IMPORT("app.ui.theme_test.js");
+SHADOW_IMPORT("lib.localstore_test.js");
 SHADOW_IMPORT("lib.operation_queue_test.js");
 SHADOW_IMPORT("shadow.test.js");
 SHADOW_IMPORT("shadow.test.node.js");
