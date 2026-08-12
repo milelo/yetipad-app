@@ -3,7 +3,7 @@
   "version": "dev",
   "name": "YetiPad",
   "short_name": "",
-  "start_url-disabled": "./",
+  "start_url": "./",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

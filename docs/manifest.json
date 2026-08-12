@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "version": "25",
+  "version": "26",
   "name": "YetiPad",
   "short_name": "",
-  "start_url-disabled": "./",
+  "start_url": "./",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

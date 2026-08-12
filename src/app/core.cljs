@@ -49,6 +49,7 @@
   (mount-root)
   (debug log :add-focus-listener)
   (gevents/listen js/window "focus" on-window-focus)
+  (gevents/listen js/window "pagehide" (fn [_] (events/persist-active-session!)))
   (add-watch log/config* ::logger-config (fn [_k _r o n]
                                            (when-not (identical? o n)
                                              (events/logger-config! n))))

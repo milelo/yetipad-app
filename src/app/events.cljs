@@ -183,7 +183,21 @@
                  (fn [db]
                    (assoc db :status {}))))
 
+(defn persist-active-session!
+  "Persist the current document selection immediately for app relaunch."
+  []
+  (let [{:keys [doc open-items]} @db/db*
+        doc-id (:doc-id doc)]
+    (when (string? doc-id)
+      (store/$write-active-session
+       {:doc-id doc-id
+        :open-items (or open-items [])}))))
+
 (defn after-db-change! [old-db db]
+  (when (and (string? (get-in db [:doc :doc-id]))
+             (or (not= (get-in old-db [:doc :doc-id]) (get-in db [:doc :doc-id]))
+                 (not= (:open-items old-db) (:open-items db))))
+    (persist-active-session!))
   (run-later
    (fn []
      (let [on-change (fn [path] (let [v (get-in db path)]
@@ -205,12 +219,7 @@
            (when-let [persist-device (on-change [:persist-device])]
            ;Write persistent data to this device
              (store/$write-persist-device persist-device))
-           (when (and (string? doc-id)
-                      (or (not= old-doc-id doc-id)
-                          (not= old-open-items open-items)))
-             (store/$write-active-session
-              {:doc-id doc-id
-               :open-items (or open-items [])}))))))))
+           ))))))
 
 (add-watch db/db* :db-monitor (fn [k r o n]
                                 (when (not= o n)
