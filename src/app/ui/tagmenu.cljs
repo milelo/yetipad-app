@@ -28,6 +28,7 @@
 
 (defn open-context-menu! [id e]
   (.preventDefault e)
+  (.stopPropagation e)
   (reset! context-menu* {:id       id
                          :position {:top    (.-clientY e)
                                     :left   (.-clientX e)}}))
@@ -38,6 +39,7 @@
     (reset! long-press-timer* nil)))
 
 (defn start-long-press! [id e]
+  (.stopPropagation e)
   (cancel-long-press!)
   (let [touch (aget (.-touches e) 0)]
     (reset! long-press-timer*
@@ -69,10 +71,12 @@
                                                :on-touch-start (when (= kind :tag)
                                                                  #(start-long-press! id %))
                                                :on-touch-end (when (= kind :tag)
-                                                               (fn [_]
+                                                               (fn [e]
+                                                                 (.stopPropagation e)
                                                                  (cancel-long-press!)))
                                                :on-touch-move (when (= kind :tag)
-                                                               (fn [_]
+                                                               (fn [e]
+                                                                 (.stopPropagation e)
                                                                  (cancel-long-press!)))
                                                }
                                   [:<>
@@ -101,10 +105,16 @@
               :anchor-position  position}
      [:> MenuItem {:on-click #(open-tag! id)} "Open tag"]]))
 
+(defn prevent-native-context-menu! [e]
+  (.preventDefault e)
+  (.stopPropagation e))
+
 (defn tag-menu []
   (let [root-tag-items @subs/root-tag-data*]
     (if root-tag-items
-      [:<> [tag-submenu nil root-tag-items nil] [context-menu]]
+      [:div {:on-context-menu prevent-native-context-menu!}
+       [tag-submenu nil root-tag-items nil]
+       [context-menu]]
       [:> Typography {:align   :center
                       :style   {:padding "2em 1em"
                                 :color   :lightgray
