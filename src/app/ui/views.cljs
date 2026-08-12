@@ -178,6 +178,7 @@
     [:<>
      [:div {:style {:display        :flex
                     :flex-direction :row}}
+      [doc-index-tool new-note-icon "New document" events/new-document!]
       [doc-index-tool delete-document-icon "Delete document"
        #(when selected-doc (reset! delete-confirmation* selected-doc))]
       [:input {:accept ".edn,.odn" :style {:display :none} :multiple false :type "file"

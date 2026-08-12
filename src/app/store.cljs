@@ -125,6 +125,31 @@
 
 (def ldb-device-key \*)
 
+(def active-session-key :yetipad-active-session)
+
+(defn normalize-active-session
+  "Return a normalized active-session value, or nil when the value is invalid."
+  [session]
+  (when (and (map? session)
+             (string? (:doc-id session))
+             (sequential? (:open-items session)))
+    {:doc-id (:doc-id session)
+     :open-items (vec (:open-items session))}))
+
+(defn $write-active-session
+  "Write the document and open-item selection to be restored on app start."
+  [{:keys [doc-id open-items] :as session}]
+  (trace log)
+  (when-let [session (normalize-active-session session)]
+    (ls/$put-data active-session-key session)))
+
+(defn $read-active-session
+  "Read the last active document and its open items, or nil if unavailable/invalid."
+  []
+  (trace log)
+  (p/let [session (ls/$get-data active-session-key)]
+    (normalize-active-session session)))
+
 (defn $write-persist-device [data]
   (trace log)
   (if (empty? data)
