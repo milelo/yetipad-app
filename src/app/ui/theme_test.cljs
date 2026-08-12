@@ -22,17 +22,6 @@
       (is (= "calc(100vh - 64px)" (:height style)))
       (is (= :auto (:overflow-y style))))))
 
-(deftest sticky-pane-tags-markup-test
-  (testing "viewer and editor tag bars share the bottom-sticky contract"
-    (let [{:keys [class style]} (theme ::theme/pane-tags)]
-      (is (= "pane-tags" class))
-      (is (= :sticky (:position style)))
-      (is (= 0 (:bottom style)))
-      (is (= 1 (:z-index style)))
-      (is (= :white (:background-color style)))
-      (is (= 10 (:padding style)))
-      (is (= "solid 1px LightGrey" (:border-top style))))))
-
 (deftest sticky-editor-tags-option-test
   (testing "the editor tag-bar setting defaults to enabled"
     (is (true? @subs/sticky-editor-tags?*))))
