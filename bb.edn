@@ -31,4 +31,8 @@
 
   publish
   {:doc "Create and push a release tag for the GitHub Pages workflow."
-   :task (load-file "scripts/publish.clj")}}}
+   :task (load-file "scripts/publish.clj")}
+
+  release-info
+  {:doc "Show the commit message for a release tag."
+   :task (load-file "scripts/release_info.clj")}}}
