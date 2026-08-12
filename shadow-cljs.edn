@@ -1,7 +1,9 @@
 {:source-paths
  ["src"]
+ :nrepl {:port 8778}
  :dependencies
- [[reagent "1.2.0"]
+ [[cider/cider-nrepl "0.62.2"]
+  [reagent "1.2.0"]
   [funcool/promesa "11.0.678"]
   [cljs-bean "1.9.0"]
   [binaryage/devtools "1.0.7"]

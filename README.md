@@ -138,14 +138,13 @@ npm install
 * Open a terminal window in the IDE and execute:
 
 ~~~
-npm run watch
+bb dev
 ~~~
 
-* This should do everything to run the development code including building the code and starting the servers. It will also watch for changes to trigger and incremental build and refresh the browser.
-* Open a Chrome browser with the url `http://localhost:8281/`
-* Open the repl. I've pre-configured this in [Cursive]: `Run... > nREPL` or select direct from the run-combo in the toolbar.
-* To switch to the cljs REPL select the pre-configured: `Tools > REPL > Commands > Start cljs nREPL` *Cursive Bug: the command isn't being imported correctly so use...*
-* Or evaluate in the REPL:
+* This starts Shadow CLJS, its development web server, hot reload, and an nREPL server on port `8778` with cider-nrepl middleware enabled.
+* Open a browser at `http://localhost:8282/`.
+* In Calva, use `Connect to a running REPL server`, choose `localhost`, and enter port `8778`. Do not use `Start a REPL server` or jack-in for this workflow.
+* After connecting, switch the Calva session to the ClojureScript REPL and select the `:app` build by evaluating:
 
 ~~~cljs
 (shadow.cljs.devtools.api/nrepl-select :app)
