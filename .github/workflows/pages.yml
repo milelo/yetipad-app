@@ -18,7 +18,9 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     environment:
-      name: github-pages
+      # Use a separate environment because the default github-pages environment
+      # currently restricts deployments to branches and rejects vN release tags.
+      name: github-pages-release
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Check out release
