@@ -30,12 +30,17 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            const releaseTag = context.payload.ref.replace('refs/tags/', '');
+            if (!/^v[0-9]+$/.test(releaseTag)) {
+              core.setFailed(`Expected a numeric release tag, got: ${releaseTag}`);
+              return;
+            }
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'pages.yml',
               ref: 'main',
-              inputs: { release_tag: context.ref_name }
+              inputs: { release_tag: releaseTag }
             });
 
   build-and-deploy:
