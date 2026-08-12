@@ -32,6 +32,11 @@
                                                                (events/open-tag-drawer! false)
                                                                (events/open-item! id {:disable-toggle true})
                                                                )))
+                                               :on-double-click (when (= kind :tag)
+                                                                  (fn [_]
+                                                                    (reset! selected-elements* {})
+                                                                    (events/open-tag-drawer! false)
+                                                                    (events/open-item! id {:disable-toggle true})))
                                                }
                                   [:<>
                                    [:div {:style {:display        :flex
