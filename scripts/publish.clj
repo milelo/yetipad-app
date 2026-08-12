@@ -46,4 +46,4 @@
     (throw (ex-info (str "Release tag already exists: " tag) {})))
   (run-git "tag" "-a" tag "-m" (str "Release " version))
   (run-git "push" "origin" tag)
-  (println (str "Published " tag ". GitHub Actions will deploy it to Pages.")))
+  (println (str "Published " tag ". GitHub Actions will dispatch the Pages build from main.")))

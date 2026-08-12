@@ -153,7 +153,8 @@ bb dev
 ### Publish a release to GitHub Pages:
 
 * Make sure the working tree is clean and the changes to be released are on `main`.
-* Create and push the next release tag; GitHub Actions builds and deploys the site, including source maps:
+* Create and push the next release tag; the tag workflow dispatches the Pages build from `main`, which checks out
+  that tag, builds, and deploys the site, including source maps:
 
 ~~~
 bb publish

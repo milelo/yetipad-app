@@ -4,9 +4,16 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build, for example v34
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: write
   pages: write
   id-token: write
 
@@ -15,7 +22,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dispatch-pages-build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Pages build from main
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pages.yml',
+              ref: 'main',
+              inputs: { release_tag: context.ref_name }
+            });
+
   build-and-deploy:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       # Use a separate environment because the default github-pages environment
@@ -25,6 +49,8 @@ jobs:
     steps:
       - name: Check out release
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_tag }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
@@ -55,7 +81,7 @@ jobs:
 
       - name: Set release version
         env:
-          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           VERSION="${RELEASE_VERSION#v}"
@@ -83,10 +109,10 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: docs
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
