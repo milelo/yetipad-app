@@ -16,7 +16,7 @@
   build-sw
   {:doc "Build the service worker."
    :task (do
-           (shell "npx browserslist@latest --update-db")
+           (shell "npx update-browserslist-db@latest")
            (shell "nbb ./build-service-worker.cljs"))}
 
   release
