@@ -24,10 +24,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Check out release
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -51,8 +51,24 @@ jobs:
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           VERSION="${RELEASE_VERSION#v}"
-          node -e 'const fs=require("fs"); const p="docs/manifest.json"; const m=JSON.parse(fs.readFileSync(p)); m.version=process.argv[1]; fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");' "$VERSION"
+          if [[ ! "$VERSION" =~ ^[0-9]+$ ]]; then
+            echo "Release tag must be vN; got: $RELEASE_VERSION" >&2
+            exit 1
+          fi
+          if [[ ! -f docs/manifest.json ]]; then
+            echo "Release manifest is missing: docs/manifest.json" >&2
+            exit 1
+          fi
+          export RELEASE_VERSION_NUMBER="$VERSION"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'docs/manifest.json';
+          const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+          manifest.version = process.env.RELEASE_VERSION_NUMBER;
+          fs.writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');
+          NODE
 
       - name: Build service worker with source map
         run: npx nbb ./build-service-worker.cljs
