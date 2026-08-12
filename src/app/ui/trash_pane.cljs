@@ -13,7 +13,7 @@
     ["@mui/material" :refer [Tooltip Typography
                                  TextField List ListItem ListItemText ListItemIcon
                                  ]]
-    ["@mui/icons-material/DeleteOutline" :default trash-icon]
+    ["@mui/icons-material/DeleteOutlined" :default trash-icon]
     ))
 
 (def log (log/logger 'app.ui.trash-pane))
@@ -30,12 +30,10 @@
                  [:> icon {:style {:font-size font-size}}]
                  ])
      [:> ListItemText {:primary                  (or title no-title)
-                       :primary-typography-props {:style (if title
-                                                           {:font-size font-size}
-                                                           {:font-size  font-size
-                                                            :font-style :italic
-                                                            })
-                                                  }
+                       :slot-props {:primary {:style (if title
+                                                        {:font-size font-size}
+                                                        {:font-size  font-size
+                                                         :font-style :italic})}}
                        :style                    {:min-height 0
                                                   :margin     "0 4px"
                                                   }

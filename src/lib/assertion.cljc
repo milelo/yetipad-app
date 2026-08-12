@@ -1,8 +1,8 @@
 ;source: https://gist.github.com/mjmeintjes/e277d014a3f971b3a3da5fddf29aee30
 (ns lib.assertion
   (:require [taoensso.truss :as truss]
-            #?(:clj [taoensso.truss.impl :as impl :refer [-invariant]])
-            #?(:cljs [taoensso.truss.impl :as impl :refer-macros [-invariant]])
+            #?(:clj [taoensso.truss :refer [have]])
+            #?(:cljs [taoensso.truss :refer-macros [have]])
             [clojure.string :as str]))
 
 
@@ -76,7 +76,7 @@
   {:arglists '([pred (:in) x] [pred (:in) x & more-xs])}
   [& args]
   `(try-catchall
-    (-invariant :elidable nil ~(:line (meta &form)) ~args)
+    (have ~@args)
     (catch ex#
            (when (truss-ex? ex#)
              ~(spy-emit &env &form))

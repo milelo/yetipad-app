@@ -9,15 +9,15 @@
 		"build-sw": "npx browserslist@latest --update-db && nbb ./build-service-worker.cljs"
 	},
 	"dependencies": {
-		"@ckeditor/ckeditor5-build-classic": "^40.2.0",
-		"@ckeditor/ckeditor5-react": "^6.2.0",
-		"@emotion/react": "^11.11.3",
-		"@emotion/styled": "^11.11.0",
-		"@mui/icons-material": "^5.15.4",
-		"@mui/material": "^5.15.4",
+		"@ckeditor/ckeditor5-build-classic": "^41.4.2",
+		"@ckeditor/ckeditor5-react": "^11.2.0",
+		"@emotion/react": "^11.14.0",
+		"@emotion/styled": "^11.14.1",
+		"@mui/icons-material": "^9.3.1",
+		"@mui/material": "^9.3.1",
 		"baseline-browser-mapping": "^2.11.13",
 		"caniuse-lite": "^1.0.30001809",
-		"highlight.js": "11.1.0",
+		"highlight.js": "^11.12.0",
 		"localforage": "^1.9.0",
 		"lz-string": "^1.4.4",
 		"ping.js": "^0.3.0",
@@ -25,8 +25,8 @@
 		"react-quill": "^2.0.0"
 	},
 	"devDependencies": {
-		"glob": "^10.3.10",
-		"shadow-cljs": "^2.20.18",
-		"workbox-build": "^7.0.0"
+		"glob": "^13.0.6",
+		"shadow-cljs": "^3.4.12",
+		"workbox-build": "^7.4.1"
 	}
 }

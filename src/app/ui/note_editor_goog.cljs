@@ -1,7 +1,6 @@
 (ns app.ui.note-editor-goog
   (:require
     [reagent.core :refer [create-class as-element]]
-    [reagent.dom :as rdom :refer [dom-node]]
     ;[hickory.core :refer [parse-fragment as-hiccup]]        ;https://github.com/davidsantiago/hickory
     [app.ui.editor-goog :refer [create-editor editor-buttons-standard]]
     [app.ui.utils :as ui-utils]

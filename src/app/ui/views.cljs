@@ -110,10 +110,10 @@
      (when icon [:> ListItemIcon {:style {:min-width 0}}
                  [:> icon {:style {:font-size font-size}}]])
      [:> ListItemText {:primary                  (or title no-title)
-                       :primary-typography-props {:style (if title
-                                                           {:font-size font-size}
-                                                           {:font-size  font-size
-                                                            :font-style :italic})}
+                       :slot-props {:primary {:style (if title
+                                                        {:font-size font-size}
+                                                        {:font-size  font-size
+                                                         :font-style :italic})}}
                        :style                    {:min-height 0
                                                   :margin     "0 4px"}}]]))
 
@@ -126,11 +126,11 @@
 (defn history-index-pane []
   (let [items-by-history @(subs/items-by-history-filtered @search-value*)
         date-item (fn [text]
-                    [:> ListItem {:style {:padding "0 4px"}}
+                     [:> ListItem {:style {:padding "0 4px"}}
                      [:> ListItemText {:primary                  text
-                                       :primary-typography-props {:style {:font-size 13
-                                                                          ;:font-weight :bold
-                                                                          }}
+                                       :slot-props {:primary {:style {:font-size 13
+                                                                      ;:font-weight :bold
+                                                                      }}}
                                        :style                    {:min-height 0
                                                                   :margin     0}}]])]
     [:> List (theme ::theme/index-list)
