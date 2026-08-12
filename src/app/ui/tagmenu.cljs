@@ -91,19 +91,20 @@
                                                   }
                                       (let [[tag-items other-items] @(subs/child-data-by-tag-id id)]
                                         [tag-submenu id tag-items other-items])])
-                                    ]])
-   (when-let [{:keys [id position]} @context-menu*]
-     [:> Menu {:open             true
-               :on-close         close-context-menu!
-               :anchor-reference :anchorPosition
-               :anchor-position  position}
-       [:> MenuItem {:on-click #(open-tag! id)} "Open tag"]])
-    ])
+                                    ]])])
+
+(defn context-menu []
+  (when-let [{:keys [id position]} @context-menu*]
+    [:> Menu {:open             true
+              :on-close         close-context-menu!
+              :anchor-reference :anchorPosition
+              :anchor-position  position}
+     [:> MenuItem {:on-click #(open-tag! id)} "Open tag"]]))
 
 (defn tag-menu []
   (let [root-tag-items @subs/root-tag-data*]
     (if root-tag-items
-      [tag-submenu nil root-tag-items nil]
+      [:<> [tag-submenu nil root-tag-items nil] [context-menu]]
       [:> Typography {:align   :center
                       :style   {:padding "2em 1em"
                                 :color   :lightgray
