@@ -259,12 +259,57 @@
        :index-title [title-index-pane]
        :index-docs [doc-index-pane])]))
 
+(defonce item-refs* (r/atom {}))
+
+(defn- open-item-ids [items]
+  (mapv :id items))
+
+(defn- item-to-scroll [old-ids new-ids]
+  (cond
+    (> (count new-ids) (count old-ids))
+    (some (fn [id]
+            (when-not (some #(= id %) old-ids)
+              id))
+          (reverse new-ids))
+
+    (and (= (count old-ids) (count new-ids))
+         (not= (last old-ids) (last new-ids)))
+    (last new-ids)))
+
+(defn- scroll-item-into-view! [item-id]
+  (when item-id
+    (js/requestAnimationFrame
+     (fn []
+       (when-let [item (get @item-refs* item-id)]
+         (.scrollIntoView item #js {:behavior "smooth"
+                                     :block "nearest"}))))))
+
 (defn items-pane []
-  [:<>
-   [:> Paper (theme ::theme/items)
-    (for [{:keys [id kind] :as item} @subs/open-items-with-trash*]
-      ^{:key id} [(reg/rget kind :pane) {:item item}])]
-   [ui/trash-confirmation-dialog]])
+  (let [previous-item-ids* (r/atom nil)]
+    (r/create-class
+     {:display-name "items-pane"
+      :component-did-mount
+      (fn [_this]
+        (reset! previous-item-ids* (open-item-ids @subs/open-items-with-trash*)))
+      :component-did-update
+      (fn [_this _old-argv]
+        (let [new-items @subs/open-items-with-trash*
+              new-ids (open-item-ids new-items)
+              target-id (item-to-scroll (or @previous-item-ids* []) new-ids)]
+          (reset! previous-item-ids* new-ids)
+          (scroll-item-into-view! target-id)))
+      :reagent-render
+      (fn []
+        [:<>
+         [:> Paper (theme ::theme/items)
+          (for [{:keys [id kind] :as item} @subs/open-items-with-trash*]
+            ^{:key id}
+            [:div {:ref (fn [node]
+                          (if node
+                            (swap! item-refs* assoc id node)
+                            (swap! item-refs* dissoc id)))}
+             [(reg/rget kind :pane) {:item item}]])]
+         [ui/trash-confirmation-dialog]])})))
 
 (defn static-pane-list-item [kind]
   (let [{:keys [title icon]} (reg/rget kind)]
