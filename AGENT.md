@@ -14,6 +14,11 @@ prefer the persisted open-item list because the retained URL query may be
 stale; keep explicit URL state for a different-document deep link. Subsequent
 navigation remains URL-driven.
 
+The one-shot startup guard must only be consumed by a navigation callback that
+contains a document fragment. Accountant may invoke the handler first for `/`;
+consuming the guard there causes the retained Android URL callback to skip the
+session reconciliation.
+
 Active-session state is lifecycle-critical. It is written synchronously to
 Web Storage with a localForage fallback; `visibilitychange` and `pagehide`
 both trigger a final persistence attempt. The existing Log view records

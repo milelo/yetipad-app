@@ -293,7 +293,10 @@
       (let [{:keys [query fragment]} (path-decode path)
             open (:open query)
             doc-id fragment
-            initial? (get (swap-vals! initial-navigation?* (constantly false)) 0)]
+            initial? (and (string? (not-empty doc-id))
+                          @initial-navigation?*)]
+          (when initial?
+            (reset! initial-navigation?* false))
           (info log 'configure-navigation! {:path path :query query :fragment fragment})
           (cond
             (and initial? (string? (not-empty doc-id)))
