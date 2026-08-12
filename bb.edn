@@ -27,4 +27,8 @@
 
   release-with-docs
   {:doc "Build the optimized docs application."
-   :task (shell "npx shadow-cljs release docs")}}}
+   :task (shell "npx shadow-cljs release docs")}
+
+  publish
+  {:doc "Create and push a release tag for the GitHub Pages workflow."
+   :task (load-file "scripts/publish.clj")}}}

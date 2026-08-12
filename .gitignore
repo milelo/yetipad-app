@@ -1,5 +1,6 @@
 /out/
 /resources/public/js/compiled/
+/docs/
 /*-init.clj
 /*.loggit
 /.nrepl-port
@@ -12,6 +13,8 @@
 /~*/
 # Cache and data files
 /.*/
+!/.github/
+!/.github/workflows/
 !/.idea/
 !/.vscode/
 /.idea/workspace.xml

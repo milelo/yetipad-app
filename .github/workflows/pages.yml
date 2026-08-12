@@ -1,0 +1,68 @@
+name: Publish GitHub Pages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out release
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare release directory
+        shell: bash
+        run: |
+          rm -rf docs
+          cp -R resources/public docs
+          rm docs/index.html
+          mv docs/release-index.html docs/index.html
+          rm -rf docs/js/compiled
+
+      - name: Build optimized application with source maps
+        run: npx shadow-cljs release app
+
+      - name: Set release version
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_VERSION#v}"
+          node -e 'const fs=require("fs"); const p="docs/manifest.json"; const m=JSON.parse(fs.readFileSync(p)); m.version=process.argv[1]; fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");' "$VERSION"
+
+      - name: Build service worker with source map
+        run: npx nbb ./build-service-worker.cljs
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

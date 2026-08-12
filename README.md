@@ -150,21 +150,20 @@ bb dev
 (shadow.cljs.devtools.api/nrepl-select :app)
 ~~~
 
-### Build a release build:
+### Publish a release to GitHub Pages:
 
-* Stop the development build, you can ^C in the build window.
-
-~~~
-bb release
-~~~
-
-* Build the service-worker to cache dependencies for off-line use:
+* Make sure the working tree is clean and the changes to be released are on `main`.
+* Create and push the next release tag; GitHub Actions builds and deploys the site, including source maps:
 
 ~~~
-bb build-sw
+bb publish
 ~~~
 
-* Copy the folder `./yetipad/` and its files to your server.
+The next numeric `vN` tag is selected automatically. A specific numeric version can also be supplied, for example
+`bb publish 30`.
+
+The generated release files are not committed to the development branch. The deployed site is built from
+`resources/public`, the optimized Shadow CLJS output, and the generated service worker.
 * To enable the App to access google Drive the server and url need to be white-listed with its google account. You could generate your own app-id and google drive credentials for your domain and update the app however the app won't then recognise documents created with its current app id. To support development http://localhost:8281/ and http://localhost:8000/ are white-listed. https://console.developers.google.com/apis/dashboard.
 
 [Homebrew package manager]: https://brew.sh/
