@@ -245,6 +245,7 @@
 (declare new-local-doc!)
 
 (defonce init-status* (atom {}))
+(defonce initial-navigation?* (atom true))
 
 (defn init-once [id f]
   (when-not (get init-status* id)
@@ -263,24 +264,52 @@
       (read-doc-by-id!! doc-id {:open-items (:open-items session)})
       (new-local-doc!))))
 
+(defn- initial-document-navigation!!
+  "Resolve Android's retained startup URL against the persisted session. When
+   both identify the same document, the persisted open-item list is newer
+   than a potentially stale URL query. Different-document URLs remain valid
+   deep links and keep their explicit query override."
+  [path query fragment]
+  (p/let [session (store/$read-active-session)
+          same-document? (= fragment (:doc-id session))
+          open-items (if same-document?
+                       (:open-items session)
+                       (when (contains? query :open)
+                         (read-string (:open query))))]
+    (info log 'initial-document-navigation
+          {:path path :url-open (:open query) :session session
+           :using-session? same-document?})
+    (-> (read-doc-by-id!! fragment {:open-items open-items})
+        (p/then (fn [snapshot]
+                  (when (and snapshot (empty? open-items))
+                    (select-index-view! :index-history)
+                    (open-index-drawer! true)))))))
+
 (defn init-navigation! []
   (configure-navigation!
    {:nav-handler
     (fn [path]
-     ;Called with the url initially by dispatch-current!
-      (let [{:keys [query fragment]} (path-decode path)]
-        (let [open (:open query)
-              doc-id fragment]
-        (info log 'configure-navigation! {:path path :query query :fragment fragment})
-        (if (string? (not-empty doc-id))
-          (let [open-items (when (contains? query :open)
-                             (read-string open))]
-            (-> (read-doc-by-id!! doc-id {:open-items open-items})
-                (p/then (fn [snapshot]
-                          (when (and snapshot (empty? open-items))
-                            (select-index-view! :index-history)
-                            (open-index-drawer! true))))))
-          (restore-active-session!!)))))      ;navigation required to support url without doc-id
+      ;Called with the url initially by dispatch-current!
+      (let [{:keys [query fragment]} (path-decode path)
+            open (:open query)
+            doc-id fragment
+            initial? (get (swap-vals! initial-navigation?* (constantly false)) 0)]
+          (info log 'configure-navigation! {:path path :query query :fragment fragment})
+          (cond
+            (and initial? (string? (not-empty doc-id)))
+            (initial-document-navigation!! path query doc-id)
+
+            (string? (not-empty doc-id))
+            (let [open-items (when (contains? query :open)
+                               (read-string open))]
+              (-> (read-doc-by-id!! doc-id {:open-items open-items})
+                  (p/then (fn [snapshot]
+                            (when (and snapshot (empty? open-items))
+                              (select-index-view! :index-history)
+                              (open-index-drawer! true))))))
+
+            :else
+            (restore-active-session!!))))
     :path-exists?
     (fn [path]
      ;true stops page reload
