@@ -13,6 +13,7 @@
 # Cache and data files
 /.*/
 !/.idea/
+!/.vscode/
 /.idea/workspace.xml
 /.idea/libraries
 /.idea/shelf

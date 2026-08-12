@@ -1,0 +1,21 @@
+{
+    "cSpell.words": [
+        "tids"
+    ],
+    "calva.replConnectSequences": [
+        {
+            "name": "Yetipad Shadow CLJS",
+            "projectType": "shadow-cljs",
+            "cljsType": "shadow-cljs",
+            "autoSelectForConnect": true,
+            "projectRootPath": ["."],
+            "nReplPortFile": [".shadow-cljs", "nrepl.port"],
+            "fallbackPort": 8778,
+            "selectedPortBehaviour": "connect",
+            "menuSelections": {
+                "cljsLaunchBuilds": [":app"],
+                "cljsDefaultBuild": ":app"
+            }
+        }
+    ]
+}
