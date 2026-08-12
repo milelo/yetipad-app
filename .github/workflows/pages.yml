@@ -1,4 +1,5 @@
 name: Publish GitHub Pages
+run-name: Publish GitHub Pages ${{ inputs.release_tag || github.ref_name }}
 
 on:
   push:
