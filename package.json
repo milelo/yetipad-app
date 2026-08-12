@@ -1,13 +1,5 @@
 {
 	"name": "yetipad-app",
-	"scripts": {
-		"compile": "shadow-cljs compile app",
-		"test": "shadow-cljs compile test && node target/tests.js",
-		"watch": "shadow-cljs watch app",
-		"release": "shadow-cljs release app && npm run build-sw",
-		"release-with-docs": "shadow-cljs release docs",
-		"build-sw": "npx browserslist@latest --update-db && nbb ./build-service-worker.cljs"
-	},
 	"dependencies": {
 		"@ckeditor/ckeditor5-build-classic": "^41.4.2",
 		"@ckeditor/ckeditor5-react": "^11.2.0",

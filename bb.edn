@@ -1,4 +1,30 @@
 {:tasks
- {dev
+ {compile
+  {:doc "Compile the application build."
+   :task (shell "npx shadow-cljs compile app")}
+
+  test
+  {:doc "Compile and run the test build."
+   :task (do
+           (shell "npx shadow-cljs compile test")
+           (shell "node target/tests.js"))}
+
+  dev
   {:doc "Start Shadow CLJS, its web server, and its nREPL for Calva."
-   :task (shell "npx shadow-cljs watch app")}}}
+   :task (shell "npx shadow-cljs watch app")}
+
+  build-sw
+  {:doc "Build the service worker."
+   :task (do
+           (shell "npx browserslist@latest --update-db")
+           (shell "nbb ./build-service-worker.cljs"))}
+
+  release
+  {:doc "Build the optimized application and service worker."
+   :task (do
+           (shell "npx shadow-cljs release app")
+           (run 'build-sw))}
+
+  release-with-docs
+  {:doc "Build the optimized docs application."
+   :task (shell "npx shadow-cljs release docs")}}}

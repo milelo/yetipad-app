@@ -155,13 +155,13 @@ bb dev
 * Stop the development build, you can ^C in the build window.
 
 ~~~
-npm run release
+bb release
 ~~~
 
 * Build the service-worker to cache dependencies for off-line use:
 
 ~~~
-node ./build-service-worker.js
+bb build-sw
 ~~~
 
 * Copy the folder `./yetipad/` and its files to your server.
