@@ -188,10 +188,13 @@
   []
   (let [{:keys [doc open-items]} @db/db*
         doc-id (:doc-id doc)]
+    (info log 'persist-active-session {:doc-id doc-id :open-items open-items})
     (when (string? doc-id)
-      (store/$write-active-session
-       {:doc-id doc-id
-        :open-items (or open-items [])}))))
+      (let [result (store/$write-active-session
+                    {:doc-id doc-id
+                     :open-items (or open-items [])})]
+        (info log 'persist-active-session-result result)
+        result))))
 
 (defn after-db-change! [old-db db]
   (when (and (string? (get-in db [:doc :doc-id]))
@@ -255,6 +258,7 @@
 (defn- restore-active-session!!
   []
   (p/let [session (store/$read-active-session)]
+    (info log 'restore-active-session session)
     (if-let [doc-id (:doc-id session)]
       (read-doc-by-id!! doc-id {:open-items (:open-items session)})
       (new-local-doc!))))
@@ -267,7 +271,7 @@
       (let [{:keys [query fragment]} (path-decode path)]
         (let [open (:open query)
               doc-id fragment]
-        (trace log 'configure-navigation! doc-id)
+        (info log 'configure-navigation! {:path path :query query :fragment fragment})
         (if (string? (not-empty doc-id))
           (let [open-items (when (contains? query :open)
                              (read-string open))]

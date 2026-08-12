@@ -142,21 +142,26 @@
   [{:keys [doc-id open-items] :as session}]
   (trace log)
   (when-let [session (normalize-active-session session)]
-    (if (ls/put-data-sync! active-session-key session)
-      (p/resolved session)
-      (ls/$put-data active-session-key session))))
+    (let [sync? (ls/put-data-sync! active-session-key session)]
+      (info log 'write-active-session {:session session :sync? sync?})
+      (if sync?
+        (p/resolved session)
+        (ls/$put-data active-session-key session)))))
 
 (defn $read-active-session
   "Read the last active document and its open items. Fall back to the legacy
    localForage value and migrate it to synchronous Web Storage."
   []
   (trace log)
-  (if-let [session (normalize-active-session (ls/get-data-sync active-session-key))]
-    (p/resolved session)
-    (p/let [session (normalize-active-session (ls/$get-data active-session-key))]
-      (when session
-        (ls/put-data-sync! active-session-key session))
-      session)))
+  (let [sync-session (normalize-active-session (ls/get-data-sync active-session-key))]
+    (info log 'read-active-session-sync sync-session)
+    (if sync-session
+      (p/resolved sync-session)
+      (p/let [session (normalize-active-session (ls/$get-data active-session-key))]
+        (info log 'read-active-session-localforage session)
+        (when session
+          (ls/put-data-sync! active-session-key session))
+        session))))
 
 (defn $write-persist-device [data]
   (trace log)
