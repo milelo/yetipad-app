@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "version": "21",
+  "version": "dev",
   "name": "YetiPad",
   "short_name": "",
   "start_url-disabled": "./",

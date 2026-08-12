@@ -343,7 +343,7 @@
       [menu-list-item account-icon "Sign-in" events/sign-in!]
       [static-pane-list-item :about]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
-      [:> ListItem [:> ListItemText {:primary @subs/app-version*}]]
+      [:> ListItem [:> ListItemText {:primary (str "Version: " @subs/app-version*)}]]
       (when config/debug?
         [:<>
          [:> Divider]
