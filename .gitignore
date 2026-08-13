@@ -15,13 +15,5 @@
 /.*/
 !/.github/
 !/.github/workflows/
-!/.idea/
 !/.vscode/
-/.idea/workspace.xml
-/.idea/libraries
-/.idea/shelf
 !/.run/
-
-~junk/
-
-.clj-kondo/funcool/
