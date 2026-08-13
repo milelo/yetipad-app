@@ -2,6 +2,7 @@
   (:require
     [app.ui.registry :as reg]
     [app.ui.ui :as ui]
+    [app.subs :as subs]
     [lib.utils :as utils :refer-macros [for-all]]
     ["@mui/material" :refer [Tooltip Typography
                                  TableContainer TableBody Table TableHead TableRow TableCell
@@ -10,7 +11,7 @@
 
 (defn table [data]
   [:<>
-   [:> Typography {:variant :h6} "Yetipad - Development release"]
+   [:> Typography {:variant :h6} "YetiPad App"]
    [:> TableContainer
     [:> Table {:size :small}
      [:> TableBody
@@ -28,6 +29,7 @@
     [ui/viewer-pane item
      {:body    (let [home "https://github.com/milelo/yetipad-app"]
                  [table [{:title "Home-page" :content [:a {:href home} home]}
+                         {:title "Version" :content @subs/app-version*}
                          {:title "Author" :content "Mike Longworth"}
                          ]])
       :buttons [ui/fullscreen-button]
