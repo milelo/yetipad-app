@@ -115,7 +115,7 @@
                               :index-view         :index-history
                               :doc-file-index     {}
                               :status             {}
-                              :online?            false?
+                              :online?            false
                               :online-status      nil
                               :sync-status        false
                               :keep-doc-in-sync?  true 
@@ -347,7 +347,8 @@
 (defn set-sync-status! [status]
   (db/update-db! 'set-sync-status!
                  (fn [db]
-                   (assert (#{:online :syncing :synced :uploading :downloading :error} status)) ;false = offline
+                   (assert (#{:offline :connecting :authorization-required :online :syncing :synced
+                              :uploading :downloading :error} status)) ;false = offline
                    (trace log :status status)
                    (assoc db :sync-status status))))
 
@@ -358,6 +359,10 @@
    drive-sync-status))
 
 (defonce drive-sync-coordinator* (atom {:running? false :pending nil}))
+(defonce reconnect-attempt* (atom 0))
+
+(defn- current-reconnect-attempt? [attempt]
+  (= attempt @reconnect-attempt*))
 
 (defn- request-latest-drive-rerun! []
   (let [snapshot (document-snapshot @db/db*)]
@@ -383,10 +388,11 @@
                                          (store/$record-drive-download sync-plan candidate)))
                    accepted-snapshot)))))
 
-(defn- $perform-drive-sync [snapshot]
+(defn- $perform-drive-sync [snapshot attempt]
   (p/let [{:keys [status] :as sync-plan} (store/$prepare-drive-sync (:doc snapshot))
-          _ (when-let [progress-status (sync-progress-status status)]
-              (set-sync-status! progress-status))]
+          _ (when (current-reconnect-attempt? attempt)
+              (when-let [progress-status (sync-progress-status status)]
+                (set-sync-status! progress-status)))]
     (case status
       :in-sync snapshot
 
@@ -421,7 +427,7 @@
 
 (declare start-drive-sync!)
 
-(defn- finish-drive-sync! [completed-snapshot]
+(defn- finish-drive-sync! [completed-snapshot attempt]
   (let [next* (atom nil)]
     (swap! drive-sync-coordinator*
            (fn [{:keys [pending] :as state}]
@@ -431,22 +437,27 @@
     (if-let [next-snapshot @next*]
       (start-drive-sync! next-snapshot)
       (when (and completed-snapshot
+                 (current-reconnect-attempt? attempt)
                  (snapshot-current? @db/db* completed-snapshot))
         (set-sync-status! :synced)))))
 
 (defn- start-drive-sync! [snapshot]
-  (set-sync-status! :syncing)
-  (-> (db/$enqueue-drive! 'drive-document-sync
-                          (fn [_]
-                            (p/let [completed ($perform-drive-sync snapshot)
-                                    _ ($sync-doc-index)]
-                              completed)))
-      (p/catch (fn [error]
-                 (warn log 'drive-sync-error error)
-                 (set-sync-status! :error)
-                 (set-app-status! (or (:message error) (:status error) (str error)) :error)
-                 nil))
-      (p/then finish-drive-sync!)))
+  (let [attempt @reconnect-attempt*]
+    (when (current-reconnect-attempt? attempt)
+      (set-sync-status! :syncing))
+    (-> (db/$enqueue-drive! 'drive-document-sync
+                            (fn [_]
+                              (p/let [completed ($perform-drive-sync snapshot attempt)
+                                      _ ($sync-doc-index)]
+                                completed)))
+        (p/catch (fn [error]
+                   (when (current-reconnect-attempt? attempt)
+                     (warn log 'drive-sync-error error)
+                     (set-sync-status! (if (= :offline (:type error)) :offline :error))
+                     (when-not (= :offline (:type error))
+                       (set-app-status! (or (:message error) (:status error) (str error)) :error)))
+                   nil))
+        (p/then #(finish-drive-sync! % attempt)))))
 
 (defn request-drive-sync!
   ([snapshot] (request-drive-sync! snapshot nil))
@@ -464,6 +475,11 @@
                       (assoc state :running? true :pending nil)))))
        (when @start? (start-drive-sync! snapshot))))))
 
+(drive/set-late-settlement-listener!
+ (fn []
+   (when (drive/allow-drive-request?)
+     (request-drive-sync! (document-snapshot @db/db*) ::late-drive-settlement))))
+
 (defn $sync-drive-file [local-doc-or-id {:keys [src]}]
   (let [snapshot (if (map? local-doc-or-id)
                    (assoc (document-snapshot @db/db*) :doc local-doc-or-id
@@ -472,8 +488,10 @@
     (request-drive-sync! snapshot src)
     (p/resolved snapshot)))
 
+(declare reconnect-and-sync!!)
+
 (defn sign-in! []
-  (drive/$ensure-authorized?))
+  (reconnect-and-sync!! {:authorization :interactive :src ::sign-in}))
 
 (defn sign-out! []
   (drive/sign-out!))
@@ -577,10 +595,56 @@
                      (set-app-status! e :error)
                      nil))))))
 
+(defn reconnect-and-sync!!
+  "Ensures Drive readiness before syncing. Startup/focus may automatically
+  request a token; only a user action retries an authorization failure."
+  [{:keys [authorization src]}]
+  (let [attempt (swap! reconnect-attempt* inc)]
+    (trace log 'reconnect-and-sync src authorization attempt)
+    (set-sync-status! :connecting)
+    (-> (drive/$ensure-drive-access! {:authorization authorization})
+      (p/then (fn [{:keys [status error]}]
+                (when (current-reconnect-attempt? attempt)
+                  (case status
+                    :authorized
+                    (do
+                      (trash-files-pending!!)
+                      (sync-doc!!))
+
+                    :authorization-required
+                    (do
+                      (set-sync-status! :authorization-required)
+                      ;Focus still checks for changes made by another local tab.
+                      (sync-doc!!))
+
+                    :retryable-error
+                    (do
+                      (set-sync-status! (if (= :offline (:type error)) :offline :error))
+                      (when-not (= :offline (:type error))
+                        (set-app-status! (or (:message error) (:status error) (str error)) :error))
+                      nil)))))
+      (p/catch (fn [e]
+                 (when (current-reconnect-attempt? attempt)
+                   (warn log 'drive-reconnect-error e)
+                   (set-sync-status! :error)
+                   (set-app-status! (or (:message e) (:status e) (str e)) :error))
+                 nil)))))
+
+(defn connectivity-changed! [online?]
+  (drive/connectivity-changed! online?)
+  (if online?
+    (reconnect-and-sync!! {:authorization :automatic :src ::browser-online})
+    (do
+      (swap! reconnect-attempt* inc)
+      (set-sync-status! :offline))))
+
+(defn sync-status-clicked! []
+  (reconnect-and-sync!! {:authorization :interactive :src ::sync-status-click}))
+
 
 (defn window-focused []
   (info log)
-  (sync-doc!!))
+  (reconnect-and-sync!! {:authorization :automatic :src ::window-focus}))
 
 ;--------------------------------Panel selection-------------------------------
 

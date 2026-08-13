@@ -441,19 +441,35 @@
                                        :line-height :normal
                                      ;;:font-weight :bold
                                        }}@subs/doc-title*]]
-            [:> IconButton {:title    "sync status"
-                            :color    :inherit
-                            :style    {:flex 0}
-                            :on-click events/sync-doc!!}
-             (case sync-status
-               :syncing [:> syncing-icon]
-               :uploading [:> uploading-icon]
-               :downloading [:> downloading-icon]
-               :synced [:> synced-icon]
-               :online [:> signed-in-icon]
-               :error [:> online-error-icon]
-               false [:> signed-out-icon]    ;offline
-               (warn log ::sync-status-unknown sync-status))]
+            [:> Tooltip
+             {:title (case sync-status
+                       :offline "Offline — Drive will reconnect when the network returns"
+                       :connecting "Connecting to Drive…"
+                       :authorization-required "Click to connect to Drive"
+                       :syncing "Synchronizing with Drive…"
+                       :uploading "Uploading to Drive…"
+                       :downloading "Downloading from Drive…"
+                       :synced "Synchronized with Drive"
+                       :online "Connected to Drive"
+                       :error "Drive connection failed — click to retry"
+                       false "Offline — click to reconnect"
+                       "Drive status")}
+             [:> IconButton {:aria-label "Drive sync status"
+                             :color      :inherit
+                             :style      {:flex 0}
+                             :on-click   events/sync-status-clicked!}
+              (case sync-status
+                :offline [:> signed-out-icon]
+                :connecting [:> syncing-icon]
+                :authorization-required [:> signed-out-icon]
+                :syncing [:> syncing-icon]
+                :uploading [:> uploading-icon]
+                :downloading [:> downloading-icon]
+                :synced [:> synced-icon]
+                :online [:> signed-in-icon]
+                :error [:> online-error-icon]
+                false [:> signed-out-icon]    ;offline
+                (warn log ::sync-status-unknown sync-status))]]
           ;variant ["h1","h2","h3","h4","h5","h6","subtitle1","subtitle2","body1","body2","caption","button","overline","srOnly","inherit"]
           ;valid colours: ["initial","inherit","primary","secondary","textPrimary","textSecondary","error"]
             [:> Typography {:variant :subtitle2

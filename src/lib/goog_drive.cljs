@@ -29,11 +29,75 @@
 
 (def online-status* (atom {:online? false} #_{:validator (fn [{:keys [status]}]
                                                            (#{:offline :online} status))}))
+(def request-timeout-ms 15000)
+(defonce pending-requests* (atom {}))
+(defonce request-sequence* (atom 0))
+(defonce late-settlement-listener* (atom nil))
+
+(declare authorization-promise*)
+
+(defn- request-error [type message]
+  {:id ::request-failed :type type :message message})
+
+(defn $bounded
+  "Logically settles promise within timeout-ms. Underlying Google operations
+  may still finish; late settlement is reported so callers can reconcile."
+  ([promise label] ($bounded promise label request-timeout-ms))
+  ([promise label timeout-ms]
+   (let [request-id (swap! request-sequence* inc)
+         settled?* (atom false)
+         timed-out?* (atom false)]
+     (p/create
+      (fn [resolve reject]
+        (let [finish! (fn [handler value]
+                        (if (compare-and-set! settled?* false true)
+                          (do
+                            (swap! pending-requests* dissoc request-id)
+                            (handler value))
+                          (when @timed-out?*
+                            (swap! online-status* update :late-settlement (fnil inc 0))
+                            (when-let [listener @late-settlement-listener*]
+                              (listener)))))
+              cancel! (fn [error]
+                        (reset! timed-out?* true)
+                        (finish! reject error))
+              timer (js/setTimeout
+                     #(cancel! (request-error :timeout (str label " timed out")))
+                     timeout-ms)]
+          (swap! pending-requests* assoc request-id
+                 (fn [error]
+                   (js/clearTimeout timer)
+                   (cancel! error)))
+          (-> (.resolve js/Promise promise)
+              (.then (fn [value]
+                       (js/clearTimeout timer)
+                       (finish! resolve value)))
+              (.catch (fn [error]
+                        (js/clearTimeout timer)
+                        (finish! reject error))))))))))
+
+(defn connectivity-changed!
+  "Immediately settles active logical requests when the browser goes offline."
+  [online?]
+  (swap! online-status* assoc :online? online?)
+  (when-not online?
+    (let [error (request-error :offline "Drive is offline")
+          pending (vals @pending-requests*)]
+      (reset! pending-requests* {})
+      (doseq [cancel! pending]
+        (cancel! error))
+      (reset! authorization-promise* nil))))
+
+(defn set-late-settlement-listener! [listener]
+  (assert (or (nil? listener) (fn? listener)))
+  (reset! late-settlement-listener* listener))
+
 (defn- $request- [request return-type {:keys [default] :as opt}]
   (assert (fn? request))
   (when opt (trace log 'request-opt opt))
   (-> (request)
       $fix-promise
+      ($bounded 'drive-request)
       (p/then (fn [response]
                 (trace log 'response return-type)
                 (let [response (case return-type
@@ -47,6 +111,7 @@
 (declare $ensure-authorized?)
 
 (declare allow-drive-request?)
+(declare get-status)
 
 (defn- $request [request return-type & [opt]]
   (if (allow-drive-request?)
@@ -64,14 +129,11 @@
                      (swap! online-status* assoc :online? (not= code -1))
                      (if (or (= code 401) (= code 403))
                        (do
-                         (when (and (= code 401) #_(= status "UNAUTHENTICATED"))
-                           ;Stop behaving as authenticated
-                           (js/gapi.client.setToken ""))
-                         (-> ($ensure-authorized?)
-                             (p/then #($request- request return-type opt))
-                             (p/catch (fn [e]
-                                        (warn log "sign in error" e)
-                                        (p/rejected e)))))
+                         (when (= code 401)
+                           ;Only a user-initiated reconnect may request a new token.
+                           (js/gapi.client.setToken nil))
+                         (get-status)
+                         (p/rejected (or err response)))
                        (p/rejected err))))))
     (p/rejected {:message "access denied" :id ::access-denied})))
 
@@ -192,21 +254,130 @@
 
 ;======================================= Authentication =============================================
 (defonce token-client* (atom {}))
+(defonce sdk-bootstrap* (atom {:status :idle :promise nil}))
+(defonce authorization-promise* (atom nil))
+
+(def google-api-script-id "yetipad-google-api")
+(def google-identity-script-id "yetipad-google-identity")
+(def google-api-script-src "https://apis.google.com/js/api.js")
+(def google-identity-script-src "https://accounts.google.com/gsi/client")
+(def sdk-script-timeout-ms 15000)
+
+(defn configure!
+  "Configures the retryable Drive bootstrap before loading either Google SDK."
+  [credentials]
+  (swap! token-client* assoc :credentials credentials))
+
+(defn- remove-script! [id]
+  (when-let [script (.getElementById js/document id)]
+    (.remove script)))
+
+(defn- $load-script! [id src ready?]
+  (if (ready?)
+    (p/resolved true)
+    (p/create
+     (fn [resolve reject]
+       (remove-script! id)
+       (let [script (.createElement js/document "script")
+             settled?* (atom false)
+             timer* (atom nil)
+             succeed! (fn []
+                        (when (compare-and-set! settled?* false true)
+                          (js/clearTimeout @timer*)
+                          (resolve true)))
+             fail! (fn []
+                     (when (compare-and-set! settled?* false true)
+                       (js/clearTimeout @timer*)
+                       (remove-script! id)
+                       (reject {:id ::sdk-load-failed
+                                :message (str "Unable to load " src)})))]
+         (set! (.-id script) id)
+         (set! (.-src script) src)
+         (set! (.-async script) true)
+         (set! (.-defer script) true)
+         (set! (.-onload script) succeed!)
+         (set! (.-onerror script) (fn [_] (fail!)))
+         (reset! timer* (js/setTimeout fail! sdk-script-timeout-ms))
+         (.appendChild (.-head js/document) script))))))
+
+(defn- $initialize-gapi! []
+  (if (:gapi? @token-client*)
+    (p/resolved true)
+    (p/create
+     (fn [resolve reject]
+       (try
+         (js/gapi.load
+          "client:picker"
+          (fn []
+            (-> (p/do
+                  ($bounded ($fix-promise (js/gapi.client.init #js {}))
+                            'gapi-client-init)
+                  ($bounded ($fix-promise
+                             (js/gapi.client.load
+                              "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"))
+                            'drive-discovery-load)
+                  (swap! token-client* assoc :gapi? true)
+                  true)
+                (p/then resolve)
+                (p/catch reject))))
+         (catch :default e
+           (reject e)))))))
+
+(defn- initialize-gis! []
+  (when-not (:token-client @token-client*)
+    (let [credentials (:credentials @token-client*)]
+      (assert credentials)
+      (swap! token-client* assoc
+             :token-client
+             (js/google.accounts.oauth2.initTokenClient
+              (->js (select-keys credentials [:client_id :scope :hint]))))))
+  true)
+
+(defn $ensure-sdk-ready!
+  "Loads and initializes both Google SDKs. Concurrent callers share an attempt;
+  a failed attempt is cleared so focus or a user click can retry it."
+  []
+  (let [{:keys [status promise]} @sdk-bootstrap*]
+    (cond
+      (= status :ready) (p/resolved true)
+      (and (= status :loading) promise) promise
+      :else
+      (let [attempt (-> (p/let [_ (p/all [($load-script! google-api-script-id
+                                                         google-api-script-src
+                                                         #(exists? js/gapi))
+                                           ($load-script! google-identity-script-id
+                                                          google-identity-script-src
+                                                          #(exists? js/google))])
+                                  _ ($initialize-gapi!)
+                                  _ (initialize-gis!)]
+                           (swap! sdk-bootstrap* assoc :status :ready :promise nil)
+                           (swap! online-status* assoc :online? true)
+                           (get-status)
+                           true)
+                        (p/catch (fn [e]
+                                   (swap! sdk-bootstrap* assoc :status :failed :promise nil)
+                                   (swap! online-status* assoc :online? false :status ::initialising)
+                                   (p/rejected e))))]
+        (swap! sdk-bootstrap* assoc :status :loading :promise attempt)
+        attempt))))
 
 (defn- get-token []
-  (and js/gapi.client (js/gapi.client.getToken)))
+  (when (and (exists? js/gapi) js/gapi.client)
+    (js/gapi.client.getToken)))
 
 (defn get-status
   ;no internet access?
   []
   (let [{:keys [gapi? token-client aborted-sign-in?]} @token-client*
-        hasGrantedAllScopes js/google.accounts.oauth2.hasGrantedAllScopes
+        hasGrantedAllScopes (when (exists? js/google)
+                              js/google.accounts.oauth2.hasGrantedAllScopes)
         token (get-token)
         status (cond
                  (not (and gapi? token-client)) ::initialising
                  aborted-sign-in? ::aborted-sign-in
                  (not token) ::sign-in-pending
-                 (hasGrantedAllScopes token "https://www.googleapis.com/auth/drive.file") ::authorized
+                 (and hasGrantedAllScopes
+                      (hasGrantedAllScopes token "https://www.googleapis.com/auth/drive.file")) ::authorized
                  :else ::failed-authorization)]
     (trace log :status status)
     (swap! online-status* assoc :status status)
@@ -216,51 +387,120 @@
   (get-status))
 
 (defn allow-drive-request?
-  "Allow a request that may succeed or trigger a user sign-in or authentication request."
+  "True only when Drive is initialized and already authorized."
   []
   (and (not= false (.-onLine js/navigator))
-       (#{::sign-in-pending ::authorized} (get-status))))
+       (= ::authorized (get-status))))
+
+(defn- connectivity-error? [error]
+  (let [error-code (or (:error error)
+                       (get-in error [:response :error])
+                       (:type error))]
+    (or (= false (.-onLine js/navigator))
+        (#{:timeout :offline "network_error" "temporarily_unavailable" "unknown"}
+         error-code))))
+
+(defn- $request-access-token! [^Object token-client status authorization]
+  ($bounded
+   (p/create
+    (fn [resolve reject]
+     (swap! token-client* assoc :aborted-sign-in? false)
+     (set! (.-callback token-client)
+           (fn [response]
+             (try
+               (let [response (->clj response)]
+                 (if (:error response)
+                   (do
+                     (swap! online-status* assoc :online? true)
+                     (swap! token-client* assoc :aborted-sign-in? true)
+                     (reject {:response response :message (:error response)}))
+                   (do
+                     (swap! online-status* assoc :online? true)
+                     (resolve (js/gapi.client.getToken)))))
+               (catch :default e
+                 (reject (-> e bean))))))
+     (set! (.-error_callback token-client)
+           (fn [err]
+             (let [err (->clj err)]
+               (swap! token-client* assoc :aborted-sign-in? true)
+               (reject err))))
+     (let [prompt (if (and (= authorization :interactive)
+                           (or (= status ::failed-authorization)
+                               (= status ::aborted-sign-in)
+                               (:automatic-authorization-failed? @token-client*)))
+                    "consent"
+                    "")]
+       (.requestAccessToken token-client #js {:prompt prompt}))))
+   'drive-authorization))
 
 (defn $ensure-authorized?
-  "Ensure or attempt Drive access authorization.
-   Return true if successful."
-  []
-  (when-let [{:keys [^Object token-client]} @token-client*]
-    (trace log)
-    ;For prompt values see: https://developers.google.com/identity/oauth2/web/reference/js-reference#TokenClientConfig
-    (let [status (get-status)]
-      (cond
-        (= status ::authorized) (p/resolved true)
-        (= status ::initialising) (p/resolved false)
-        :else  (p/do
-                 (p/create (fn [resolve reject]
-                             (trace log "register callback" #_(-> token-client bean pprintl))
-                             (set! (.-callback token-client)
-                                   (fn [response]
-                                     (try
-                                       (trace log :response response)
-                                       (let [response (->clj response)]
-                                         (trace log "callback:" (-> response pprintl))
-                                         (if (:error response)
-                                           (do
-                                             (swap! online-status* assoc :online? true)
-                                             (swap! token-client* assoc ::aborted-sign-in? true)
-                                             (reject {:response response :message (:error response)}))
-                                           ;GIS has automatically updated gapi.client with the newly issued access token.
-                                           (let [token (js/gapi.client.getToken)]
-                                             (swap! online-status* assoc :online? true)
-                                             (resolve token))))
-                                       (catch :default e (reject (-> e bean))))))
-                             (set! (.-error_callback token-client)
-                                   (fn [err]
-                                     (let [err (->clj err)]
-                                       (trace log :error_callback err)
-                                       (swap! token-client* assoc ::aborted-sign-in? true)
-                                       (reject err))))
-                             (let [prompt (if (= status ::failed-authorization) "consent" "")]
-                               (trace log :prompt prompt)
-                               (.requestAccessToken  token-client #js {:prompt prompt}))))
-                 (= (get-status) ::authorized))))))
+  "Requests Drive authorization in :automatic or :interactive mode. An
+  interactive caller upgrades a failed concurrent automatic attempt."
+  [authorization]
+  (assert (#{:automatic :interactive} authorization))
+  (when (= authorization :interactive)
+    (swap! token-client* assoc
+           :automatic-authorization-failed? false
+           :automatic-authorization-disabled? false))
+  (if-let [{existing-mode :authorization existing-promise :promise}
+           @authorization-promise*]
+    (if (and (= authorization :interactive)
+             (= existing-mode :automatic))
+      (-> existing-promise
+          (p/catch (fn [_] ($ensure-authorized? :interactive))))
+      existing-promise)
+    (if-let [{:keys [^Object token-client]} @token-client*]
+      (let [status (get-status)]
+        (cond
+          (= status ::authorized) (p/resolved true)
+          (= status ::initialising) (p/resolved false)
+          :else
+          (let [attempt (-> ($request-access-token! token-client status authorization)
+                            (p/then (fn [_]
+                                      (swap! token-client* assoc
+                                             :automatic-authorization-failed? false)
+                                      (= (get-status) ::authorized)))
+                            (p/catch (fn [error]
+                                       (let [retryable? (connectivity-error? error)]
+                                         (when (and (= authorization :automatic)
+                                                    (not retryable?))
+                                           (swap! token-client* assoc
+                                                  :automatic-authorization-failed? true))
+                                         (p/rejected
+                                          (assoc (if (map? error) error {:cause error})
+                                                 :authorization-error? (not retryable?)))))))
+                managed (-> attempt
+                            (p/then (fn [value]
+                                      (reset! authorization-promise* nil)
+                                      value))
+                            (p/catch (fn [e]
+                                       (reset! authorization-promise* nil)
+                                       (p/rejected e))))]
+            (reset! authorization-promise* {:authorization authorization
+                                            :promise managed})
+            managed)))
+      (p/resolved false))))
+
+(defn $ensure-drive-access!
+  "Ensures SDK readiness and returns a structured connection result."
+  [{:keys [authorization]}]
+  (assert (#{:automatic :interactive :none} authorization))
+  (-> (p/let [_ ($ensure-sdk-ready!)
+              status (get-status)]
+        (cond
+          (= status ::authorized) {:status :authorized}
+          (= authorization :none) {:status :authorization-required}
+          (and (= authorization :automatic)
+               (or (:automatic-authorization-failed? @token-client*)
+                   (:automatic-authorization-disabled? @token-client*)))
+          {:status :authorization-required}
+          :else
+          (p/let [authorized? ($ensure-authorized? authorization)]
+            {:status (if authorized? :authorized :authorization-required)})))
+      (p/catch (fn [error]
+                 (if (:authorization-error? error)
+                   {:status :authorization-required :error error}
+                   {:status :retryable-error :error error})))))
 
 (defn sign-out!
   "Revokes authentication (log out).
@@ -268,7 +508,9 @@
   ([revoke-authorization?]
    (let [token (get-token)
          access-token (and token (.-access_token token))]
-     (swap! token-client* assoc ::aborted-sign-in? false)
+     (swap! token-client* assoc
+            :aborted-sign-in? false
+            :automatic-authorization-disabled? true)
      (when (and revoke-authorization? token)
        (js/google.accounts.oauth2.revoke access-token (fn [response]
                                                         (let [response (->clj response)]
@@ -276,49 +518,11 @@
                                                          ;currently doesn't report an error
                                                          ;so can't update offline-status*
                                                           )))
-       (js/gapi.client.setToken "")
+       (js/gapi.client.setToken nil)
        (trace log "token revoked")
        (get-status);update-status
        nil)))
   ([] (sign-out! true)))
-
-(defn- start-after-init! []
-  (let [{:keys [gapi? token-client on-authorized]} @token-client*]
-    (when (and gapi? token-client)
-      (trace log)
-      ;This call to $ensure-authentication? not initiated from user action so may be blocked by browser.
-      ;That should be ok, user authentication pop-up will be initiated if the user selects
-      ;sign-in or presses the
-      ;online sync status button.
-      (when (and ($ensure-authorized?) on-authorized)
-        (on-authorized {:token (get-token)})
-        ;(on-authorized {:token (get-token)})
-        ))))
-
-(defn- gapi-init! []
-  (trace log)
-  (p/do
-    ($fix-promise (js/gapi.client.init #js {}))
-    ($fix-promise (js/gapi.client.load "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"))
-    (swap! token-client* assoc :gapi? true)
-    (start-after-init!)))
-
-(defn gapi-load!
-  "Google API load"
-  []
-  (trace log)
-  (js/gapi.load "client:picker" gapi-init!))
-
-(defn gis-init!
-  "Google Identity Service init"
-  [credentials on-authorized]
-  (trace log)
-  (swap! token-client* assoc
-         :credentials credentials
-         :token-client (js/google.accounts.oauth2.initTokenClient
-                        (->js (select-keys credentials [:client_id :scope :hint])))
-         :on-authorized on-authorized)
-  (start-after-init!))
 
 (comment
   (let [$f #(js/gapi.client.drive.files.get #js {:fileId "1CQXBtftHN-cUxgC-Au9-VpuWKyJbLxjc", :fields "id, name, modifiedTime, trashed, appProperties"})]

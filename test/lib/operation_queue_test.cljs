@@ -5,7 +5,11 @@
    [promesa.core :as p]))
 
 (defn deferred []
-  (p/deferred))
+  (let [resolve* (atom nil)
+        promise (js/Promise. (fn [resolve _reject]
+                               (reset! resolve* resolve)))]
+    {:promise promise
+     :resolve! (fn [value] (@resolve* value))}))
 
 (defn test-context [state]
   {:tail (queue/create) :state (atom state)})
@@ -23,7 +27,7 @@
           gate (deferred)
           first-op (queue/enqueue! tail
                                  (fn []
-                                   (p/let [_ gate]
+                                   (p/let [_ (:promise gate)]
                                      (swap! state update :order conj :first)
                                      :first-result)))
           second-op (queue/enqueue! tail
@@ -31,7 +35,7 @@
                                     (swap! state update :order conj :second)
                                     :second-result))]
       (is (= [] (:order @state)))
-      (p/resolve! gate true)
+      ((:resolve! gate) true)
       (-> (p/all [first-op second-op])
           (p/then (fn [results]
                     (testing "operations run in submission order"
@@ -78,7 +82,7 @@
           load-gate (deferred)
           load-op (queue/enqueue! tail
                                 (fn []
-                                  (p/let [loaded-doc load-gate]
+                                  (p/let [loaded-doc (:promise load-gate)]
                                     (swap! state assoc :doc loaded-doc :editing {} :open-items []))))
           note-op (queue/enqueue! tail
                                   (fn []
@@ -88,8 +92,8 @@
                                                         (assoc-in [:doc note-id] note)
                                                         (assoc-in [:editing note-id] {:source note})
                                                         (update :open-items conj note-id))))))]
-      (p/resolve! load-gate {:doc-id "loaded"
-                             "existing" {:id "existing" :content "preserved"}})
+      ((:resolve! load-gate) {:doc-id "loaded"
+                              "existing" {:id "existing" :content "preserved"}})
       (-> (p/all [load-op note-op])
           (p/then (fn [_]
                     (let [{:keys [doc editing open-items]} @state]
@@ -113,7 +117,7 @@
           drive-tail (queue/create)
           state (atom {:doc {:doc-id "doc"} :saved []})
           drive-gate (deferred)
-          drive-op (queue/enqueue! drive-tail (fn [] drive-gate))
+          drive-op (queue/enqueue! drive-tail (fn [] (:promise drive-gate)))
           mutation-op (queue/enqueue! command-tail
                                       (fn []
                                         (swap! state assoc-in [:doc "note"] {:id "note"})))
@@ -124,7 +128,7 @@
           (p/then (fn [_]
                     (is (= "note" (get-in @state [:doc "note" :id])))
                     (is (= "note" (get-in @state [:saved 0 "note" :id])))
-                    (p/resolve! drive-gate true)
+                    ((:resolve! drive-gate) true)
                     drive-op))
           (p/then (fn [_]
                     (js/clearTimeout timer)
@@ -149,7 +153,7 @@
           drive-op (queue/enqueue!
                     drive-tail
                     (fn []
-                      (p/let [candidate download-gate]
+                      (p/let [candidate (:promise download-gate)]
                         (queue/enqueue!
                          command-tail
                          (fn []
@@ -162,8 +166,8 @@
                                               (assoc-in [:doc "local"] {:id "local"})
                                               (update :doc-revision inc)))))
           (p/then (fn [_]
-                    (p/resolve! download-gate
-                                {:doc-id "doc" "downloaded" {:id "downloaded"}})
+                    ((:resolve! download-gate)
+                     {:doc-id "doc" "downloaded" {:id "downloaded"}})
                     drive-op))
           (p/then (fn [_]
                     (is (= "local" (get-in @state [:doc "local" :id])))
@@ -185,7 +189,7 @@
           first-load (queue/enqueue!
                       tail
                       (fn []
-                        (p/let [loaded-doc first-gate]
+                        (p/let [loaded-doc (:promise first-gate)]
                           (swap! state
                                  (fn [db]
                                    (if (= :first (get-in db [:doc-load :token]))
@@ -204,7 +208,7 @@
                 tail
                 (fn []
                   (swap! state assoc-in [:doc "note"] {:id "note" :kind :note})))]
-      (p/resolve! first-gate {:doc-id "first"})
+      ((:resolve! first-gate) {:doc-id "first"})
       (-> (p/all [first-load second-load note])
           (p/then (fn [_]
                     (is (= "second" (get-in @state [:doc :doc-id])))

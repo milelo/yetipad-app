@@ -141,7 +141,11 @@
 
 (def sync-status* (db/atom
                    (fn [db]
-                     (and (:online? db) (-> db :online-status (= :authorized)) (:sync-status db)))))
+                     (let [sync-status (:sync-status db)]
+                       (cond
+                         (#{:offline :connecting :authorization-required :error} sync-status) sync-status
+                         (and (:online? db) (= :authorized (:online-status db))) sync-status
+                         :else false)))))
 
 (def doc-list* (db/atom
                 (fn [{:keys [doc-file-index]}]

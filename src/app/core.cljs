@@ -41,6 +41,19 @@
   ; can be inhibited by 'db.saving?'.
   (js/setTimeout events/window-focused 100))
 
+(defn initialize-drive-connectivity! []
+  ;Configure synchronously so an early focus/click can already bootstrap Drive.
+  (drive/configure! app.credentials/yetipad-credentials)
+  (-> (p/let [{:keys [sign-in-email]} (store/$read-persist-device)
+              _ (drive/configure!
+                 (into app.credentials/yetipad-credentials
+                       [(when sign-in-email [:hint sign-in-email])]))]
+        (when (not= false (.-onLine js/navigator))
+          (events/reconnect-and-sync!! {:authorization :automatic :src ::startup})))
+      (p/catch (fn [e]
+                 (warn log 'drive-startup-unavailable e)
+                 nil))))
+
 (defn init []
   (trace log :init)
   (events/initialize-db!)
@@ -49,6 +62,8 @@
   (mount-root)
   (debug log :add-focus-listener)
   (gevents/listen js/window "focus" on-window-focus)
+  (gevents/listen js/window "online" (fn [_] (events/connectivity-changed! true)))
+  (gevents/listen js/window "offline" (fn [_] (events/connectivity-changed! false)))
   (gevents/listen js/window "pagehide" (fn [_] (events/persist-active-session!)))
   (gevents/listen js/document "visibilitychange"
                   (fn [_]
@@ -59,15 +74,7 @@
                                              (events/logger-config! n))))
   (events/logger-config! @log/config*)
   (events/init-navigation!)
+  (initialize-drive-connectivity!)
   ; Manifest metadata is optional and must never delay local document startup.
   (events/init-manifest!!))
-
-(defn ^:export gapi-load []
-  (drive/gapi-load!))
-
-(defn ^:export gis-init []
-  (p/let [{:keys [sign-in-email]} (store/$read-persist-device)]
-    (trace log :sign-in-email sign-in-email)
-    (drive/gis-init! (into app.credentials/yetipad-credentials [(when sign-in-email [:hint sign-in-email])])
-                     events/on-authorized!)))
 
