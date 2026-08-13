@@ -6,8 +6,7 @@
     ["@mui/material" :refer [Tooltip Typography
                                  TableContainer TableBody Table TableHead TableRow TableCell
                                  ]]
-    ["@mui/icons-material/Info" :default about-icon]
-    ["@mui/icons-material/SystemUpdateTwoTone" :default update-icon]))
+    ["@mui/icons-material/Info" :default about-icon]))
 
 (defn table [data]
   [:<>
@@ -20,10 +19,6 @@
         )]]]])
 
 
-(defn update-app-button []
-  ;todo this doesn't work on mobile
-  [ui/item-button update-icon "update-app" #(js/window.location.reload true)])
-
 (defn about-pane [_context]
   (let [item {:id    :about
               :kind  :about
@@ -35,7 +30,7 @@
                  [table [{:title "Home-page" :content [:a {:href home} home]}
                          {:title "Author" :content "Mike Longworth"}
                          ]])
-      :buttons [update-app-button ui/fullscreen-button]
+      :buttons [ui/fullscreen-button]
       }]))
 
 (reg/register {:id    :about
