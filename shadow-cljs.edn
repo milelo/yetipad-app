@@ -1,5 +1,5 @@
 {:source-paths
- ["src"]
+ ["src" "test"]
  :nrepl {:port 8778}
  :dependencies
  [[cider/cider-nrepl "0.62.2"]
