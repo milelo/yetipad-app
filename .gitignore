@@ -23,3 +23,5 @@
 !/.run/
 
 ~junk/
+
+.clj-kondo/funcool/
