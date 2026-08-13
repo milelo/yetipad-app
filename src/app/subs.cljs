@@ -135,6 +135,11 @@
                   (fn [db _]
                     (:status db))))
 
+(defn signed-in? [db]
+  (= :authorized (:online-status db)))
+
+(def signed-in?* (db/atom signed-in?))
+
 (def saving?* (db/atom
                (fn [db _]
                  (:saving? db))))

@@ -220,13 +220,18 @@
                    :on-click #(reset! search-value* "")}
     [:> clear-search-icon (theme ::theme/small-icon)]]])
 
-(defn menu-list-item [icon text on-click]
-  [:> ListItem {:button   true
-                :on-click (fn []
-                            (events/open-tag-drawer! false)
-                            (on-click))}
+(defn menu-list-item
+  ([icon text on-click]
+   (menu-list-item icon text on-click false))
+  ([icon text on-click disabled?]
+   [:> ListItem {:button   true
+                 :disabled disabled?
+                 :on-click (when-not disabled?
+                             (fn []
+                               (events/open-tag-drawer! false)
+                               (on-click)))}
    (when icon [:> ListItemIcon [:> icon]])
-   [:> ListItemText {:primary text}]])
+   [:> ListItemText {:primary text}]]))
 
 (defn index-pane []
   (let [index-view @subs/index-view*
@@ -319,6 +324,7 @@
 (defn tag-drawer []
   ;left side drawer
   (let [sync-status @subs/sync-status*
+        signed-in? @subs/signed-in?*
         show-close-main-menu false]
     [:> Drawer
      {:open     @subs/main-menu-open*
@@ -339,10 +345,9 @@
       [:> Divider]
       [static-pane-list-item :trash]
       [static-pane-list-item :options]
-      [static-pane-list-item :log]
-      [menu-list-item account-icon "Sign-out" events/sign-out!]
-      [menu-list-item account-icon "Sign-in" events/sign-in!]
+      [menu-list-item account-icon "Sign-out" events/sign-out! (not signed-in?)]
       [static-pane-list-item :about]
+      [static-pane-list-item :log]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
       [:> ListItem [:> ListItemText {:primary (str "Version: " @subs/app-version*)}]]
       (when config/debug?
