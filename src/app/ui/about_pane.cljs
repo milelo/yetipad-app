@@ -31,11 +31,8 @@
               }
         ]
     [ui/viewer-pane item
-     {:body    (let [home "https://github.com/milelo/yetipad-app"
-                     app "https://yetipad.milelo.uk"
-                     ]
+     {:body    (let [home "https://github.com/milelo/yetipad-app"]
                  [table [{:title "Home-page" :content [:a {:href home} home]}
-                         {:title "App: new document" :content [:a {:href app} app]}
                          {:title "Author" :content "Mike Longworth"}
                          ]])
       :buttons [update-app-button ui/fullscreen-button]
