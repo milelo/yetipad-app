@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to build, for example v34
+        description: Release tag to build, for example v1.41 or legacy v40
         required: true
         type: string
 
@@ -32,8 +32,8 @@ jobs:
         with:
           script: |
             const releaseTag = context.payload.ref.replace('refs/tags/', '');
-            if (!/^v[0-9]+$/.test(releaseTag)) {
-              core.setFailed(`Expected a numeric release tag, got: ${releaseTag}`);
+            if (!/^(?:v1\.[0-9]+|v[0-9]+)$/.test(releaseTag)) {
+              core.setFailed(`Expected a v1.x or legacy vN release tag, got: ${releaseTag}`);
               return;
             }
             await github.rest.actions.createWorkflowDispatch({
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       # Use a separate environment because the default github-pages environment
-      # currently restricts deployments to branches and rejects vN release tags.
+      # currently restricts deployments to branches and rejects release tags.
       name: github-pages-release
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
@@ -90,9 +90,12 @@ jobs:
           RELEASE_VERSION: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          VERSION="${RELEASE_VERSION#v}"
-          if [[ ! "$VERSION" =~ ^[0-9]+$ ]]; then
-            echo "Release tag must be vN; got: $RELEASE_VERSION" >&2
+          if [[ "$RELEASE_VERSION" =~ ^v1\.([0-9]+)$ ]]; then
+            VERSION="1.${BASH_REMATCH[1]}"
+          elif [[ "$RELEASE_VERSION" =~ ^v([0-9]+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Release tag must be v1.x or legacy vN; got: $RELEASE_VERSION" >&2
             exit 1
           fi
           if [[ ! -f docs/manifest.json ]]; then

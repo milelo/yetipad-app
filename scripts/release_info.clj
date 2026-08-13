@@ -18,9 +18,9 @@
   (System/exit 2))
 
 (when (and supplied-version
-           (not (re-matches #"v?[0-9]+" supplied-version)))
+           (not (re-matches #"v?(?:1\.[0-9]+|[0-9]+)" supplied-version)))
   (binding [*out* *err*]
-    (println "Version must be numeric, for example 36 or v36."))
+    (println "Version must be numeric, for example 40, v40, 1.41, or v1.41."))
   (System/exit 2))
 
 (def release-tag
@@ -28,13 +28,17 @@
     (if (str/starts-with? supplied-version "v")
       supplied-version
       (str "v" supplied-version))
-    (->> (str/split-lines (run-git "tag" "--list" "v[0-9]*"))
-         (filter #(re-matches #"v[0-9]+" %))
-         (sort-by #(Long/parseLong (subs % 1)) >)
-         first)))
+    (let [tags (str/split-lines (run-git "tag" "--list" "v*"))
+          minor-tags (->> tags
+                          (filter #(re-matches #"v1\.[0-9]+" %))
+                          (sort-by #(Long/parseLong (second (re-matches #"v1\.([0-9]+)" %))) >))
+          legacy-tags (->> tags
+                           (filter #(re-matches #"v[0-9]+" %))
+                           (sort-by #(Long/parseLong (subs % 1)) >))]
+      (or (first minor-tags) (first legacy-tags)))))
 
 (when-not release-tag
-  (throw (ex-info "No numeric release tags were found." {})))
+  (throw (ex-info "No legacy vN or v1.x release tags were found." {})))
 
 (println (str "Release: " release-tag))
 (println (run-git "log" "-1" "--format=%H%n%ad%n%s%n%b" "--date=iso-strict" release-tag))

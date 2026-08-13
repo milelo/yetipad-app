@@ -16,7 +16,7 @@
           (and supplied-version
                (not (re-matches #"[0-9]+" supplied-version))))
   (binding [*out* *err*]
-    (println "Usage: bb publish [numeric-version]"))
+    (println "Usage: bb publish [minor-version]"))
   (System/exit 2))
 
 (when-not (= "main" (run-git "branch" "--show-current"))
@@ -25,26 +25,25 @@
 (when-not (str/blank? (run-git "status" "--porcelain"))
   (throw (ex-info "The working tree must be clean before publishing." {})))
 
-(def numeric-tags
+(def minor-tags
   (->> (str/split-lines (run-git "tag" "--list" "v*"))
-       (filter #(re-matches #"v[0-9]+" %))
-       (map #(Long/parseLong (subs % 1)))))
+       (filter #(re-matches #"v1\.[0-9]+" %))
+       (map #(Long/parseLong (second (re-matches #"v1\.([0-9]+)" %))))))
 
-;; The existing Pages release is 29, but historical releases used v0.x tags.
-;; This floor is only needed until the first numeric vN tag is published.
-(def current-release-version 29)
+;; Existing vN tags are historical releases. The first v1.x release is v1.41.
+(def current-release-minor 40)
 
-(def version
+(def minor-version
   (or supplied-version
-      (str (inc (long (max current-release-version
-                           (if (seq numeric-tags)
-                             (apply max numeric-tags)
+      (str (inc (long (max current-release-minor
+                           (if (seq minor-tags)
+                             (apply max minor-tags)
                              0)))))))
 
-(let [tag (str "v" version)]
+(let [tag (str "v1." minor-version)]
   (when-not (str/blank? (run-git "tag" "--list" tag))
     (throw (ex-info (str "Release tag already exists: " tag) {})))
-  (run-git "tag" "-a" tag "-m" (str "Release " version))
+  (run-git "tag" "-a" tag "-m" (str "Release 1." minor-version))
   (run-git "push" "origin" tag)
   (println (str "Published " tag ". GitHub Actions will dispatch the Pages build from main."
                 "\nPublish status: https://github.com/milelo/yetipad-app/actions")))

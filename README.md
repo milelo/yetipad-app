@@ -160,8 +160,9 @@ bb dev
 bb publish
 ~~~
 
-The next numeric `vN` tag is selected automatically. A specific numeric version can also be supplied, for example
-`bb publish 30`.
+The next `v1.x` tag is selected automatically, starting with `v1.41`. A specific minor version can also be supplied,
+for example `bb publish 41` creates `v1.41`. Historical `vN` tags remain supported by `bb release-info` and the Pages
+workflow.
 
 The generated release files are not committed to the development branch. The deployed site is built from
 `resources/public`, the optimized Shadow CLJS output, and the generated service worker.
