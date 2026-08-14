@@ -15,6 +15,7 @@
    [app.events :as events]
    [app.ui.registry :as reg]
    [app.ui.tagmenu :refer [tag-menu]]
+   [app.ui.search :as search]
    [app.ui.theme :as theme :refer [theme]]
    [app.ui.utils :as ui-utils :refer [create-mui-theme color
                                       show-empty-title no-title]]
@@ -118,13 +119,22 @@
                                                   :margin     "0 4px"}}]]))
 
 (defonce search-value* (r/atom ""))
+(defonce debounced-search-value* (r/atom ""))
+(defonce search-timer* (atom nil))
+(def search-debounce-ms 400)
+
+(defn set-search-value! [value]
+  (reset! search-value* value)
+  (search/debounce! search-timer* search-debounce-ms
+                    #(reset! debounced-search-value* value)))
+
 (defonce selected-doc-id* (r/atom nil))
 (defonce delete-confirmation* (r/atom nil))
 (defonce upload-input* (r/atom nil))
 ;(add-watch search-value* :search-watch (fn [_ v] (println v)))
 
 (defn history-index-pane []
-  (let [items-by-history @(subs/items-by-history-filtered @search-value*)
+  (let [items-by-history @(subs/items-by-history-filtered @debounced-search-value*)
         date-item (fn [text]
                      [:> ListItem {:style {:padding "0 4px"}}
                      [:> ListItemText {:primary                  text
@@ -140,7 +150,7 @@
                           [index-list-item (reg/rget kind :icon) title #(events/open-item! id)]])]))
 
 (defn title-index-pane []
-  (let [items-filtered @(subs/items-by-title-filtered @search-value*)]
+  (let [items-filtered @(subs/items-by-title-filtered @debounced-search-value*)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [id title kind]} items-filtered]
               ^{:key id} [index-list-item (reg/rget kind :icon) title #(events/open-item! id)])]))
@@ -214,10 +224,10 @@
    [:> InputBase {:placeholder "search..."
                   :value       @search-value*
                   :on-change   (fn [e]
-                                 (reset! search-value*
-                                         (str/lower-case (-> e .-target .-value))))}]
+                                 (set-search-value!
+                                  (str/lower-case (-> e .-target .-value))))}]
    [:> IconButton {:title    "clear-search"
-                   :on-click #(reset! search-value* "")}
+                   :on-click #(set-search-value! "")}
     [:> clear-search-icon (theme ::theme/small-icon)]]])
 
 (defn menu-list-item
