@@ -44,9 +44,6 @@
                                    :clientsClaim true
                                    :cleanupOutdatedCaches true
                                    :additionalManifestEntries external
-                                   :runtimeCaching [{:urlPattern #".*"
-                                                     :handler "CacheFirst"
-                                                     }]
                                    }))
           {:keys [count size warnings] :as r} (js->clj $r :keywordize-keys true)]
     ;(pprint r)
