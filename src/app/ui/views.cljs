@@ -345,7 +345,10 @@
       [:> Divider]
       [static-pane-list-item :trash]
       [static-pane-list-item :options]
-      [menu-list-item account-icon "Sign-out" events/sign-out! (not signed-in?)]
+      [menu-list-item account-icon "Sign-out"
+       #(when (js/confirm "Are you sure you want to sign out?")
+          (events/sign-out!))
+       (not signed-in?)]
       [static-pane-list-item :about]
       [static-pane-list-item :log]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
