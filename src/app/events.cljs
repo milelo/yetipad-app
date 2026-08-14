@@ -8,7 +8,7 @@
    [lib.goog-drive :as drive]
    [lib.localstore :as ls]
    [lib.html-parse :as html-parse]
-   [clojure.pprint :refer [pprint cl-format]]
+   [clojure.pprint :refer [pprint]]
    [app.store :as store]
    [app.ui.utils :as ui-utils]
    [accountant.core :refer [configure-navigation! navigate! dispatch-current!]]
@@ -952,7 +952,7 @@
 (defn open-doc-file!! [content]
   (-> ($enqueue! 'open-doc-file!!
                  (fn [db]
-                   (p/let [{:keys [doc conflict?]} (store/$open-local-file db (store/decode content))]
+                   (p/let [{:keys [doc conflict?]} (store/$open-local-file db content)]
                      (if conflict?
                        (open-doc-file-dialog! doc)
                        (update-db! 'finish-open-doc-file!!
@@ -1193,37 +1193,6 @@
         ]
     (p/let [response (drive/$read-file-edn file-id)]
       (info log response))))
-
-(defn debug-file-compress []
-  (run-now! 'debug-file-compress
-            (fn [db]
-              (p/let [;file-id (store/create-file "compress-test" nil)
-                      value (fn [c] (.charCodeAt c 0))
-                      file-id "1QDGeNA9aIWD7KDN60wVKv9r-FY5gZK8y"
-                      read (drive/$read-file-edn file-id)
-                      read (or read (p/let [content {:en :lz
-                                                     :d (-> db :doc pr-str store/compress)
-                                                     :r (-> db :doc pr-str)}
-                                            fields (drive/$write-file-content file-id content {:content-type :edn})]
-                                      (debug log 'write-fields fields)
-                                      (drive/$read-file-edn file-id)))
-                      {:keys [d r]} read
-                      good (-> r store/compress)
-                      compare (filter identity (map (fn [dc rc]
-                                                      (when (not= dc rc)
-                                                        (cl-format nil "file: ~s ~b; good: ~s ~b" dc (value dc) rc (value rc))
-                                                      ;[dc rc (value dc) (value rc)]
-                                                        ))d good))]
-
-                ;(debug log 'file-id file-id)
-                ;(info log 'read read)
-                (info log  'equal (= good d))
-                (info log  'equal (pprintl {:d d :g good}))
-                (info log {:d-count (-> d count)
-                           :r-count (-> good count)})
-                (info log 'decompress-file (-> d store/decompress))
-                (info log 'decompress-local (-> r store/compress store/decompress))
-                (info log 'compare (pprintl compare))))))
 
 (defn debug-rename-file!! []
   (p/then (db/$enqueue! 'debug-rename-file!!

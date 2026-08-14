@@ -12,7 +12,6 @@
    [promesa.core :as p]
    [lib.db :as db]
    [app.credentials]
-   ["lz-string" :as lz-string]
    ["ping.js" :as pinger]))
 
 (def log (log/logger 'app.store))
@@ -24,32 +23,6 @@
 
 (def index-key :yetipad)
 (def index-format :object)
-
-(defn compress [s]
-  (assert (string? s))
-  (let [c (.compressToUTF16 lz-string s)]
-    (info log #(let [sc (count s)
-                     cc (count c)]
-                 {:size sc
-                  :compressed cc
-                  :compression (str (Math/round (* (/ cc sc) 100)) \%)}))
-    c))
-
-(defn decompress [s]
-  (assert (string? s))
-  (.decompressFromUTF16 lz-string s))
-
-(defn encode [d en]
-  (assert (map? d))
-  (case en
-    :lz {:en :lz :d (-> d pr-str compress)}
-    nil d))
-
-(defn decode [{:keys [en d] :as s}]
-  (if (and en d)
-    (case en
-      :lz (-> d decompress drive/read-string))
-    s))
 
 (add-watch drive/online-status* ::pinger
            (fn [k r o n]
@@ -305,8 +278,7 @@
   [file-id {:keys [doc-id] :as doc} & [{:keys [update-index]}]]
   (assert doc)
   (p/let [file-meta (drive/$write-file-content file-id
-                                               (encode doc (when (get-in doc [:options :compress-file?])
-                                                             :lz))
+                                               doc
                                                {:content-type :edn
                                                 :fields       "id, modifiedTime"})
           file-data (file-meta>data file-meta)
@@ -325,7 +297,7 @@
 ;  (stack log [file-id update-index])
   ;todo can <read-file-content also read meta-data
   (p/let [edn (drive/$read-file-edn file-id)
-          doc (or (decode edn) {})]
+          doc (or edn {})]
     (when update-index
       (p/let [file-meta (drive/$get-file-meta file-id {:fields "id, modifiedTime, appProperties"})
               file-data (file-meta>data file-meta)

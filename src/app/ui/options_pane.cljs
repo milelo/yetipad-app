@@ -83,7 +83,7 @@
      {:reagent-render         (fn [title options editing?]
                                 [table title options editing? values*])
       :component-will-unmount (fn [_this]
-                                (let [doc-options (select-keys @values* [:doc-title :doc-subtitle :compress-file?])
+                                (let [doc-options (select-keys @values* [:doc-title :doc-subtitle])
                                       device-options (select-keys @values* [:sign-in-email :content-editor :sticky-editor-tags?])]
                                   (trace log 'device-options device-options)
                                   (events/doc-options! doc-options)
@@ -104,11 +104,6 @@
                                          :name   "Document subtitle"
                                          :value  (:doc-subtitle doc-options)
                                          :editor string-editor}
-                                        {:id     :compress-file?
-                                         :name   "Compress file?"
-                                         :value  (:compress-file? doc-options)
-                                         :editor checkbox-editor
-                                         :viewer checkbox-viewer}
                                         {:id    :doc-id
                                          :name  "Document ID"
                                          :value doc-id}

@@ -356,7 +356,6 @@
       (when config/debug?
         [:<>
          [:> Divider]
-         [menu-list-item nil "debug-file-compress" events/debug-file-compress]
          [menu-list-item nil "check-doc" events/check-doc]
          [menu-list-item nil "fix-doc" events/fix-doc]
          [menu-list-item nil "restore-all-trashed" events/restore-all-trashed!]
