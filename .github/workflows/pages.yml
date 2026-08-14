@@ -79,6 +79,8 @@ jobs:
         run: |
           rm -rf docs
           cp -R resources/public docs
+          cp LICENSE.txt docs/
+          cp THIRD_PARTY_NOTICES.txt docs/
           rm docs/index.html
           mv docs/release-index.html docs/index.html
           rm -rf docs/js/compiled

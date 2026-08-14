@@ -16,6 +16,10 @@ The project uses PowerShell in this environment. Prefer `rg` for searches and
 `git` for repository inspection. Avoid assuming that a failed shell launch
 means the workspace path is unavailable.
 
+When changing npm dependencies, edit `package.json` as needed, then update
+`package-lock.json` by running npm (`npm install` or an equivalent npm
+lockfile command). Do not edit `package-lock.json` directly.
+
 ## Release and deployment
 
 GitHub Pages intentionally uses two workflow runs for a tag release: the tag

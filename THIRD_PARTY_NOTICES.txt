@@ -1,0 +1,15 @@
+Yetipad includes third-party software and data distributed under their
+respective licenses. Their copyright and license notices remain applicable
+to those components.
+
+Direct dependencies include software under the MIT, BSD-3-Clause, ISC,
+Apache-2.0, and GNU GPL 2-or-later licenses. The caniuse-lite package also
+contains browser-compatibility data under CC BY 4.0. See the package
+metadata and installed package license files for the complete notices.
+
+CKEditor 5 is included under the GNU General Public License, version 2 or
+later, and is used by Yetipad under the GPL-compatible GPLv3-or-later
+application license. CKEditor displays its Powered by CKEditor notice.
+
+CKEditor is a trademark of CKSource Holding sp. z o.o. Other product names
+and trademarks belong to their respective owners.

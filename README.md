@@ -30,7 +30,7 @@ Use the left drawer for tags, settings, trash, sign-in, logs, and the About page
 
 Document deletion asks for confirmation and moves the associated Drive file to trash. Items deleted from a document are placed in the in-app trash, where they can be restored or permanently deleted. Emptying the in-app trash also asks for confirmation.
 
-While editing a note or tag, edit its title and rich-text content and add or remove tags. The Settings pane provides document title and subtitle, compression, sign-in email, content-editor selection, and sticky tag-bar options.
+While editing a note or tag, edit its title and rich-text content and add or remove tags. The Settings pane provides document title and subtitle, sign-in email, content-editor selection, and sticky tag-bar options.
 
 ## Other features
 
@@ -152,6 +152,8 @@ The next `v1.x` tag is selected automatically after the latest existing release.
 
 This work is Copyright © 2020 Mike Longworth
 
-<a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons Licence" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.
+Yetipad software is licensed under the GNU General Public License, version 3 or any later version. See [LICENSE.txt](LICENSE.txt).
+
+Documentation and separately identified creative content remain licensed under the Creative Commons Attribution 4.0 International License where marked.
 
 
