@@ -114,28 +114,45 @@
 (declare get-status)
 
 (defn- $request [request return-type & [opt]]
-  (if (allow-drive-request?)
-    (-> ($request- request return-type opt)
-        (p/then (fn [resolved]
-                  (swap! online-status* assoc :online? true)
-                  resolved))
-        (p/catch (fn [^js/Object response]
-                   (let [response (->clj response)
-                         err (some-> response :result :error)
-                         code (:code err)
-                         status (:status err)]
-                     ;codes: -1 network-error (eg no internet access)
-                     (trace log :code code :status status (-> (or err response) pprintl))
-                     (swap! online-status* assoc :online? (not= code -1))
-                     (if (or (= code 401) (= code 403))
-                       (do
-                         (when (= code 401)
-                           ;Only a user-initiated reconnect may request a new token.
-                           (js/gapi.client.setToken nil))
-                         (get-status)
-                         (p/rejected (or err response)))
-                       (p/rejected err))))))
-    (p/rejected {:message "access denied" :id ::access-denied})))
+  (letfn [(request-error [response]
+            (let [response (->clj response)
+                  err (some-> response :result :error)
+                  code (:code err)
+                  status (:status err)]
+              ;codes: -1 network-error (eg no internet access)
+              (trace log :code code :status status (-> (or err response) pprintl))
+              (swap! online-status* assoc :online? (not= code -1))
+              {:response response :error (or err response) :code code}))
+          (authorization-failure [error]
+            (p/rejected (assoc (if (map? error) error {:cause error})
+                               :authorization-error? true)))
+          (attempt [reauthorize?]
+            (if (allow-drive-request?)
+              (-> ($request- request return-type opt)
+                  (p/then (fn [resolved]
+                            (swap! online-status* assoc :online? true)
+                            resolved))
+                  (p/catch (fn [response]
+                             (let [{:keys [error code]} (request-error response)]
+                               (cond
+                                 (= code 401)
+                                 (do
+                                   (js/gapi.client.setToken nil)
+                                   (get-status)
+                                   (if reauthorize?
+                                     (-> ($ensure-authorized? :automatic)
+                                         (p/then (fn [authorized?]
+                                                   (if authorized?
+                                                     (attempt false)
+                                                     (authorization-failure error))))
+                                         (p/catch (fn [_]
+                                                    (authorization-failure error))))
+                                     (authorization-failure error)))
+
+                                 (= code 403) (p/rejected error)
+                                 :else (p/rejected error))))))
+              (p/rejected {:message "access denied" :id ::access-denied})))]
+    (attempt true)))
 
 ;=================================== Requests =======================================
 (defn $create-file [{:keys [file-name mime-type parents app-data? properties]}]

@@ -465,9 +465,14 @@
         (p/catch (fn [error]
                    (when (current-reconnect-attempt? attempt)
                      (warn log 'drive-sync-error error)
-                     (set-sync-status! (if (= :offline (:type error)) :offline :error))
-                     (when-not (= :offline (:type error))
-                       (set-app-status! (or (:message error) (:status error) (str error)) :error)))
+                     (if (:authorization-error? error)
+                       (do
+                         (set-sync-status! :authorization-required)
+                         (set-app-status! "Drive authorization required" :warn))
+                       (do
+                         (set-sync-status! (if (= :offline (:type error)) :offline :error))
+                         (when-not (= :offline (:type error))
+                           (set-app-status! (or (:message error) (:status error) (str error)) :error)))))
                    nil))
         (p/then #(finish-drive-sync! % attempt)))))
 

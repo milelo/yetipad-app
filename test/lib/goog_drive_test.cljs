@@ -7,14 +7,21 @@
 (def credentials
   {:client_id "test-client" :scope "https://www.googleapis.com/auth/drive.file"})
 
-(defn install-google-mocks! [fail-next-load?* token* authorization-requests* authorization-error*]
+(defn install-google-mocks! [fail-next-load?* token* authorization-requests* authorization-error* drive-responses*]
   (let [scripts* (atom {})
         make-gapi (fn []
                     #js {:load (fn [_ callback] (callback))
                          :client #js {:init (fn [_] (.resolve js/Promise true))
                                       :load (fn [_] (.resolve js/Promise true))
                                       :getToken (fn [] @token*)
-                                      :setToken (fn [token] (reset! token* token))}})
+                         :setToken (fn [token] (reset! token* token))
+                         :drive #js {:files #js {:get
+                                                  (fn [_]
+                                                    (let [{:keys [result error]} (first @drive-responses*)]
+                                                      (swap! drive-responses* rest)
+                                                      (if error
+                                                        (.reject js/Promise error)
+                                                        (.resolve js/Promise #js {:result result}))))}}}})
         make-google (fn []
                       #js {:accounts
                            #js {:oauth2
@@ -81,7 +88,7 @@
           authorization-requests* (atom 0)
           authorization-error* (atom nil)]
       (reset-drive-state!)
-      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error*)
+      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error* (atom []))
       (drive/configure! credentials)
       (-> (drive/$ensure-sdk-ready!)
           (p/catch (fn [_] :expected-failure))
@@ -105,7 +112,7 @@
           authorization-requests* (atom 0)
           authorization-error* (atom nil)]
       (reset-drive-state!)
-      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error*)
+      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error* (atom []))
       (drive/configure! credentials)
       (-> (drive/$ensure-drive-access! {:authorization :automatic})
           (p/then (fn [result]
@@ -123,7 +130,7 @@
           authorization-requests* (atom 0)
           authorization-error* (atom {:type "popup_failed_to_open"})]
       (reset-drive-state!)
-      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error*)
+      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error* (atom []))
       (drive/configure! credentials)
       (-> (drive/$ensure-drive-access! {:authorization :automatic})
           (p/then (fn [result]
@@ -151,7 +158,7 @@
           authorization-requests* (atom 0)
           authorization-error* (atom nil)]
       (reset-drive-state!)
-      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error*)
+      (install-google-mocks! fail-next-load?* token* authorization-requests* authorization-error* (atom []))
       (drive/configure! credentials)
       (-> (drive/$ensure-drive-access! {:authorization :automatic})
           (p/then (fn [_]
@@ -164,3 +171,65 @@
           (p/catch (fn [e]
                      (is false (str e))
                      (done)))))))
+
+(deftest invalid-token-is-reauthorized-and-request-retried-once-test
+  (async done
+    (let [fail-next-load?* (atom false)
+          token* (atom nil)
+          authorization-requests* (atom 0)
+          authorization-error* (atom nil)
+          drive-responses* (atom
+                            [{:error #js {:result #js {:error #js {:code 401
+                                                                     :status "UNAUTHENTICATED"
+                                                                     :message "invalid credentials"}}}}
+                             {:result #js {:id "file-1"}}])]
+      (reset-drive-state!)
+      (install-google-mocks! fail-next-load?* token* authorization-requests*
+                             authorization-error* drive-responses*)
+      (drive/configure! credentials)
+      (-> (drive/$ensure-drive-access! {:authorization :automatic})
+          (p/then (fn [result]
+                    (is (= :authorized (:status result)))
+                    (drive/$get-file-meta "file-1")))
+          (p/then (fn [result]
+                    (is (= "file-1" (:id result)))
+                    (is (= 2 @authorization-requests*))
+                    (is (empty? @drive-responses*))
+                    (done)))
+          (p/catch (fn [e]
+                     (is false (str e))
+                     (done)))))))
+
+(deftest invalid-token-reauthorization-failure-requires-user-action-test
+  (async done
+    (let [fail-next-load?* (atom false)
+          token* (atom nil)
+          authorization-requests* (atom 0)
+          authorization-error* (atom nil)
+          drive-responses* (atom
+                            [{:error #js {:result #js {:error #js {:code 401
+                                                                     :status "UNAUTHENTICATED"
+                                                                     :message "invalid credentials"}}}}])]
+      (reset-drive-state!)
+      (install-google-mocks! fail-next-load?* token* authorization-requests*
+                             authorization-error* drive-responses*)
+      (drive/configure! credentials)
+      (-> (drive/$ensure-drive-access! {:authorization :automatic})
+          (p/then (fn [_]
+                    (reset! authorization-error* {:type "popup_failed_to_open"})
+                    (drive/$get-file-meta "file-1")))
+          (p/then (fn [_]
+                    (is false "invalid credentials request should fail")
+                    (done)))
+          (p/catch (fn [error]
+                     (is (:authorization-error? error))
+                     (is (= 2 @authorization-requests*))
+                     (-> (drive/$ensure-drive-access!
+                          {:authorization :automatic})
+                         (p/then (fn [result]
+                                   (is (= :authorization-required (:status result)))
+                                   (is (= 2 @authorization-requests*))
+                                   (done)))
+                         (p/catch (fn [e]
+                                    (is false (str e))
+                                    (done))))))))))
