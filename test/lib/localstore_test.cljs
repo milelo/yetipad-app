@@ -22,3 +22,20 @@
         (if previous-descriptor
           (.defineProperty js/Object js/globalThis "localStorage" previous-descriptor)
           (js-delete js/globalThis "localStorage"))))))
+
+(deftest synchronous-session-data-round-trip-test
+  (let [values* (atom {})
+        previous-descriptor (.getOwnPropertyDescriptor js/Object js/globalThis "sessionStorage")
+        storage #js {:setItem (fn [k v] (swap! values* assoc k v))
+                     :getItem (fn [k] (get @values* k))}]
+    (try
+      (.defineProperty js/Object js/globalThis "sessionStorage"
+                       #js {:value storage :configurable true})
+      (is (true? (localstore/put-session-data-sync!
+                  :session {:doc-1 [:note-1]})))
+      (is (= {:doc-1 [:note-1]}
+             (localstore/get-session-data-sync :session)))
+      (finally
+        (if previous-descriptor
+          (.defineProperty js/Object js/globalThis "sessionStorage" previous-descriptor)
+          (js-delete js/globalThis "sessionStorage"))))))

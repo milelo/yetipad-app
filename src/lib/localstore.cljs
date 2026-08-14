@@ -84,6 +84,31 @@
       (warn log 'get-data-sync-unavailable e)
       nil)))
 
+(defn put-session-data-sync!
+  "Synchronously persist small tab-scoped data in sessionStorage."
+  [k cljs]
+  (assert (or (string? k) (keyword? k)))
+  (try
+    (if-let [storage (.-sessionStorage js/globalThis)]
+      (do
+        (.setItem storage (name k) (pr-str cljs))
+        true)
+      false)
+    (catch :default e
+      (warn log 'put-session-data-sync!-unavailable e)
+      false)))
+
+(defn get-session-data-sync
+  "Synchronously read Clojure data from sessionStorage, or nil when unavailable."
+  [k]
+  (assert (or (string? k) (keyword? k)))
+  (try
+    (when-let [storage (.-sessionStorage js/globalThis)]
+      (some-> (.getItem storage (name k)) read-string))
+    (catch :default e
+      (warn log 'get-session-data-sync-unavailable e)
+      nil)))
+
 (defn $get-data
   ([k default]
    (p/let [v ($get-item k)]

@@ -127,6 +127,8 @@
 
 (def active-session-key :yetipad-active-session)
 
+(def document-sessions-key :yetipad-document-sessions)
+
 (defn normalize-active-session
   "Return a normalized active-session value, or nil when the value is invalid."
   [session]
@@ -162,6 +164,33 @@
         (when session
           (ls/put-data-sync! active-session-key session))
         session))))
+
+(defn normalize-document-sessions
+  "Return a normalized doc-id to open-item vector map, or nil when invalid."
+  [sessions]
+  (when (map? sessions)
+    (let [normalized (into {}
+                           (keep (fn [[doc-id open-items]]
+                                   (when (and (string? doc-id)
+                                              (sequential? open-items))
+                                     [doc-id (vec open-items)]))
+                                 sessions))]
+      (when (= (count normalized) (count sessions))
+        normalized))))
+
+(defn $write-document-sessions
+  "Synchronously persist tab-scoped open-item selections by document ID."
+  [sessions]
+  (trace log)
+  (when-let [sessions (normalize-document-sessions sessions)]
+    (ls/put-session-data-sync! document-sessions-key sessions)
+    sessions))
+
+(defn $read-document-sessions
+  "Read tab-scoped open-item selections by document ID."
+  []
+  (trace log)
+  (normalize-document-sessions (ls/get-session-data-sync document-sessions-key)))
 
 (defn $write-persist-device [data]
   (trace log)

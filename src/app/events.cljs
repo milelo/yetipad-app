@@ -193,11 +193,22 @@
        {:doc-id doc-id
         :open-items (or open-items [])}))))
 
+(defn- cached-open-items [doc-id]
+  (get (store/$read-document-sessions) doc-id))
+
+(defn- persist-document-open-items! [{:keys [doc open-items]}]
+  (when-let [doc-id (:doc-id doc)]
+    (store/$write-document-sessions
+     (assoc (or (store/$read-document-sessions) {})
+            doc-id (vec (or open-items []))))))
+
 (defn after-db-change! [old-db db]
   (when (and (string? (get-in db [:doc :doc-id]))
              (or (not= (get-in old-db [:doc :doc-id]) (get-in db [:doc :doc-id]))
                  (not= (:open-items old-db) (:open-items db))))
-    (persist-active-session!))
+    (do
+      (persist-active-session!)
+      (persist-document-open-items! db)))
   (run-later
    (fn []
      (let [on-change (fn [path] (let [v (get-in db path)]
@@ -269,9 +280,10 @@
             doc-id fragment]
         (trace log 'configure-navigation! doc-id)
         (if (string? (not-empty doc-id))
-          (let [open-items (when (contains? query :open)
-                             (read-string open))]
-            (-> (read-doc-by-id!! doc-id {:open-items open-items})
+          (let [options (when (contains? query :open)
+                          {:open-items (read-string open)})
+                open-items (:open-items options)]
+            (-> (read-doc-by-id!! doc-id options)
                 (p/then (fn [snapshot]
                           (when (and snapshot (empty? open-items))
                             (select-index-view! :index-history)
@@ -502,12 +514,16 @@
 
 (defn read-doc-by-id!!
   ;""
-  ([doc-id {:keys [open-items]}]
+  ([doc-id options]
    (trace log)
    (assert (string? doc-id))
-   (if (= doc-id (get-in @db/db* [:doc-load :doc-id]))
-     (trace log 'document-load-already-pending doc-id)
-     (let [token (utils/simple-uuid)]
+   (let [explicit-open-items? (contains? (or options {}) :open-items)
+         open-items (if explicit-open-items?
+                      (:open-items options)
+                      (cached-open-items doc-id))]
+     (if (= doc-id (get-in @db/db* [:doc-load :doc-id]))
+       (trace log 'document-load-already-pending doc-id)
+       (let [token (utils/simple-uuid)]
        (update-db! 'request-doc-load
                    (fn [db]
                      (assoc db :doc-load {:token token :doc-id doc-id})))
@@ -542,13 +558,13 @@
                      (when snapshot
                        (request-drive-sync! snapshot ::document-load))
                      snapshot))
-         (p/catch (fn [e]
-                    (update-db! 'doc-load-error
-                                (fn [db]
-                                  (if (= token (get-in db [:doc-load :token]))
-                                    (assoc db :doc-load nil :status (store/app-status e :error))
-                                    db)))
-                    nil)))))))
+           (p/catch (fn [e]
+                      (update-db! 'doc-load-error
+                                  (fn [db]
+                                    (if (= token (get-in db [:doc-load :token]))
+                                      (assoc db :doc-load nil :status (store/app-status e :error))
+                                      db)))
+                      nil))))))))
   ([doc-id] (read-doc-by-id!! doc-id nil)))
 
 (defn- new-local-doc!
