@@ -24,11 +24,14 @@
 
 (add-watch config* ::logger-config (fn [_k _r o n]
                                      (when (not= o n)
-                                       (.setItem local-forage localstore-key
-                                                 (pr-str (into {} (filter second n)))
-                                                 (fn [err]
-                                                   (when err
-                                                     (js/console.error err)))))))
+                                       (-> (.setItem local-forage localstore-key
+                                                     (pr-str (into {} (filter second n)))
+                                                     (fn [err]
+                                                       (when err
+                                                         (js/console.error err))))
+                                           (.catch (fn [err]
+                                                     ;; Persistent logger settings are optional.
+                                                     (js/console.warn "Logger configuration storage unavailable" err)))))))
 
 (defn pprint-out [object]
   (with-out-str (pprint object)))
@@ -106,12 +109,17 @@
       ;(js/console.log ::set-config! package level)
       (configure-logger! logger* option (or level (:default-level config)) config))))
 
-(.getItem local-forage localstore-key (fn [err v] (if err
-                                                    (js/console.error err)
-                                                    (let [config-changes (read-string v)
-                                                          config (swap! config* merge config-changes)]
-                                                      (js/console.info (str ::localstore-init-log) (pr-str config-changes))
-                                                      (reconfigure-loggers! config)))))
+(-> (.getItem local-forage localstore-key (fn [err v] (if err
+                                                        (js/console.error err)
+                                                        (let [config-changes (read-string v)
+                                                              config (swap! config* merge config-changes)]
+                                                          (js/console.info (str ::localstore-init-log) (pr-str config-changes))
+                                                          (reconfigure-loggers! config)))))
+    (.catch (fn [err]
+              ;; Node tests do not provide a localForage backend. The logger
+              ;; should still load when persistent logger configuration is
+              ;; unavailable.
+              (js/console.warn "Logger configuration storage unavailable" err))))
 
 (defn set-config! [config-changes]
   (let [config (swap! config* merge (into {} (for [[package level :as e] config-changes]

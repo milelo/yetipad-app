@@ -1,31 +1,23 @@
-(ns lib.operation-queue)
+(ns lib.operation-queue
+  (:require
+   [promesa.core :as p]))
 
 (defn create []
-  (atom (.resolve js/Promise nil)))
+  (atom (p/resolved nil)))
 
 (defn enqueue!
   "Append f to tail*. The returned Promise belongs only to this operation, while
   the shared tail always recovers so one rejection cannot poison later work."
   [tail* f]
-  (let [handlers* (atom nil)
-        result (js/Promise. (fn [resolve reject]
-                              (reset! handlers* [resolve reject])))
-        run! (fn [_]
-               (let [[resolve reject] @handlers*]
-                 (-> (.resolve js/Promise nil)
-                     (.then (fn [_] (f)))
-                     (.then (fn [value]
-                              (resolve value)
-                              nil))
-                     (.catch (fn [e]
-                               (reject e)
-                               nil)))))]
+  (let [result* (atom nil)]
     (swap! tail*
            (fn [tail]
-             (-> tail
-                 (.catch (fn [_] nil))
-                 (.then run!))))
-    result))
+             (let [operation (-> tail
+                                 (p/catch (fn [_] nil))
+                                 (p/then (fn [_] (f))))]
+               (reset! result* operation)
+               (p/catch operation (fn [_] nil)))))
+    @result*))
 
 (defn idle [tail*]
   @tail*)
