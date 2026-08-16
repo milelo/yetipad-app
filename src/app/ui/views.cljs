@@ -22,7 +22,7 @@
    [app.ui.ui :as ui]
    ["@mui/material" :refer [AppBar Drawer Divider Toolbar Paper Typography Avatar Icon
                             Button IconButton Badge Tooltip
-                            List ListItem ListItemIcon ListItemText ListItemSecondaryAction
+                            List ListItem ListItemButton ListItemIcon ListItemText ListItemSecondaryAction
                             Grid GridList GridListTile GridListTileBar
                             Card CardMedia CardContent CardActions
                             BottomNavigation BottomNavigationAction
@@ -104,19 +104,19 @@
 
 (defn index-list-item [icon title on-click]
   (let [font-size 12]
-    [:> ListItem {:button   true
-                  :style    {:padding "0 16px"}
-                  ;:align-items :flex-start
-                  :on-click on-click}
-     (when icon [:> ListItemIcon {:style {:min-width 0}}
-                 [:> icon {:style {:font-size font-size}}]])
-     [:> ListItemText {:primary                  (or title no-title)
+    [:> ListItem {:disable-padding true}
+     [:> ListItemButton {:style    {:padding "0 16px"}
+                         ;:align-items :flex-start
+                         :on-click on-click}
+      (when icon [:> ListItemIcon {:style {:min-width 0}}
+                  [:> icon {:style {:font-size font-size}}]])
+      [:> ListItemText {:primary                  (or title no-title)
                        :slot-props {:primary {:style (if title
                                                         {:font-size font-size}
                                                         {:font-size  font-size
                                                          :font-style :italic})}}
                        :style                    {:min-height 0
-                                                  :margin     "0 4px"}}]]))
+                                                   :margin     "0 4px"}}]]]))
 
 (defonce search-value* (r/atom ""))
 (defonce debounced-search-value* (r/atom ""))
@@ -160,10 +160,10 @@
         selected-doc-id (or @selected-doc-id* @subs/doc-id*)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [doc-id title subtitle file-id file-name file-description status]} docs]
-              ^{:key doc-id} [:> ListItem {:style    {:padding "0 4px"}
-                                           :button   true
-                                           :selected (= selected-doc-id doc-id)
-                                           :on-click (fn []
+              ^{:key doc-id} [:> ListItem {:disable-padding true}
+                              [:> ListItemButton {:style    {:padding "0 4px"}
+                                                  :selected (= selected-doc-id doc-id)
+                                                  :on-click (fn []
                                                        (reset! selected-doc-id* doc-id)
                                                        (if @subs/moving-items?*
                                                   ;source and target must be different
@@ -172,8 +172,8 @@
                                                          (do
                                                            (events/read-doc-by-id!! doc-id)
                                                            (events/select-index-view! :index-history))))}
-                              [:> Tooltip {:title (or subtitle file-description doc-id "")}
-                               [:> ListItemText {:primary (str (or title file-name doc-id) " (" (name status) \))}]]])]))
+                               [:> Tooltip {:title (or subtitle file-description doc-id "")}
+                                [:> ListItemText {:primary (str (or title file-name doc-id) " (" (name status) \))}]]]])]))
 
 (defn doc-index-tool [icon title action & [{:keys [selected]}]]
   [:> IconButton {:title    title
@@ -234,14 +234,14 @@
   ([icon text on-click]
    (menu-list-item icon text on-click false))
   ([icon text on-click disabled?]
-   [:> ListItem {:button   true
-                 :disabled disabled?
-                 :on-click (when-not disabled?
+   [:> ListItem {:disable-padding true}
+    [:> ListItemButton {:disabled disabled?
+                        :on-click (when-not disabled?
                              (fn []
                                (events/open-tag-drawer! false)
-                               (on-click)))}
-   (when icon [:> ListItemIcon [:> icon]])
-   [:> ListItemText {:primary text}]]))
+                                      (on-click)))}
+     (when icon [:> ListItemIcon [:> icon]])
+     [:> ListItemText {:primary text}]]]))
 
 (defn index-pane []
   (let [index-view @subs/index-view*

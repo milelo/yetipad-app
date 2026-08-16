@@ -13,7 +13,7 @@
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
     [app.ui.note-editor-goog :refer [content-editor]]
     [app.ui.note-pane :refer [note-editor]]
-    ["@mui/material" :refer [TextField List ListItem ListItemText ListItemIcon]]
+    ["@mui/material" :refer [TextField List ListItem ListItemButton ListItemText ListItemIcon]]
     ["@mui/icons-material/LabelTwoTone" :default tag-icon]
     ["@mui/icons-material/OpenInNewTwoTone" :default open-all-icon]
     ))
@@ -22,17 +22,16 @@
 
 (defn index-list-item [icon title on-click]
   (let [font-size 12]
-    [:> ListItem {:button   true
-                  :style    {:padding "0 16px"}
-                  ;:align-items :flex-start
-                  :on-click (fn []
-                              (on-click)
-                              )
-                  }
+    [:> ListItem {:disable-padding true}
+     [:> ListItemButton {:style    {:padding "0 16px"}
+                         ;:align-items :flex-start
+                         :on-click (fn []
+                                     (on-click)
+                                     )}
      (when icon [:> ListItemIcon {:style {:min-width 0}}
                  [:> icon {:style {:font-size font-size}}]
                  ])
-     [:> ListItemText {:primary                  (or title no-title)
+      [:> ListItemText {:primary                  (or title no-title)
                        :slot-props {:primary {:style (if title
                                                         {:font-size font-size}
                                                         {:font-size  font-size
@@ -40,7 +39,7 @@
                        :style                    {:min-height 0
                                                   :margin     "0 4px"
                                                   }
-                       }]]))
+                        }]]]))
 
 (defn tag-list [parent-id]
         (let [[tags other] @(subs/child-data-by-tag-id parent-id)]

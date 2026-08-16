@@ -11,7 +11,7 @@
     [app.ui.utils :as ui-utils :refer [no-title]]
     [app.ui.registry :as reg]
     ["@mui/material" :refer [Tooltip Typography
-                                 TextField List ListItem ListItemText ListItemIcon
+                                 TextField List ListItem ListItemButton ListItemText ListItemIcon
                                  ]]
     ["@mui/icons-material/DeleteOutlined" :default trash-icon]
     ))
@@ -20,16 +20,15 @@
 
 (defn index-list-item [icon title on-click]
   (let [font-size 14]
-    [:> ListItem {:button   true
-                  :style    {:padding "0 16px"}
-                  :on-click (fn []
-                              (on-click)
-                              )
-                  }
+    [:> ListItem {:disable-padding true}
+     [:> ListItemButton {:style    {:padding "0 16px"}
+                         :on-click (fn []
+                                     (on-click)
+                                     )}
      (when icon [:> ListItemIcon {:style {:min-width 0}}
                  [:> icon {:style {:font-size font-size}}]
                  ])
-     [:> ListItemText {:primary                  (or title no-title)
+      [:> ListItemText {:primary                  (or title no-title)
                        :slot-props {:primary {:style (if title
                                                         {:font-size font-size}
                                                         {:font-size  font-size
@@ -37,7 +36,7 @@
                        :style                    {:min-height 0
                                                   :margin     "0 4px"
                                                   }
-                       }]]))
+                        }]]]))
 
 (defn trash-list []
   (let [trashed @subs/deleted-items*]
