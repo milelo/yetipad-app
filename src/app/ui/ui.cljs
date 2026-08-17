@@ -249,7 +249,7 @@
     [viewer-fullscreen item body footer]]))
 
 (defn accept-edit-button [id]
-  [item-button accept-edit-icon "end edit" #(events/accept-edit! id)])
+  [item-button accept-edit-icon "accept edit" #(events/accept-edit! id)])
 
 (defn cancel-edit-button [id]
   [item-button cancel-edit-icon "cancel edit"
