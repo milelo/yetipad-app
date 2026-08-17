@@ -34,6 +34,7 @@
   (let [new-title* (atom title)]
     ;Doesn't re-render when title is edited so inner render function not required.
     [(with-meta (fn [] [:> TextField {:variant       :outlined
+                                      :style         {:width "min(375px, 100%)"}
                                       ;:input-props   {:style {:padding 5}}
                                       :size          :small
                                       :margin        :dense
