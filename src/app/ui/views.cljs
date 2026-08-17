@@ -109,16 +109,22 @@
              :font-style :italic})
     (and title (= kind :tag) content) (assoc :text-decoration "underline")))
 
-(defn index-list-item [icon title kind content on-click]
-  (let [font-size 12]
+(defn index-list-display-title [title kind tag-path]
+  (if (= kind :tag) tag-path title))
+
+(defn index-list-item [icon id title kind content on-click]
+  (let [font-size 12
+        display-title (index-list-display-title title kind
+                                                 (when (= kind :tag)
+                                                   @(subs/tag-path-str id)))]
     [:> ListItem {:disable-padding true}
      [:> ListItemButton {:style    {:padding "0 16px"}
                          ;:align-items :flex-start
                          :on-click on-click}
       (when icon [:> ListItemIcon {:style {:min-width 0}}
                   [:> icon {:style {:font-size font-size}}]])
-      [:> ListItemText {:primary                  (or title no-title)
-                       :slot-props {:primary {:style (index-list-title-style title kind content)}}
+      [:> ListItemText {:primary                  (or display-title no-title)
+                       :slot-props {:primary {:style (index-list-title-style display-title kind content)}}
                        :style                    {:min-height 0
                                                    :margin     "0 4px"}}]]]))
 
@@ -151,13 +157,13 @@
      (for-all [{:keys [id title kind content create change head__]} items-by-history]
               ^{:key id} [:<>
                           (when head__ [date-item (ui-utils/iso-time->formatted-date (or change create))])
-                          [index-list-item (reg/rget kind :icon) title kind content #(events/open-item! id)]])]))
+                          [index-list-item (reg/rget kind :icon) id title kind content #(events/open-item! id)]])]))
 
 (defn title-index-pane []
   (let [items-filtered @(subs/items-by-title-filtered @debounced-search-value*)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [id title kind content]} items-filtered]
-              ^{:key id} [index-list-item (reg/rget kind :icon) title kind content #(events/open-item! id)])]))
+              ^{:key id} [index-list-item (reg/rget kind :icon) id title kind content #(events/open-item! id)])]))
 
 (defn doc-list-pane []
   (let [docs @subs/doc-list*
