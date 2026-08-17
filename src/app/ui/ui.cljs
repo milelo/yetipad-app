@@ -34,6 +34,7 @@
 (defonce item-state* (r/atom {}))
 (defonce trash-confirmation* (r/atom nil))
 (defonce trash-confirmation-in-flight?* (r/atom false))
+(defonce cancel-edit-confirmation* (r/atom nil))
 
 (defn request-permanent-delete! [item-id]
   (when (and (string? item-id) (not @trash-confirmation-in-flight?*))
@@ -89,6 +90,31 @@
                     :disabled @trash-confirmation-in-flight?*
                     :on-click confirm-trash-action!}
          (if empty-trash? "Empty trash" "Delete permanently")]]])))
+
+(defn- close-cancel-edit-confirmation! []
+  (reset! cancel-edit-confirmation* nil))
+
+(defn- confirm-cancel-edit! []
+  (when-let [item-id @cancel-edit-confirmation*]
+    (close-cancel-edit-confirmation!)
+    (events/cancel-edit! item-id)))
+
+(defn cancel-edit-confirmation-dialog []
+  (when @cancel-edit-confirmation*
+    [:> Dialog {:open true
+                :on-close close-cancel-edit-confirmation!
+                :aria-labelledby "cancel-edit-title"
+                :aria-describedby "cancel-edit-description"}
+     [:> DialogTitle {:id "cancel-edit-title"} "Discard changes?"]
+     [:> DialogContent
+      [:> DialogContentText {:id "cancel-edit-description"}
+       "Your changes will be lost."]]
+     [:> DialogActions
+      [:> Button {:on-click close-cancel-edit-confirmation!} "Keep editing"]
+      [:> Button {:color :error
+                  :auto-focus true
+                  :on-click confirm-cancel-edit!}
+       "Discard"]]]))
 
 (defn- set-pane-toolbar-height! [pane]
   (when pane
@@ -226,7 +252,8 @@
   [item-button accept-edit-icon "end edit" #(events/accept-edit! id)])
 
 (defn cancel-edit-button [id]
-  [item-button cancel-edit-icon "cancel edit" #(events/cancel-edit! id)])
+  [item-button cancel-edit-icon "cancel edit"
+   #(reset! cancel-edit-confirmation* id)])
 
 (defn editor-pane [{:keys [id] :as item} {:keys [body buttons]}]
   [:div (assoc (theme ::theme/pane) :ref pane-ref)

@@ -325,7 +325,8 @@
                             (swap! item-refs* assoc id node)
                             (swap! item-refs* dissoc id)))}
              [(reg/rget kind :pane) {:item item}]])]
-         [ui/trash-confirmation-dialog]])})))
+         [ui/trash-confirmation-dialog]
+         [ui/cancel-edit-confirmation-dialog]])})))
 
 (defn static-pane-list-item [kind]
   (let [{:keys [title icon]} (reg/rget kind)]
