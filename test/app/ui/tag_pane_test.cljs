@@ -19,6 +19,18 @@
     (is (false? (tag-pane/existing-content? {:content ""})))
     (is (false? (tag-pane/existing-content? {:content []})))))
 
+(deftest tag-conversion-button-test
+  (testing "the conversion button is shown only for contentful tags"
+    (let [buttons-with-content (get-in (tag-pane/tag-view {:id "tag"
+                                                            :kind :tag
+                                                            :content [[:p "content"]]})
+                                       [2 :buttons])
+          buttons-without-content (get-in (tag-pane/tag-view {:id "tag"
+                                                               :kind :tag})
+                                          [2 :buttons])]
+      (is (some #{tag-pane/convert-tag-to-note-button} buttons-with-content))
+      (is (not (some #{tag-pane/convert-tag-to-note-button} buttons-without-content))))))
+
 (deftest note-editor-content-option-test
   (let [item {:source {:id "item-1" :title "Item" :content [[:p "content"]]}}
         default-body (get-in (note-pane/note-editor item) [2 :body])

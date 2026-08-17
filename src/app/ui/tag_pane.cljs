@@ -11,10 +11,10 @@
     [app.ui.utils :as ui-utils :refer [no-title]]
     [app.ui.registry :as reg]
     [app.ui.tagchips :refer [tag-editor tag-viewer]]
-    [app.ui.note-editor-goog :refer [content-editor]]
     [app.ui.note-pane :refer [note-editor]]
     ["@mui/material" :refer [TextField List ListItem ListItemButton ListItemText ListItemIcon]]
     ["@mui/icons-material/LabelTwoTone" :default tag-icon]
+    ["@mui/icons-material/NoteAddTwoTone" :default note-add-icon]
     ["@mui/icons-material/OpenInNewTwoTone" :default open-all-icon]
     ))
 
@@ -56,18 +56,24 @@
 (defn existing-content? [{:keys [content]}]
   (boolean (seq content)))
 
-(defn tag-view [{:keys [id tags] :as item} & [options]]
-  [ui/viewer-pane item (merge {:body   ^{:key :cont} [content-pane item]
-                               :footer ^{:key :tags} [tag-viewer id]
-                               } options)])
+(defn convert-tag-to-note-button [id]
+  [ui/item-button note-add-icon "convert to note" #(events/convert-tag-to-note! id)])
 
 (defn open-all-button [id]
   [ui/item-button open-all-icon "open all children" #(events/open-tag-children! id)])
 
+(defn tag-view [{:keys [id tags] :as item} & [options]]
+  (let [buttons (cond-> (cons open-all-button ui/standard-viewer-buttons)
+                  (existing-content? item) (conj convert-tag-to-note-button))]
+    [ui/viewer-pane item (merge {:body   ^{:key :cont} [content-pane item]
+                                 :footer ^{:key :tags} [tag-viewer id]
+                                 :buttons buttons
+                                 } options)]))
+
 (defn tag-pane [{:keys [item]}]
   (if-let [edit-item @(subs/edit-item (:id item))]
     [note-editor edit-item {:content-editor? (existing-content? (:source edit-item))}]
-    [tag-view item {:buttons (cons open-all-button ui/standard-viewer-buttons)}]
+    [tag-view item]
     ))
 
 (reg/register {:kind             :tag

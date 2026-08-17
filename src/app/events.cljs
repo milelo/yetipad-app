@@ -939,6 +939,26 @@
                     (assoc db :doc (store/update-timestamps! doc new-ids)))
                   db))))
 
+(defn convert-tag-to-note [db tag-id]
+  (let [{:keys [doc open-items]} db
+        tag (get doc tag-id)]
+    (if (and (= :tag (:kind tag))
+             (seq (:content tag)))
+      (let [note-id (utils/new-item-id doc)
+            note (assoc tag :id note-id :kind :note)
+            doc (-> doc
+                    (assoc note-id note)
+                    (update tag-id dissoc :content)
+                    (store/update-timestamps! [tag-id note-id]))]
+        (assoc db
+               :doc doc
+               :open-items (vec (distinct (concat open-items [note-id])))))
+      db)))
+
+(defn convert-tag-to-note! [tag-id]
+  (enqueue-db-update! 'convert-tag-to-note!
+                      #(convert-tag-to-note % tag-id)))
+
 ;------------------------file-ops-----------------------
 
 (defn- open-doc-file-dialog! [doc]
