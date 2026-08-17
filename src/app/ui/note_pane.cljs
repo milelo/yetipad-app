@@ -50,20 +50,24 @@
                    (events/new-title! id @new-title*)
                    )})]))
 
-(defn note-editor [{{:keys [id] :as item} :source} & [options]]
+(defn note-editor [{{:keys [id] :as item} :source} & [{:keys [content-editor?]
+                                                       :or   {content-editor? true}
+                                                       :as   options}]]
   (let [tag-bar (if @subs/sticky-editor-tags?*
                   [ui/pane-tags [tag-editor id]]
-                  [:div {:style {:margin-top 5}} [tag-editor id]])]
-    [ui/editor-pane item (merge {:body [:<>
-                                        ^{:key :title-e} [title-editor item]
-                                        ^{:key :cont-e} [error-boundary ::note-editor
-                                                         [(case @subs/content-editor*
-                                                            :goog-editor note-editor-goog/content-editor
-                                                            :quill-editor note-editor-quill/content-editor
-                                                            :ck-editor note-editor-ck/content-editor
-                                                            ) item]]
-                                        ^{:key :tags-e} tag-bar
-                                        ]
+                  [:div {:style {:margin-top 5}} [tag-editor id]])
+        title-editor ^{:key :title-e} [title-editor item]
+        content-editor ^{:key :cont-e} [error-boundary ::note-editor
+                                         [(case @subs/content-editor*
+                                            :goog-editor note-editor-goog/content-editor
+                                            :quill-editor note-editor-quill/content-editor
+                                            :ck-editor note-editor-ck/content-editor
+                                            ) item]]
+        body-children (cond-> [title-editor]
+                        content-editor? (conj content-editor)
+                        true (conj (with-meta tag-bar {:key :tags-e})))
+        body (into [:<>] body-children)]
+    [ui/editor-pane item (merge {:body body
                                  } options)]))
 
 (defn note-pane [{:keys [item]}]

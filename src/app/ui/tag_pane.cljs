@@ -53,6 +53,9 @@
    [:div {:style {:margin "1em 1em"}} [tag-list id]]]
   )
 
+(defn existing-content? [{:keys [content]}]
+  (boolean (seq content)))
+
 (defn tag-view [{:keys [id tags] :as item} & [options]]
   [ui/viewer-pane item (merge {:body   ^{:key :cont} [content-pane item]
                                :footer ^{:key :tags} [tag-viewer id]
@@ -63,7 +66,7 @@
 
 (defn tag-pane [{:keys [item]}]
   (if-let [edit-item @(subs/edit-item (:id item))]
-    [note-editor edit-item]
+    [note-editor edit-item {:content-editor? (existing-content? (:source edit-item))}]
     [tag-view item {:buttons (cons open-all-button ui/standard-viewer-buttons)}]
     ))
 
