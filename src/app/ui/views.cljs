@@ -490,7 +490,7 @@
                              :on-click   events/sync-status-clicked!}
               (case sync-status
                 :offline [:> signed-out-icon]
-                :connecting [:> syncing-icon]
+                :connecting [:> checking-icon]
                 :authorization-required [:> signed-out-icon]
                 :checking [:> checking-icon]
                 :syncing [:> syncing-icon]
