@@ -359,7 +359,7 @@
 (defn set-sync-status! [status]
   (db/update-db! 'set-sync-status!
                  (fn [db]
-                   (assert (#{:offline :connecting :authorization-required :online :syncing :synced
+                   (assert (#{:offline :connecting :authorization-required :online :checking :syncing :synced
                               :uploading :downloading :error} status)) ;false = offline
                    (trace log :status status)
                    (assoc db :sync-status status))))
@@ -456,7 +456,7 @@
 (defn- start-drive-sync! [snapshot]
   (let [attempt @!reconnect-attempt]
     (when (current-reconnect-attempt? attempt)
-      (set-sync-status! :syncing))
+      (set-sync-status! :checking))
     (-> (db/$enqueue-drive! 'drive-document-sync
                             (fn [_]
                               (p/let [completed ($perform-drive-sync snapshot attempt)

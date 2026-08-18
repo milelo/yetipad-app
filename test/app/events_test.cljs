@@ -1,7 +1,8 @@
 (ns app.events-test
   (:require
    [cljs.test :refer [deftest is testing]]
-   [app.events :as events]))
+   [app.events :as events]
+   [lib.db :as db]))
 
 (def tag {:id "a"
           :kind :tag
@@ -35,3 +36,14 @@
                :open-items []}]
       (is (= base (events/convert-tag-to-note base "empty")))
       (is (= base (events/convert-tag-to-note base "note"))))))
+
+(deftest sync-status-phase-test
+  (testing "a Drive check has its own accepted status"
+    (events/initialize-db!)
+    (events/set-sync-status! :checking)
+    (is (= :checking (:sync-status @db/!db))))
+  (testing "only conflict resolution uses the bidirectional merge phase"
+    (is (nil? (#'events/sync-progress-status :in-sync)))
+    (is (= :downloading (#'events/sync-progress-status :overwrite-from-file)))
+    (is (= :uploading (#'events/sync-progress-status :overwrite-file)))
+    (is (= :syncing (#'events/sync-progress-status :resolve-conflicts)))))

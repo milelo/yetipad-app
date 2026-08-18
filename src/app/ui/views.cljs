@@ -46,6 +46,7 @@
    ["@mui/icons-material/CloudOutlined" :default signed-in-icon]
    ["@mui/icons-material/CloudUploadOutlined" :default uploading-icon]
    ["@mui/icons-material/CloudDownloadOutlined" :default downloading-icon]
+   ["@mui/icons-material/CloudSyncTwoTone" :default checking-icon]
    ["@mui/icons-material/SyncAltOutlined" :default syncing-icon]
    ["@mui/icons-material/ErrorOutlineOutlined" :default online-error-icon]
     ;---------------main-menu--------------------------
@@ -474,7 +475,8 @@
                        :offline "Offline — Drive will reconnect when the network returns"
                        :connecting "Connecting to Drive…"
                        :authorization-required "Click to connect to Drive"
-                       :syncing "Synchronizing with Drive…"
+                       :checking "Checking sync status with Drive…"
+                       :syncing "Merging local and Drive changes…"
                        :uploading "Uploading to Drive…"
                        :downloading "Downloading from Drive…"
                        :synced "Synchronized with Drive"
@@ -490,6 +492,7 @@
                 :offline [:> signed-out-icon]
                 :connecting [:> syncing-icon]
                 :authorization-required [:> signed-out-icon]
+                :checking [:> checking-icon]
                 :syncing [:> syncing-icon]
                 :uploading [:> uploading-icon]
                 :downloading [:> downloading-icon]
