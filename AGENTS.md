@@ -20,6 +20,9 @@ When changing npm dependencies, edit `package.json` as needed, then update
 `package-lock.json` by running npm (`npm install` or an equivalent npm
 lockfile command). Do not edit `package-lock.json` directly.
 
+Prefer Promesa (`promesa.core`) over native `js/Promise` for asynchronous
+work where practical.
+
 ## Release and deployment
 
 GitHub Pages intentionally uses two workflow runs for a tag release: the tag
