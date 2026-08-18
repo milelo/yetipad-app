@@ -48,7 +48,7 @@
 (def log (log/logger 'app.ui.note-editor-ck))
 
 (defn ck-editor [id content]
-  (let [editor* (atom nil)]
+  (let [!editor (atom nil)]
     (r/create-class
      {:display-name "ck-editor"
       :reagent-render
@@ -82,12 +82,12 @@
                                              ;:plugins [Bold Italic Strikethrough]
                                              }
                                     :data (rdoms/render-to-string content)
-                                    :on-ready #(reset! editor* %)}])
+                                    :on-ready #(reset! !editor %)}])
       
       :component-will-unmount
       (fn [_this]
-        (evts/new-content! id (-> @editor* .getData hp/html->clj not-empty))
-        (reset! editor* nil))
+        (evts/new-content! id (-> @!editor .getData hp/html->clj not-empty))
+        (reset! !editor nil))
       })))
 
 

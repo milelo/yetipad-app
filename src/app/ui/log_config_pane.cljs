@@ -21,19 +21,19 @@
 
 (def log (log/logger 'app.ui.log-config-pane))
 
-(def values* (r/atom {}))
+(def !values (r/atom {}))
 
 (defn options-table [title options editing?]
   (r/create-class
     {:reagent-render         (fn [title options editing?]
-                               [op/table title options editing? values*]
+                               [op/table title options editing? !values]
                                )
      :component-will-unmount (fn [_this]
-                               (events/set-log-config! @values*))
+                               (events/set-log-config! @!values))
      }))
 
 (defn content [editing?]
-  (let [packages @subs/logger-packages*]
+  (let [packages @subs/!logger-packages]
     [options-table "Logging level" (for-all [package (cons :default-level (sort-by name packages))]
                                      {
                                       :id     package
@@ -46,7 +46,7 @@
 
 
 (defn restore-defaults-button []
-  [ui/item-button restore-defaults-icon "restore defaults" #(reset! values* (log/default-config))])
+  [ui/item-button restore-defaults-icon "restore defaults" #(reset! !values (log/default-config))])
 
 (defn log-config-pane [_context]
   (let [item {:id    :log-config

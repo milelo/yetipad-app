@@ -21,14 +21,14 @@
 
 (def log (log/logger 'app.ui.log-pane))
 
-(defonce log* (r/atom nil))
-(defonce entry-id* (atom 0))
+(defonce !log (r/atom nil))
+(defonce !entry-id (atom 0))
 
 (defn read-log []
-  (reset! log* [])
+  (reset! !log [])
   (go-loop []
     (when-let [v (async/poll! log/<logger)]
-      (swap! log* conj v)
+      (swap! !log conj v)
       (recur))
     ))
 
@@ -52,8 +52,8 @@
 
 (defn log-container []
   [:> Paper {:style {:padding 5}}
-   (for [e @log*]
-     ^{:key (swap! entry-id* inc)} [entry e])])
+   (for [e @!log]
+     ^{:key (swap! !entry-id inc)} [entry e])])
 
 (defn log-pane [_context]
   (let [item {:id    :log

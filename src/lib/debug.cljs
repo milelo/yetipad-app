@@ -64,21 +64,21 @@
   )
 
 ;http://stackoverflow.com/questions/20352348/is-it-possible-to-get-the-file-name-and-line-number-of-the-clojurescript-file-us
-(let [d* (atom {})]
+(let [!d (atom {})]
   (defn track [id item]
-    (swap! d* update-in [id :items] conj item)
-    ;(swap! d* update-in [id :stack] conj (js/Error "stack"))
+    (swap! !d update-in [id :items] conj item)
+    ;(swap! !d update-in [id :stack] conj (js/Error "stack"))
     )
   (defn pr-freq [id]
-    (let [items (get-in @d* [id :items])]
+    (let [items (get-in @!d [id :items])]
       (-> items frequencies pprint)
       (println "count: " (count items))))
   (defn stack-freq [id]
-    (let [items (get-in @d* [id :stack])]
+    (let [items (get-in @!d [id :stack])]
       ;(-> items frequencies pprint)
       (println "count: " (count items))))
   (defn track-reset [id]
-    (swap! d* dissoc id)
+    (swap! !d dissoc id)
     )
 
   )

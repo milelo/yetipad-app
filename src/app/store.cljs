@@ -18,13 +18,13 @@
 
 (def pr-t ui-utils/iso-time->time-format-full)
 
-(defonce drive-file-id* (atom nil))
-(defonce signed-in?* (atom nil))
+(defonce !drive-file-id (atom nil))
+(defonce !signed-in? (atom nil))
 
 (def index-key :yetipad)
 (def index-format :object)
 
-(add-watch drive/online-status* ::pinger
+(add-watch drive/!online-status ::pinger
            (fn [k r o n]
              ;ping server at intervals
              ))
@@ -39,11 +39,11 @@
       (-> (.ping pinger url)
           (p/then (fn [data]
                     (trace log "ping data: " data)
-                    (swap! drive/online-status* assoc :online? true)
+                    (swap! drive/!online-status assoc :online? true)
                     data))
           (p/catch (fn [e]
                      (warn log 'error e)
-                     (swap! drive/online-status* assoc :online? false)
+                     (swap! drive/!online-status assoc :online? false)
                      e))))))
 
 (defn- $read-local-index []
@@ -271,7 +271,7 @@
   "Writes data to the hidden app Drive data-file.
   Not in use"
   [index]
-  (drive/$write-file-content @drive-file-id* index {:content-type :edn}))
+  (drive/$write-file-content @!drive-file-id index {:content-type :edn}))
 
 (defn- $write-drive-file-content
   "Write the file content to file with file-id"
@@ -597,7 +597,7 @@
   ;(prn-diff :drive-doc-only drive-doc :app-doc-only app-doc)
   (assert (not= file-change change))
   (let [ks (distinct (concat (keys drive-doc) (keys app-doc)))
-        item-num* (atom (dec (utils/new-item-num [drive-doc app-doc])))
+        !item-num (atom (dec (utils/new-item-num [drive-doc app-doc])))
         merged (into {} (for [k ks
                               :let [;root-change (get-in app-doc [:changes k :root-change])
                                     source-change (get-in doc-changes [k :source-change])
@@ -621,7 +621,7 @@
                                   :trash []
                                   ;file (master) keeps existing id, allocate new to local
                                   :resolve-conflicts [file-entry (assoc entry
-                                                                        :id (utils/to-str-36 (swap! item-num* inc))
+                                                                        :id (utils/to-str-36 (swap! !item-num inc))
                                                                         :conflict-id (:id entry))])]
                           [(get e :id k) e]))
         merged (assoc merged :mchange (utils/iso-time-now))]

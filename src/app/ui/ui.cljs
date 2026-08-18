@@ -31,42 +31,42 @@
    ["@mui/icons-material/DeleteForever" :default delete-permanent-icon]
    [app.ui.registry :as reg]))
 
-(defonce item-state* (r/atom {}))
-(defonce trash-confirmation* (r/atom nil))
-(defonce trash-confirmation-in-flight?* (r/atom false))
-(defonce cancel-edit-confirmation* (r/atom nil))
+(defonce !item-state (r/atom {}))
+(defonce !trash-confirmation (r/atom nil))
+(defonce !trash-confirmation-in-flight? (r/atom false))
+(defonce !cancel-edit-confirmation (r/atom nil))
 
 (defn request-permanent-delete! [item-id]
-  (when (and (string? item-id) (not @trash-confirmation-in-flight?*))
-    (reset! trash-confirmation* {:action :delete-item-permanent
+  (when (and (string? item-id) (not @!trash-confirmation-in-flight?))
+    (reset! !trash-confirmation {:action :delete-item-permanent
                                  :item-id item-id})))
 
 (defn request-empty-trash! []
-  (let [item-count (count @subs/deleted-items*)]
-    (when (and (pos? item-count) (not @trash-confirmation-in-flight?*))
-      (reset! trash-confirmation* {:action :empty-trash
+  (let [item-count (count @subs/!deleted-items)]
+    (when (and (pos? item-count) (not @!trash-confirmation-in-flight?))
+      (reset! !trash-confirmation {:action :empty-trash
                                    :item-count item-count}))))
 
 (defn- close-trash-confirmation! []
-  (when-not @trash-confirmation-in-flight?*
-    (reset! trash-confirmation* nil)))
+  (when-not @!trash-confirmation-in-flight?
+    (reset! !trash-confirmation nil)))
 
 (defn- confirm-trash-action! []
-  (when-let [{:keys [action item-id]} @trash-confirmation*]
-    (when-not @trash-confirmation-in-flight?*
-      (reset! trash-confirmation-in-flight?* true)
+  (when-let [{:keys [action item-id]} @!trash-confirmation]
+    (when-not @!trash-confirmation-in-flight?
+      (reset! !trash-confirmation-in-flight? true)
       (let [operation (case action
                         :delete-item-permanent (events/delete-item-permanent!! item-id)
                         :empty-trash (events/empty-trash!!))]
         (-> operation
             (.then (fn [_]
-                     (reset! trash-confirmation-in-flight?* false)
-                     (reset! trash-confirmation* nil)))
+                     (reset! !trash-confirmation-in-flight? false)
+                     (reset! !trash-confirmation nil)))
             (.catch (fn [_]
-                      (reset! trash-confirmation-in-flight?* false))))))))
+                      (reset! !trash-confirmation-in-flight? false))))))))
 
 (defn trash-confirmation-dialog []
-  (let [{:keys [action item-id item-count]} @trash-confirmation*
+  (let [{:keys [action item-id item-count]} @!trash-confirmation
         item-title (when item-id (:title @(subs/doc-item item-id)))
         empty-trash? (= action :empty-trash)]
     (when action
@@ -84,23 +84,23 @@
            (str "Permanently delete “" (or item-title item-id) "”? This cannot be undone."))]]
        [:> DialogActions
         [:> Button {:on-click close-trash-confirmation!
-                   :disabled @trash-confirmation-in-flight?*} "Cancel"]
+                   :disabled @!trash-confirmation-in-flight?} "Cancel"]
         [:> Button {:color :error
                     :auto-focus true
-                    :disabled @trash-confirmation-in-flight?*
+                    :disabled @!trash-confirmation-in-flight?
                     :on-click confirm-trash-action!}
          (if empty-trash? "Empty trash" "Delete permanently")]]])))
 
 (defn- close-cancel-edit-confirmation! []
-  (reset! cancel-edit-confirmation* nil))
+  (reset! !cancel-edit-confirmation nil))
 
 (defn- confirm-cancel-edit! []
-  (when-let [item-id @cancel-edit-confirmation*]
+  (when-let [item-id @!cancel-edit-confirmation]
     (close-cancel-edit-confirmation!)
     (events/cancel-edit! item-id)))
 
 (defn cancel-edit-confirmation-dialog []
-  (when @cancel-edit-confirmation*
+  (when @!cancel-edit-confirmation
     [:> Dialog {:open true
                 :on-close close-cancel-edit-confirmation!
                 :aria-labelledby "cancel-edit-title"
@@ -156,7 +156,7 @@
   [item-button edit-icon "edit" #(events/start-edit! item-id)])
 
 (defn fullscreen-button [item-id]
-  [item-button fullscreen-icon "full-screen" #(swap! item-state* update item-id assoc :open true)])
+  [item-button fullscreen-icon "full-screen" #(swap! !item-state update item-id assoc :open true)])
 
 (defn inspect-button [item-id]
   (when config/debug?
@@ -181,7 +181,7 @@
   [item-button delete-permanent-icon "empty trash" request-empty-trash!])
 
 (defn fullscreen-exit-button [item-id]
-  [item-button fullscreen-exit-icon "exit full-screen" #(swap! item-state* update item-id assoc :open false)])
+  [item-button fullscreen-exit-icon "exit full-screen" #(swap! !item-state update item-id assoc :open false)])
 
 (defn title-bar [{:keys [id title kind]} & [{:keys [toolbar?]}]]
   [:div {:style (merge {:display         :flex
@@ -197,10 +197,10 @@
 
 (defn- viewer-fullscreen [{:keys [id] :as item} body footer]
   [:> Dialog {:full-screen        true
-              :open               (boolean (get-in @item-state* [id :open]))
+              :open               (boolean (get-in @!item-state [id :open]))
               :on-escape-key-down (fn [e]
                                     (.stopPropagation e)
-                                    (swap! item-state* update id assoc :open false)
+                                    (swap! !item-state update id assoc :open false)
                                     nil)}
    [:div {:style {:display        :flex
                   :flex-direction :column
@@ -253,7 +253,7 @@
 
 (defn cancel-edit-button [id]
   [item-button cancel-edit-icon "cancel edit"
-   #(reset! cancel-edit-confirmation* id)])
+   #(reset! !cancel-edit-confirmation id)])
 
 (defn editor-pane [{:keys [id] :as item} {:keys [body buttons]}]
   [:div (assoc (theme ::theme/pane) :ref pane-ref)

@@ -69,10 +69,10 @@
                   (fn [_]
                     (when (= "hidden" (.-visibilityState js/document))
                       (events/persist-active-session!))))
-  (add-watch log/config* ::logger-config (fn [_k _r o n]
+  (add-watch log/!config ::logger-config (fn [_k _r o n]
                                            (when-not (identical? o n)
                                              (events/logger-config! n))))
-  (events/logger-config! @log/config*)
+  (events/logger-config! @log/!config)
   (events/init-navigation!)
   (initialize-drive-connectivity!)
   ; Manifest metadata is optional and must never delay local document startup.

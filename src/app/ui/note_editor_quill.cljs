@@ -22,11 +22,11 @@
 
 (def expose gdebug/expose)
 
-(defn modules [quill* _id]
+(defn modules [!quill _id]
   (->js
    {:toolbar
-    {:handlers {:undo #(-> @quill* .getEditor .-history .undo)
-                :redo #(-> @quill* .getEditor .-history .redo)}
+    {:handlers {:undo #(-> @!quill .getEditor .-history .undo)
+                :redo #(-> @!quill .getEditor .-history .redo)}
      :container
      [[{:font []} {:size [] #_[:small false :large :huge]} {:header [] #_[1 2 false]}]
                          ;[{:direction :rtl}] 
@@ -53,25 +53,25 @@
 
 (defn quill-editor [id content]
   ;https://cljdoc.org/d/reagent/reagent/1.2.0/doc/tutorials/creating-reagent-components
-  (let [value* (atom (rdoms/render-to-string content))
-        quill* (atom nil)]
+  (let [!value (atom (rdoms/render-to-string content))
+        !quill (atom nil)]
     (r/create-class
      {:display-name "quill-editor" 
       
       :component-will-unmount
       (fn [_this]
-        (evts/new-content! id (-> @value* hp/html->clj not-empty-content)))
+        (evts/new-content! id (-> @!value hp/html->clj not-empty-content)))
       
       :reagent-render
       (fn [id content]
         ^{:key (str :editor id)} [:> ReactQuill {:theme :snow
                                                  :id id
-                                                 :value @value*
-                                                 :ref #(reset! quill* %)
-                                                 :modules (modules quill* id)
+                                                 :value @!value
+                                                 :ref #(reset! !quill %)
+                                                 :modules (modules !quill id)
                                                   ;:formats formats ;enable / disable:
                                                  :on-change (fn [v]
-                                                              (reset! value* v))}])})))
+                                                              (reset! !value v))}])})))
 
 (defn content-editor [{:keys [id content]}] 
   [ui/error-boundary ::quill-editor

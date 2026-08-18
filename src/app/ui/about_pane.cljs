@@ -29,7 +29,7 @@
     [ui/viewer-pane item
      {:body    (let [home "https://github.com/milelo/yetipad-app"]
                  [table [{:title "Home-page" :content [:a {:href home} home]}
-                         {:title "Version" :content @subs/app-version*}
+                         {:title "Version" :content @subs/!app-version}
                          {:title "Author" :content "Mike Longworth"}
                          ]])
       :buttons [ui/fullscreen-button]

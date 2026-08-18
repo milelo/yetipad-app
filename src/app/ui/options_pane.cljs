@@ -16,22 +16,22 @@
 
 (def log (log/logger 'app.ui.options-pane))
 
-(defn string-editor [{:keys [id value]} values*]
+(defn string-editor [{:keys [id value]} !values]
   [:> TextField {;:variant   :outlined
                  :size          :small
                  :margin        :dense
                  :default-value value
-                 :on-change     #(swap! values* assoc id (not-empty (.-target.value ^js %)))}])
+                 :on-change     #(swap! !values assoc id (not-empty (.-target.value ^js %)))}])
 
-(defn checkbox-editor [{:keys [id value]} values*]
+(defn checkbox-editor [{:keys [id value]} !values]
   [:> Checkbox {:color :primary
                 :default-checked value
-                :on-change #(swap! values* assoc id (.-target.checked ^js %))}])
+                :on-change #(swap! !values assoc id (.-target.checked ^js %))}])
 
 (defn checkbox-viewer [{:keys [value]}]
   (str (boolean value)))
 
-(defn combo-editor [options default {:keys [id value label]} values*]
+(defn combo-editor [options default {:keys [id value label]} !values]
   [:> Autocomplete {:options           (map name options)
                     :disable-clearable true
                     :style             {:width      300
@@ -53,15 +53,15 @@
                                          (let [value (keyword value)]
                                            (trace log :combo-on-change id value reason)
                                            (when (= reason "selectOption")
-                                             (swap! values* assoc id value))))
+                                             (swap! !values assoc id value))))
                     ;; :on-input-change   (fn [_e value reason]
                     ;;                      (trace log :on-input-change value reason)
-                    ;;                     ;(swap! values* assoc id (keyword value))
+                    ;;                     ;(swap! !values assoc id (keyword value))
                     ;;                      ) 
-                    ;; :input-value       (some-> (or (get @values* id) default) name)
+                    ;; :input-value       (some-> (or (get @!values id) default) name)
                     }])
 
-(defn table [title options editing? values*]
+(defn table [title options editing? !values]
   [:<>
    [:> Typography {:variant :h6} title]
    [:> TableContainer
@@ -72,28 +72,28 @@
                            [:> TableCell name]
                            [:> TableCell
                             (if (and editing? editor)
-                              [editor options values*]
+                              [editor options !values]
                               (if viewer
                                 [viewer options]
                                 value))]])]]]])
 
 (defn options-table [title options editing?]
-  (let [values* (r/atom {})]
+  (let [!values (r/atom {})]
     (r/create-class
      {:reagent-render         (fn [title options editing?]
-                                [table title options editing? values*])
+                                [table title options editing? !values])
       :component-will-unmount (fn [_this]
-                                (let [doc-options (select-keys @values* [:doc-title :doc-subtitle])
-                                      device-options (select-keys @values* [:sign-in-email :content-editor :sticky-editor-tags?])]
+                                (let [doc-options (select-keys @!values [:doc-title :doc-subtitle])
+                                      device-options (select-keys @!values [:sign-in-email :content-editor :sticky-editor-tags?])]
                                   (trace log 'device-options device-options)
                                   (events/doc-options! doc-options)
                                   (events/device-options! device-options)))})))
 
 (defn content [editing?]
-  (let [doc-options @subs/doc-options*
-        doc-id @subs/doc-id*
+  (let [doc-options @subs/!doc-options
+        doc-id @subs/!doc-id
         {:keys [file-id]} @(subs/file-index-entry doc-id)
-        email @subs/sign-in-email*]
+        email @subs/!sign-in-email]
     [:<>
      ;[options-table "Device options" [] editing?]
      [options-table "Document options" [{:id     :doc-title
@@ -117,14 +117,14 @@
                                        :editor string-editor}
                                       {:id    :content-editor
                                        :name  "Content Editor"
-                                       :value  @subs/content-editor*
+                                       :value  @subs/!content-editor
                                        :editor (partial combo-editor [:goog-editor
                                                                       :ck-editor
                                                                       :quill-editor]
                                                         :goog-editor)}
                                       {:id    :sticky-editor-tags?
                                        :name  "Sticky editor tag bar"
-                                       :value @subs/sticky-editor-tags?*
+                                       :value @subs/!sticky-editor-tags?
                                        :editor checkbox-editor
                                        :viewer checkbox-viewer}]
       editing?]]))

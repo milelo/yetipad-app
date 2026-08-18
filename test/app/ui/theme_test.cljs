@@ -24,7 +24,7 @@
 
 (deftest sticky-editor-tags-option-test
   (testing "the editor tag-bar setting defaults to enabled"
-    (is (true? @subs/sticky-editor-tags?*))))
+    (is (true? @subs/!sticky-editor-tags?))))
 
 (deftest sticky-editor-toolbar-markup-test
   (testing "editor toolbars share the below-pane-toolbar contract"

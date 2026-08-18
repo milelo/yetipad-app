@@ -4,10 +4,10 @@
    [lib.localstore :as localstore]))
 
 (deftest synchronous-data-round-trip-test
-  (let [values* (atom {})
+  (let [!values (atom {})
         previous-descriptor (.getOwnPropertyDescriptor js/Object js/globalThis "localStorage")
-        storage #js {:setItem (fn [k v] (swap! values* assoc k v))
-                     :getItem (fn [k] (get @values* k))}]
+        storage #js {:setItem (fn [k v] (swap! !values assoc k v))
+                     :getItem (fn [k] (get @!values k))}]
     (try
       (.defineProperty js/Object js/globalThis "localStorage"
                        #js {:value storage :configurable true})
@@ -24,10 +24,10 @@
           (js-delete js/globalThis "localStorage"))))))
 
 (deftest synchronous-session-data-round-trip-test
-  (let [values* (atom {})
+  (let [!values (atom {})
         previous-descriptor (.getOwnPropertyDescriptor js/Object js/globalThis "sessionStorage")
-        storage #js {:setItem (fn [k v] (swap! values* assoc k v))
-                     :getItem (fn [k] (get @values* k))}]
+        storage #js {:setItem (fn [k v] (swap! !values assoc k v))
+                     :getItem (fn [k] (get @!values k))}]
     (try
       (.defineProperty js/Object js/globalThis "sessionStorage"
                        #js {:value storage :configurable true})

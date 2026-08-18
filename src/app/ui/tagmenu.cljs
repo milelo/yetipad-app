@@ -13,15 +13,15 @@
 
 (def log (log/logger 'app.ui.tagmenu))
 
-(defonce selected-elements* (r/atom {}))
-(defonce context-menu* (r/atom nil))
-(defonce long-press-timer* (atom nil))
+(defonce !selected-elements (r/atom {}))
+(defonce !context-menu (r/atom nil))
+(defonce !long-press-timer (atom nil))
 
 (defn close-context-menu! []
-  (reset! context-menu* nil))
+  (reset! !context-menu nil))
 
 (defn open-tag! [id]
-  (reset! selected-elements* {})
+  (reset! !selected-elements {})
   (close-context-menu!)
   (events/open-tag-drawer! false)
   (events/open-item! id {:disable-toggle true}))
@@ -29,24 +29,24 @@
 (defn open-context-menu! [id e]
   (.preventDefault e)
   (.stopPropagation e)
-  (reset! context-menu* {:id       id
+  (reset! !context-menu {:id       id
                          :position {:top    (.-clientY e)
                                     :left   (.-clientX e)}}))
 
 (defn cancel-long-press! []
-  (when-let [timer @long-press-timer*]
+  (when-let [timer @!long-press-timer]
     (js/clearTimeout timer)
-    (reset! long-press-timer* nil)))
+    (reset! !long-press-timer nil)))
 
 (defn start-long-press! [id e]
   (.stopPropagation e)
   (cancel-long-press!)
   (let [touch (aget (.-touches e) 0)]
-    (reset! long-press-timer*
+    (reset! !long-press-timer
             (js/setTimeout
               (fn []
-                (reset! long-press-timer* nil)
-                (reset! context-menu* {:id       id
+                (reset! !long-press-timer nil)
+                (reset! !context-menu {:id       id
                                        :position {:top  (.-clientY touch)
                                                   :left (.-clientX touch)}}))
               500))))
@@ -62,7 +62,7 @@
                                                            (.stopPropagation e)
                                                            (if (= kind :tag)
                                                              (let [element (-> e.currentTarget.childNodes first)]
-                                                               (swap! selected-elements* update id #(if % false element)))
+                                                               (swap! !selected-elements update id #(if % false element)))
                                                              (open-tag! id)))
                                                :on-double-click (when (= kind :tag)
                                                                   #(open-tag! id))
@@ -88,7 +88,7 @@
                                                             [:> more-icon {:style {:font-size   14
                                                                                    :margin-left 4
                                                                                    }}])]
-                                   (when-let [selected-el (get @selected-elements* id)]
+                                   (when-let [selected-el (get @!selected-elements id)]
                                      [:> Popover {:open          true
                                                   :anchor-origin {:horizontal :right :vertical :center}
                                                   :anchorEl      selected-el
@@ -98,7 +98,7 @@
                                     ]])])
 
 (defn context-menu []
-  (when-let [{:keys [id position]} @context-menu*]
+  (when-let [{:keys [id position]} @!context-menu]
     [:> Menu {:open             true
               :on-close         close-context-menu!
               :anchor-reference :anchorPosition
@@ -110,7 +110,7 @@
   (.stopPropagation e))
 
 (defn tag-menu []
-  (let [root-tag-items @subs/root-tag-data*]
+  (let [root-tag-items @subs/!root-tag-data]
     (if root-tag-items
       [:div {:on-context-menu prevent-native-context-menu!}
        [tag-submenu nil root-tag-items nil]

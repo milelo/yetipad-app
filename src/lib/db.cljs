@@ -15,22 +15,22 @@
 
 (def log (log/logger 'lib.db))
 
-(defonce db* (r/atom {::db? true}))
+(defonce !db (r/atom {::db? true}))
 
 ;====================================operation queue============================================
 
-(defonce operation-tail* (operation-queue/create))
-(defonce local-operation-tail* (operation-queue/create))
-(defonce drive-operation-tail* (operation-queue/create))
+(defonce !operation-tail (operation-queue/create))
+(defonce !local-operation-tail (operation-queue/create))
+(defonce !drive-operation-tail (operation-queue/create))
 
 (defn- $enqueue-on!
-  [tail* queue-label label f]
+  [!tail queue-label label f]
   (assert (fn? f))
   (-> (operation-queue/enqueue!
-       tail*
+       !tail
        (fn []
          (trace log 'operation-started queue-label label)
-         (p/let [value (f @db*)]
+         (p/let [value (f @!db)]
            (trace log 'operation-complete queue-label label)
            value)))
       (p/catch (fn [e]
@@ -42,26 +42,26 @@
   latest db value when it starts and may return a value or a Promise. A failure
   rejects only the returned operation Promise; the shared queue remains usable."
   [label f]
-  ($enqueue-on! operation-tail* :document label f))
+  ($enqueue-on! !operation-tail :document label f))
 
 (defn $enqueue-local!
   "Serializes localForage work independently from document commands and Drive."
   [label f]
-  ($enqueue-on! local-operation-tail* :local label f))
+  ($enqueue-on! !local-operation-tail :local label f))
 
 (defn $enqueue-drive!
   "Serializes Drive requests independently from document commands and local persistence."
   [label f]
-  ($enqueue-on! drive-operation-tail* :drive label f))
+  ($enqueue-on! !drive-operation-tail :drive label f))
 
 (defn $queue-idle []
-  (operation-queue/idle operation-tail*))
+  (operation-queue/idle !operation-tail))
 
 (defn $local-queue-idle []
-  (operation-queue/idle local-operation-tail*))
+  (operation-queue/idle !local-operation-tail))
 
 (defn $drive-queue-idle []
-  (operation-queue/idle drive-operation-tail*))
+  (operation-queue/idle !drive-operation-tail))
 
 ;====================================operation queue============================================
 
@@ -74,8 +74,8 @@
          _  (if label
               (trace log 'update-db! label)
               (stack log 'update-db!))
-         old-db @db*
-         new-db (swap! db* (fn [db]
+         old-db @!db
+         new-db (swap! !db (fn [db]
                              (let [new-db (f db)]
                                (cond
                                  (nil? new-db) db
@@ -93,17 +93,17 @@
    cachefn: fn [ipfn-op] Generates cached cachefn-op, updated on ipfn-op change. Caches are memoized against args."
   ([ipfn cachefn]
    ;cache is map of instance-args vs cache-entry - {:input cache-inputs :cached cached-value}
-   (let [cache* (clojure.core/atom {})]
+   (let [!cache (clojure.core/atom {})]
      (r/track
       #(let [updater (fn [cache-entry];{:input input :cached cached-value}
-                       (let [cache-fn-args (ipfn @db*)]
+                       (let [cache-fn-args (ipfn @!db)]
                          (if (and cache-entry (= (:input cache-entry) cache-fn-args))
                            cache-entry
                            (assoc cache-entry :cached (cachefn cache-fn-args) :input cache-fn-args))))]
-         (get (swap! cache* updater) :cached)))))
+         (get (swap! !cache updater) :cached)))))
   ([ipfn]
    (r/track
-    #(ipfn @db*))))
+    #(ipfn @!db))))
 
 (defn atomfn
   "Returns: fn [& instance-args] that generates a potentially cacheable deref-able var that behaves as reagent atom.
@@ -111,21 +111,21 @@
    cachefn: fn [ipfn-op] Generates cached cachefn-op, updated on ipfn-op change. Caches are memoized against args."
   ([ipfn cachefn]
    ;cache is map of instance-args vs cache-entry - {:input cache-inputs :cached cached-value}
-   (let [cache* (clojure.core/atom {})]
+   (let [!cache (clojure.core/atom {})]
      (partial r/track
               (fn [& instance-args]
                 (let [updater (fn [cache-entry];{:input input :cached cached-value}
-                                (let [cache-fn-args (apply ipfn @db* instance-args)]
+                                (let [cache-fn-args (apply ipfn @!db instance-args)]
                                   (if (and cache-entry (= (:input cache-entry) cache-fn-args))
                                     cache-entry
                                     (assoc cache-entry :cached (apply cachefn cache-fn-args instance-args) :input cache-fn-args))))]
-                  (get-in (swap! cache* update instance-args updater) [instance-args :cached]))))))
+                  (get-in (swap! !cache update instance-args updater) [instance-args :cached]))))))
   ([ipfn]
    (partial r/track
             (fn [& instance-args]
-              (apply ipfn @db* instance-args)))))
+              (apply ipfn @!db instance-args)))))
 
 (comment
-  (pprint @db*)
-  (keys @db*)
-  (pprint (dissoc @db* :doc :logger-config :doc-file-index :platform)))
+  (pprint @!db)
+  (keys @!db)
+  (pprint (dissoc @!db :doc :logger-config :doc-file-index :platform)))

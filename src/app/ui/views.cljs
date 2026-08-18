@@ -62,7 +62,7 @@
 (def log (log/logger 'app.ui.views))
 
 (defn on-before-unload [e]
-  (when-not @subs/can-reload?*
+  (when-not @subs/!can-reload?
     ;modern browsers ignore message
     (let [m "Allow reload? Changes will be lost."]
       (set! (.-returnValue e) m)
@@ -128,23 +128,23 @@
                        :style                    {:min-height 0
                                                    :margin     "0 4px"}}]]]))
 
-(defonce search-value* (r/atom ""))
-(defonce debounced-search-value* (r/atom ""))
-(defonce search-timer* (atom nil))
+(defonce !search-value (r/atom ""))
+(defonce !debounced-search-value (r/atom ""))
+(defonce !search-timer (atom nil))
 (def search-debounce-ms 400)
 
 (defn set-search-value! [value]
-  (reset! search-value* value)
-  (search/debounce! search-timer* search-debounce-ms
-                    #(reset! debounced-search-value* value)))
+  (reset! !search-value value)
+  (search/debounce! !search-timer search-debounce-ms
+                    #(reset! !debounced-search-value value)))
 
-(defonce selected-doc-id* (r/atom nil))
-(defonce delete-confirmation* (r/atom nil))
-(defonce upload-input* (r/atom nil))
-;(add-watch search-value* :search-watch (fn [_ v] (println v)))
+(defonce !selected-doc-id (r/atom nil))
+(defonce !delete-confirmation (r/atom nil))
+(defonce !upload-input (r/atom nil))
+;(add-watch !search-value :search-watch (fn [_ v] (println v)))
 
 (defn history-index-pane []
-  (let [items-by-history @(subs/items-by-history-filtered @debounced-search-value*)
+  (let [items-by-history @(subs/items-by-history-filtered @!debounced-search-value)
         date-item (fn [text]
                      [:> ListItem {:style {:padding "0 4px"}}
                      [:> ListItemText {:primary                  text
@@ -160,22 +160,22 @@
                           [index-list-item (reg/rget kind :icon) id title kind content #(events/open-item! id)]])]))
 
 (defn title-index-pane []
-  (let [items-filtered @(subs/items-by-title-filtered @debounced-search-value*)]
+  (let [items-filtered @(subs/items-by-title-filtered @!debounced-search-value)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [id title kind content]} items-filtered]
               ^{:key id} [index-list-item (reg/rget kind :icon) id title kind content #(events/open-item! id)])]))
 
 (defn doc-list-pane []
-  (let [docs @subs/doc-list*
-        selected-doc-id (or @selected-doc-id* @subs/doc-id*)]
+  (let [docs @subs/!doc-list
+        selected-doc-id (or @!selected-doc-id @subs/!doc-id)]
     [:> List (theme ::theme/index-list)
      (for-all [{:keys [doc-id title subtitle file-id file-name file-description status]} docs]
               ^{:key doc-id} [:> ListItem {:disable-padding true}
                               [:> ListItemButton {:style    {:padding "0 4px"}
                                                   :selected (= selected-doc-id doc-id)
                                                   :on-click (fn []
-                                                       (reset! selected-doc-id* doc-id)
-                                                       (if @subs/moving-items?*
+                                                       (reset! !selected-doc-id doc-id)
+                                                       (if @subs/!moving-items?
                                                   ;source and target must be different
                                                          (when (not= selected-doc-id doc-id)
                                                            (events/move-items!! doc-id))
@@ -192,23 +192,23 @@
    [:> icon (theme ::theme/small-icon)]])
 
 (defn doc-index-toolbar []
-  (let [docs @subs/doc-list*
-        selected-doc-id (or @selected-doc-id* @subs/doc-id*)
+  (let [docs @subs/!doc-list
+        selected-doc-id (or @!selected-doc-id @subs/!doc-id)
         selected-doc (some #(when (= selected-doc-id (:doc-id %)) %) docs)]
     [:<>
      [:div {:style {:display        :flex
                     :flex-direction :row}}
       [doc-index-tool new-note-icon "New document" events/new-document!]
       [doc-index-tool delete-document-icon "Delete document"
-       #(when selected-doc (reset! delete-confirmation* selected-doc))]
+       #(when selected-doc (reset! !delete-confirmation selected-doc))]
       [:input {:accept ".edn,.odn" :style {:display :none} :multiple false :type "file"
-               :ref #(reset! upload-input* %) :on-change got-file}]
+               :ref #(reset! !upload-input %) :on-change got-file}]
       [doc-index-tool open-file-icon "Open file"
-       #(when-let [input @upload-input*] (.click input))]
+       #(when-let [input @!upload-input] (.click input))]
       [doc-index-tool move-items-icon "start move open items..." events/toggle-start-move-items!
-       {:selected @subs/moving-items?*}]]
-     (when-let [{:keys [doc-id title file-name]} @delete-confirmation*]
-       [:> Dialog {:open true :on-close #(reset! delete-confirmation* nil)
+       {:selected @subs/!moving-items?}]]
+     (when-let [{:keys [doc-id title file-name]} @!delete-confirmation]
+       [:> Dialog {:open true :on-close #(reset! !delete-confirmation nil)
                    :aria-labelledby "delete-document-title"
                    :aria-describedby "delete-document-description"}
         [:> DialogTitle {:id "delete-document-title"} "Delete document?"]
@@ -216,11 +216,11 @@
          [:> DialogContentText {:id "delete-document-description"}
           (str "Delete “" (or title file-name doc-id) "”? The associated file will be moved to trash.")]]
         [:> DialogActions
-         [:> Button {:on-click #(reset! delete-confirmation* nil)} "Cancel"]
+         [:> Button {:on-click #(reset! !delete-confirmation nil)} "Cancel"]
          [:> Button {:color :error :auto-focus true
                      :on-click (fn []
-                                 (reset! delete-confirmation* nil)
-                                 (reset! selected-doc-id* nil)
+                                 (reset! !delete-confirmation nil)
+                                 (reset! !selected-doc-id nil)
                                  (events/delete-doc!! {:doc-id doc-id}))}
           "Delete"]]])]))
 
@@ -232,7 +232,7 @@
 (defn search-input []
   [:<>
    [:> InputBase {:placeholder "search..."
-                  :value       @search-value*
+                  :value       @!search-value
                   :on-change   (fn [e]
                                  (set-search-value!
                                   (str/lower-case (-> e .-target .-value))))}]
@@ -254,7 +254,7 @@
      [:> ListItemText {:primary text}]]]))
 
 (defn index-pane []
-  (let [index-view @subs/index-view*
+  (let [index-view @subs/!index-view
         tab (fn [id label]
               [:> Tab {:label    label
                        :on-click #(events/select-index-view! id)
@@ -285,7 +285,7 @@
        :index-title [title-index-pane]
        :index-docs [doc-index-pane])]))
 
-(defonce item-refs* (r/atom {}))
+(defonce !item-refs (r/atom {}))
 
 (defn- open-item-ids [items]
   (mapv :id items))
@@ -306,34 +306,34 @@
   (when item-id
     (js/requestAnimationFrame
      (fn []
-       (when-let [item (get @item-refs* item-id)]
+       (when-let [item (get @!item-refs item-id)]
          (.scrollIntoView item #js {:behavior "smooth"
                                      :block "nearest"}))))))
 
 (defn items-pane []
-  (let [previous-item-ids* (r/atom nil)]
+  (let [!previous-item-ids (r/atom nil)]
     (r/create-class
      {:display-name "items-pane"
       :component-did-mount
       (fn [_this]
-        (reset! previous-item-ids* (open-item-ids @subs/open-items-with-trash*)))
+        (reset! !previous-item-ids (open-item-ids @subs/!open-items-with-trash)))
       :component-did-update
       (fn [_this _old-argv]
-        (let [new-items @subs/open-items-with-trash*
+        (let [new-items @subs/!open-items-with-trash
               new-ids (open-item-ids new-items)
-              target-id (item-to-scroll (or @previous-item-ids* []) new-ids)]
-          (reset! previous-item-ids* new-ids)
+              target-id (item-to-scroll (or @!previous-item-ids []) new-ids)]
+          (reset! !previous-item-ids new-ids)
           (scroll-item-into-view! target-id)))
       :reagent-render
       (fn []
         [:<>
          [:> Paper (theme ::theme/items)
-          (for [{:keys [id kind] :as item} @subs/open-items-with-trash*]
+          (for [{:keys [id kind] :as item} @subs/!open-items-with-trash]
             ^{:key id}
             [:div {:ref (fn [node]
                           (if node
-                            (swap! item-refs* assoc id node)
-                            (swap! item-refs* dissoc id)))}
+                            (swap! !item-refs assoc id node)
+                            (swap! !item-refs dissoc id)))}
              [(reg/rget kind :pane) {:item item}]])]
          [ui/trash-confirmation-dialog]
          [ui/cancel-edit-confirmation-dialog]])})))
@@ -344,11 +344,11 @@
 
 (defn tag-drawer []
   ;left side drawer
-  (let [sync-status @subs/sync-status*
-        signed-in? @subs/signed-in?*
+  (let [sync-status @subs/!sync-status
+        signed-in? @subs/!signed-in?
         show-close-main-menu false]
     [:> Drawer
-     {:open     @subs/main-menu-open*
+     {:open     @subs/!main-menu-open
       :on-close #(events/open-tag-drawer! false)}
      (when show-close-main-menu
        [:div {:style {:display        :flex
@@ -373,7 +373,7 @@
       [static-pane-list-item :about]
       [static-pane-list-item :log]
       ;[menu-list-item refresh-icon "Reload" #(js/window.location.reload true)]
-      [:> ListItem [:> ListItemText {:primary (str "Version: " @subs/app-version*)}]]
+      [:> ListItem [:> ListItemText {:primary (str "Version: " @subs/!app-version)}]]
       (when config/debug?
         [:<>
          [:> Divider]
@@ -387,7 +387,7 @@
          [menu-list-item nil "Update doc index pane" events/sync-doc-index!!]
          [menu-list-item nil "Dump index" events/dump-index]
          [menu-list-item nil "Delete doc - keep file" #(events/delete-doc!! {:keep-file true})]
-         [menu-list-item nil "Dump tag-map" #(pprint @subs/tag-map*)]
+         [menu-list-item nil "Dump tag-map" #(pprint @subs/!tag-map)]
          [menu-list-item nil "rename-file" events/debug-rename-file!!]
          [menu-list-item nil "find-file" events/debug-find-file]
          [menu-list-item nil "Trash file" events/debug-trash-file]
@@ -402,7 +402,7 @@
 (defn index-drawer []
   (let [show-close-index-menu false]
     [:> Drawer
-     {:open     @subs/index-menu-open*
+     {:open     @subs/!index-menu-open
       :anchor   :right
       :on-close #(events/open-index-drawer! false)}
      [:div {:style {:position :relative
@@ -421,12 +421,12 @@
       [index-pane]]]))
 
 (defn set-tab-title []
-  (let [doc-title @subs/doc-title*]
+  (let [doc-title @subs/!doc-title]
     (set! (.-title js/document) doc-title)
     nil))
 
 (defn local-file-dialog-pane []
-  [:> Dialog {:open (boolean @subs/local-file-dialog*)
+  [:> Dialog {:open (boolean @subs/!local-file-dialog)
                 ;:on-close #()
               }
    [:> DialogTitle "Open file dialog"]
@@ -436,8 +436,8 @@
 
 (defn app-root []
   (let [page-item false
-        app-status @subs/app-status*
-        sync-status @subs/sync-status*]
+        app-status @subs/!app-status
+        sync-status @subs/!sync-status]
     ;(debug log (->  base-theme js->clj :root))
     [ui/error-boundary ::app-route
      [:link {:rel "stylesheet" :href "/goog.css"}]
@@ -462,13 +462,13 @@
                               :color    :inherit
                               :style    menu-btn-style
                               :on-click #(events/open-tag-drawer! true)} [:> tree-menu-icon]])
-            [:> Tooltip {:title (or @subs/doc-subtitle* "")}
+            [:> Tooltip {:title (or @subs/!doc-subtitle "")}
              [:> Typography {:variant :h6
                              :color   :inherit
                              :style   {:flex        1
                                        :line-height :normal
                                      ;;:font-weight :bold
-                                       }}@subs/doc-title*]]
+                                       }}@subs/!doc-title]]
             [:> Tooltip
              {:title (case sync-status
                        :offline "Offline — Drive will reconnect when the network returns"

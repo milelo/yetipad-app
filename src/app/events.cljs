@@ -32,7 +32,7 @@
 (defn- run-now! [label f]
   (try
     (trace log 'start label)
-    (f @db/db*)
+    (f @db/!db)
     (catch :default e
       (error log label e))))
 
@@ -50,7 +50,7 @@
 
 (info log 'platform \newline (pprintl platform))
 
-(add-watch drive/online-status* ::status-watch
+(add-watch drive/!online-status ::status-watch
            (fn [k r {old-online? :online? old-status :status} {:keys [online? status]}]
              (when (or (not= old-online? online?) (not= old-status status))
                (update-db! ::status-watch
@@ -186,7 +186,7 @@
 (defn persist-active-session!
   "Persist the current document selection immediately for app relaunch."
   []
-  (let [{:keys [doc open-items]} @db/db*
+  (let [{:keys [doc open-items]} @db/!db
         doc-id (:doc-id doc)]
     (when (string? doc-id)
       (store/$write-active-session
@@ -227,7 +227,7 @@
            ;Write persistent data to this device
              (store/$write-persist-device persist-device))))))))
 
-(add-watch db/db* :db-monitor (fn [k r o n]
+(add-watch db/!db :db-monitor (fn [k r o n]
                                 (when (not= o n)
                                   #_(when-not (= (:sync-status o) (:sync-status n))
                                       (stack log "sync-status:" {:old (:sync-status o) :new (:sync-status n)}))
@@ -252,12 +252,12 @@
 
 (declare new-local-doc!)
 
-(defonce init-status* (atom {}))
+(defonce !init-status (atom {}))
 
 (defn init-once [id f]
-  (when-not (get init-status* id)
+  (when-not (get !init-status id)
     (let [r (f)]
-      (swap! init-status* assoc id true)
+      (swap! !init-status assoc id true)
       r)))
 
 (declare read-doc-by-id!!)
@@ -308,7 +308,7 @@
         doc-index)
       (p/catch (fn [e]
                  (warn log 'sync-doc-index-unavailable e)
-                 (:doc-file-index @db/db*)))))
+                 (:doc-file-index @db/!db)))))
 
 (declare request-drive-sync!)
 
@@ -343,7 +343,7 @@
   (db/$enqueue-drive! 'sync-doc-index! (fn [_] ($sync-doc-index))))
 
 (comment
-  (:sync-status @db/db*))
+  (:sync-status @db/!db))
 
 (defn- update-active-doc!
   "Replace the active document from within a serialized document operation."
@@ -370,16 +370,16 @@
     :resolve-conflicts :syncing}
    drive-sync-status))
 
-(defonce drive-sync-coordinator* (atom {:running? false :pending nil}))
-(defonce reconnect-attempt* (atom 0))
+(defonce !drive-sync-coordinator (atom {:running? false :pending nil}))
+(defonce !reconnect-attempt (atom 0))
 
 (defn- current-reconnect-attempt? [attempt]
-  (= attempt @reconnect-attempt*))
+  (= attempt @!reconnect-attempt))
 
 (defn- request-latest-drive-rerun! []
-  (let [snapshot (document-snapshot @db/db*)]
+  (let [snapshot (document-snapshot @db/!db)]
     (when (:doc-id snapshot)
-      (swap! drive-sync-coordinator* assoc :pending snapshot))))
+      (swap! !drive-sync-coordinator assoc :pending snapshot))))
 
 (defn- $commit-drive-candidate!
   [snapshot sync-plan candidate status-message]
@@ -419,7 +419,7 @@
               latest? (db/$enqueue-local! 'record-drive-upload
                                            (fn [_]
                                              (store/$record-drive-upload (:doc snapshot) file-data)))]
-        (if (and latest? (snapshot-current? @db/db* snapshot))
+        (if (and latest? (snapshot-current? @db/!db snapshot))
           (do (set-app-status! "Drive updated" :info) snapshot)
           (do (request-latest-drive-rerun!) nil)))
 
@@ -440,21 +440,21 @@
 (declare start-drive-sync!)
 
 (defn- finish-drive-sync! [completed-snapshot attempt]
-  (let [next* (atom nil)]
-    (swap! drive-sync-coordinator*
+  (let [!next (atom nil)]
+    (swap! !drive-sync-coordinator
            (fn [{:keys [pending] :as state}]
              (if pending
-               (do (reset! next* pending) (assoc state :pending nil))
+               (do (reset! !next pending) (assoc state :pending nil))
                (assoc state :running? false))))
-    (if-let [next-snapshot @next*]
+    (if-let [next-snapshot @!next]
       (start-drive-sync! next-snapshot)
       (when (and completed-snapshot
                  (current-reconnect-attempt? attempt)
-                 (snapshot-current? @db/db* completed-snapshot))
+                 (snapshot-current? @db/!db completed-snapshot))
         (set-sync-status! :synced)))))
 
 (defn- start-drive-sync! [snapshot]
-  (let [attempt @reconnect-attempt*]
+  (let [attempt @!reconnect-attempt]
     (when (current-reconnect-attempt? attempt)
       (set-sync-status! :syncing))
     (-> (db/$enqueue-drive! 'drive-document-sync
@@ -484,7 +484,7 @@
               (not= (drive/get-status) ::drive/initialising)
               (drive/allow-drive-request?))
      (let [start? (atom false)]
-       (swap! drive-sync-coordinator*
+       (swap! !drive-sync-coordinator
               (fn [{:keys [running?] :as state}]
                 (if running?
                   (assoc state :pending snapshot)
@@ -495,13 +495,13 @@
 (drive/set-late-settlement-listener!
  (fn []
    (when (drive/allow-drive-request?)
-     (request-drive-sync! (document-snapshot @db/db*) ::late-drive-settlement))))
+     (request-drive-sync! (document-snapshot @db/!db) ::late-drive-settlement))))
 
 (defn $sync-drive-file [local-doc-or-id {:keys [src]}]
   (let [snapshot (if (map? local-doc-or-id)
-                   (assoc (document-snapshot @db/db*) :doc local-doc-or-id
+                   (assoc (document-snapshot @db/!db) :doc local-doc-or-id
                           :doc-id (:doc-id local-doc-or-id))
-                   (document-snapshot @db/db*))]
+                   (document-snapshot @db/!db))]
     (request-drive-sync! snapshot src)
     (p/resolved snapshot)))
 
@@ -526,7 +526,7 @@
          open-items (if explicit-open-items?
                       (:open-items options)
                       (cached-open-items doc-id))]
-     (if (= doc-id (get-in @db/db* [:doc-load :doc-id]))
+     (if (= doc-id (get-in @db/!db [:doc-load :doc-id]))
        (trace log 'document-load-already-pending doc-id)
        (let [token (utils/simple-uuid)]
        (update-db! 'request-doc-load
@@ -550,7 +550,7 @@
                                             #(assoc %
                                                     :doc-load nil
                                                     :open-items (verified-open-items app-doc open-items)))
-                                (document-snapshot @db/db*))
+                                (document-snapshot @db/!db))
 
                               :else
                               (let [loaded-db (-> current-db
@@ -582,7 +582,7 @@
                                  (install-document {:doc-id (utils/simple-uuid)} nil nil)))))))
 
 (defn delete-doc!! [{:keys [doc-id] :as options}]
-  (let [current-doc-id (get-in @db/db* [:doc :doc-id])
+  (let [current-doc-id (get-in @db/!db [:doc :doc-id])
         doc-id (or doc-id current-doc-id)]
     (when (string? doc-id)
       (-> (db/$enqueue-drive! 'delete-doc!!
@@ -591,7 +591,7 @@
                                   (store/$delete-doc doc-id options)
                                   ($sync-doc-index))))
           (p/then (fn [_]
-                    (when (= doc-id (get-in @db/db* [:doc :doc-id]))
+                    (when (= doc-id (get-in @db/!db [:doc :doc-id]))
                       ($enqueue! 'new-local-doc-after-delete
                                  (fn [db]
                                    (update-db! 'new-local-doc-after-delete
@@ -600,7 +600,7 @@
                                                      (install-document {:doc-id (utils/simple-uuid)} nil nil)))))))))))))
 
 (defn sync-doc!! []
-  (let [snapshot (document-snapshot @db/db*)]
+  (let [snapshot (document-snapshot @db/!db)]
     (when (:doc-id snapshot)
       (-> (db/$enqueue-local! 'check-local-document
                               (fn [_] (store/$sync<-localstore (:doc snapshot))))
@@ -610,7 +610,7 @@
                                  (fn [current-db]
                                    (when (snapshot-current? current-db snapshot)
                                      (update-active-doc! doc "Updated from Localstore")
-                                     (request-drive-sync! (document-snapshot @db/db*) ::sync-local))))
+                                     (request-drive-sync! (document-snapshot @db/!db) ::sync-local))))
                       (request-drive-sync! snapshot ::sync-local))))
           (p/catch (fn [e]
                      (set-app-status! e :error)
@@ -620,7 +620,7 @@
   "Ensures Drive readiness before syncing. Startup/focus may automatically
   request a token; only a user action retries an authorization failure."
   [{:keys [authorization src]}]
-  (let [attempt (swap! reconnect-attempt* inc)]
+  (let [attempt (swap! !reconnect-attempt inc)]
     (trace log 'reconnect-and-sync src authorization attempt)
     (set-sync-status! :connecting)
     (-> (drive/$ensure-drive-access! {:authorization authorization})
@@ -656,7 +656,7 @@
   (if online?
     (reconnect-and-sync!! {:authorization :automatic :src ::browser-online})
     (do
-      (swap! reconnect-attempt* inc)
+      (swap! !reconnect-attempt inc)
       (set-sync-status! :offline))))
 
 (defn sync-status-clicked! []

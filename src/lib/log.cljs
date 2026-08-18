@@ -12,17 +12,17 @@
                           :buffer-enable?  nil              ;default to true - trace to buffer
                           })
 
-(defonce ref-time* (atom (js/Date.now)))
-(defonce loggers* (atom {}))
-(defonce config* (atom base-default-config))
+(defonce !ref-time (atom (js/Date.now)))
+(defonce !loggers (atom {}))
+(defonce !config (atom base-default-config))
 
 (defn default-config []
   (into base-default-config (keep (fn [[k v]] (when (and (symbol? k) v)
-                                                [k nil])) @config*)))
+                                                [k nil])) @!config)))
 
 (def localstore-key "logger-config")
 
-(add-watch config* ::logger-config (fn [_k _r o n]
+(add-watch !config ::logger-config (fn [_k _r o n]
                                      (when (not= o n)
                                        (-> (.setItem local-forage localstore-key
                                                      (pr-str (into {} (filter second n)))
@@ -82,7 +82,7 @@
                         :time    time
                         :level   level} data)))
 
-(defn- configure-logger! [logger* package level {:keys [console-enable? buffer-enable?]}]
+(defn- configure-logger! [!logger package level {:keys [console-enable? buffer-enable?]}]
   (let [console-enable? (or console-enable? true)
         buffer-enable? (or buffer-enable? true)
         level-tracers (fn [level method]
@@ -95,7 +95,7 @@
                  :warn  (level-tracers :warn (.-warn js/console))
                  :error (level-tracers :error (.-error js/console))
                  :fatal (level-tracers :fatal (.-error js/console))}]
-    (reset! logger* (case level
+    (reset! !logger (case level
                       :trace tracers
                       :debug (dissoc tracers :trace)
                       :info (dissoc tracers :stack :trace :debug)
@@ -105,14 +105,14 @@
 
 (defn- reconfigure-loggers! [config]
   (doseq [[option level] config]
-    (when-let [logger* (get @loggers* option)]
+    (when-let [!logger (get @!loggers option)]
       ;(js/console.log ::set-config! package level)
-      (configure-logger! logger* option (or level (:default-level config)) config))))
+      (configure-logger! !logger option (or level (:default-level config)) config))))
 
 (-> (.getItem local-forage localstore-key (fn [err v] (if err
                                                         (js/console.error err)
                                                         (let [config-changes (read-string v)
-                                                              config (swap! config* merge config-changes)]
+                                                              config (swap! !config merge config-changes)]
                                                           (js/console.info (str ::localstore-init-log) (pr-str config-changes))
                                                           (reconfigure-loggers! config)))))
     (.catch (fn [err]
@@ -122,32 +122,32 @@
               (js/console.warn "Logger configuration storage unavailable" err))))
 
 (defn set-config! [config-changes]
-  (let [config (swap! config* merge (into {} (for [[package level :as e] config-changes]
+  (let [config (swap! !config merge (into {} (for [[package level :as e] config-changes]
                                                (if (= level :default)
                                                  [package nil]
                                                  e))))]
     (reconfigure-loggers! config)))
 
 (defn logger [package]
-  (let [logger* (atom {})
-        [_ package-config :as entry] (find @config* package)
-        package-config (or package-config (get @config* :default-level))]
-    (swap! loggers* assoc package logger*)
+  (let [!logger (atom {})
+        [_ package-config :as entry] (find @!config package)
+        package-config (or package-config (get @!config :default-level))]
+    (swap! !loggers assoc package !logger)
     (when-not entry
       ;ensure package is registered
-      (swap! config* assoc package nil))
-    (configure-logger! logger* package package-config @config*)
-    logger*))
+      (swap! !config assoc package nil))
+    (configure-logger! !logger package package-config @!config)
+    !logger))
 
-(defn- trace! [logger* level data]
-  (let [[l1 l2] (get @logger* level)
-        time (when (or l1 l2) (- (js/Date.now) @ref-time*))]
+(defn- trace! [!logger level data]
+  (let [[l1 l2] (get @!logger level)
+        time (when (or l1 l2) (- (js/Date.now) @!ref-time))]
     (when l1 (l1 time data))
     (when l2 (l2 time data))))
 
-(defn trace [logger* & args] ((partial trace! logger* :trace) {:args args}))
-(defn debug [logger* & args] ((partial trace! logger* :debug) {:args args}))
-(defn info [logger* & args] ((partial trace! logger* :info) {:args args}))
-(defn warn [logger* & args] ((partial trace! logger* :warn) {:args args}))
-(defn error [logger* & args] ((partial trace! logger* :error) {:args args}))
-(defn fatal [logger* & args] ((partial trace! logger* :fatal) {:args args}))
+(defn trace [!logger & args] ((partial trace! !logger :trace) {:args args}))
+(defn debug [!logger & args] ((partial trace! !logger :debug) {:args args}))
+(defn info [!logger & args] ((partial trace! !logger :info) {:args args}))
+(defn warn [!logger & args] ((partial trace! !logger :warn) {:args args}))
+(defn error [!logger & args] ((partial trace! !logger :error) {:args args}))
+(defn fatal [!logger & args] ((partial trace! !logger :fatal) {:args args}))

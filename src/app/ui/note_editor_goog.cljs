@@ -39,7 +39,7 @@
   (let [
         toolbar-id (str id :toolbar)
         editor-id (str id :edit-pane)
-        editor* (atom nil)
+        !editor (atom nil)
         ]
     ;Doesn't re-render when title is edited so inner render function not required.
     [:div.content-editor
@@ -48,18 +48,18 @@
                  {:component-did-mount
                   (fn [_this]
                     (let [editor (create-editor toolbar-id editor-id editor-buttons-standard)]
-                      (reset! editor* editor)
+                      (reset! !editor editor)
                       ;(.focus (rdom/dom-node this))
                       ))
                   :component-will-unmount
                   (fn [_this]
-                    (let [{:keys [dispose field reposition float-enable]} @editor*
+                    (let [{:keys [dispose field reposition float-enable]} @!editor
                           content (parse-content field)
                           ]
                       ;(debug log "writing content: ")
                       ;(pprint content)
                       (evts/new-content! id content)
                       (dispose)
-                      (reset! editor* nil)
+                      (reset! !editor nil)
                       ))
                   })]]))

@@ -7,7 +7,7 @@
 
 (def log (log/logger 'app.ui.registry))
 
-(def registry* (atom {}))
+(def !registry (atom {}))
 
 (def defaults {:icon             no-kind-icon
                :index-sort-order 100
@@ -15,13 +15,13 @@
 
 (defn register [{:keys [kind id] :as data}]
   (assert (and (or id kind) (not (and id kind))))
-  (swap! registry* assoc (or id kind) data))
+  (swap! !registry assoc (or id kind) data))
 
 (defn rget
   ([kind]
-   (merge defaults (get @registry* kind)))
+   (merge defaults (get @!registry kind)))
   ([kind k & [default]]
-   (get-in @registry* [kind k] (or default (get defaults k)))))
+   (get-in @!registry [kind k] (or default (get defaults k)))))
 
 (defn singleton-ids []
-  (keep :id (vals @registry*)))
+  (keep :id (vals @!registry)))

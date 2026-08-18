@@ -16,33 +16,33 @@
 (defn- js->cljs [js]
   (js->clj js :keywordize-keys true))
 
-(defn tag-chip-edit [tag-ids* new-tags* id {:keys [title new-tag?]}]
+(defn tag-chip-edit [!tag-ids !new-tags id {:keys [title new-tag?]}]
   [:> Tooltip {:title "remove tag"}
    [:> Chip {:label    (if new-tag? title @(subs/tag-path-str id))
              :size     :small
              :clickable false ;hack: avoid mui bug with 'true'
              :color    (if new-tag? :secondary :primary)
              :on-click #(if new-tag?
-                          (swap! new-tags* dissoc id)
-                          (swap! tag-ids* disj id))}]])
+                          (swap! !new-tags dissoc id)
+                          (swap! !tag-ids disj id))}]])
 
-(defn- tag-chips [tag-ids* new-tags*]
-  (let [tag-data-map @subs/tag-data-map*]
+(defn- tag-chips [!tag-ids !new-tags]
+  (let [tag-data-map @subs/!tag-data-map]
     [:div
-     (for-all [[id tag] (merge (select-keys tag-data-map @tag-ids*) @new-tags*)]
-       ^{:key (str id :tag)} [tag-chip-edit tag-ids* new-tags* id tag]
+     (for-all [[id tag] (merge (select-keys tag-data-map @!tag-ids) @!new-tags)]
+       ^{:key (str id :tag)} [tag-chip-edit !tag-ids !new-tags id tag]
        )]))
 
-(defn- tagger [id tag-ids* new-tags*]
-  (let [value* (r/atom "")]
+(defn- tagger [id !tag-ids !new-tags]
+  (let [!value (r/atom "")]
     (fn [id]
-      (let [tag-data @subs/tag-data*
-            tag-data-map @subs/tag-data-map*
+      (let [tag-data @subs/!tag-data
+            tag-data-map @subs/!tag-data-map
             ]
-        (when-not @tag-ids*
-          (reset! tag-ids* (into #{} (filter tag-data-map (:tags @(subs/doc-item id))))))
+        (when-not @!tag-ids
+          (reset! !tag-ids (into #{} (filter tag-data-map (:tags @(subs/doc-item id))))))
         [:<>
-         [tag-chips tag-ids* new-tags*]
+         [tag-chips !tag-ids !new-tags]
          [:> Autocomplete {:options          (clj->js tag-data)
                            :free-solo        true
                            :get-option-label #(or (:path-str (js->cljs %)) "")
@@ -64,19 +64,19 @@
                            :on-input-change  (fn [_e value reason]
                                                (trace log :on-input-change :reason reason)
                                                (when (and (#{"input" "clear"} reason) (-> value (str/includes? \/) not))
-                                                 (reset! value* value)
+                                                 (reset! !value value)
                                                  ))
                            :on-change        (fn [_e value reason]
                                                (trace log :on-change :reason reason)
                                                (when (= reason "selectOption")
-                                                 (swap! tag-ids* conj (-> value js->cljs :id))
-                                                 (reset! value* "")
+                                                 (swap! !tag-ids conj (-> value js->cljs :id))
+                                                 (reset! !value "")
                                                  )
                                                (when (= reason "createOption")
-                                                 (swap! new-tags* assoc value {:title value :new-tag? true})
-                                                 (reset! value* "")
+                                                 (swap! !new-tags assoc value {:title value :new-tag? true})
+                                                 (reset! !value "")
                                                  ))
-                           :input-value      @value*
+                           :input-value      @!value
                            }]]))))
 
 (defn tag-chip [id]
@@ -95,15 +95,15 @@
      )])
 
 (defn tag-editor [id]
-  (let [tag-ids* (r/atom nil)
-        new-tags* (r/atom nil)
+  (let [!tag-ids (r/atom nil)
+        !new-tags (r/atom nil)
         ]
     (fn [id]
       ;Doesn't re-render when title is edited so inner render function not required.
-      [(with-meta (fn [] [tagger id tag-ids* new-tags*])
+      [(with-meta (fn [] [tagger id !tag-ids !new-tags])
                   {:component-will-unmount
                    (fn [_this]
-                     (events/new-tags! id @tag-ids* @new-tags*)
-                     (reset! tag-ids* nil)
-                     (reset! new-tags* nil)
+                     (events/new-tags! id @!tag-ids @!new-tags)
+                     (reset! !tag-ids nil)
+                     (reset! !new-tags nil)
                      )})])))

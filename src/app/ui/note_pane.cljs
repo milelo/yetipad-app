@@ -31,7 +31,7 @@
     }])
 
 (defn title-editor [{:keys [id title]}]
-  (let [new-title* (atom title)]
+  (let [!new-title (atom title)]
     ;Doesn't re-render when title is edited so inner render function not required.
     [(with-meta (fn [] [:> TextField {:variant       :outlined
                                       :style         {:width "min(375px, 100%)"}
@@ -42,23 +42,23 @@
                                       ;:InputLabelProps {}
                                       :default-value title
                                       :on-change     (fn [e]
-                                                       (reset! new-title* (.-target.value ^js e)))
+                                                       (reset! !new-title (.-target.value ^js e)))
                                       }])
                 {:component-will-unmount
                  (fn [_this]
-                   ;(debug log :new-title @new-title*)
-                   (events/new-title! id @new-title*)
+                   ;(debug log :new-title @!new-title)
+                   (events/new-title! id @!new-title)
                    )})]))
 
 (defn note-editor [{{:keys [id] :as item} :source} & [{:keys [content-editor?]
                                                        :or   {content-editor? true}
                                                        :as   options}]]
-  (let [tag-bar (if @subs/sticky-editor-tags?*
+  (let [tag-bar (if @subs/!sticky-editor-tags?
                   [ui/pane-tags [tag-editor id]]
                   [:div {:style {:margin-top 5}} [tag-editor id]])
         title-editor ^{:key :title-e} [title-editor item]
         content-editor ^{:key :cont-e} [error-boundary ::note-editor
-                                         [(case @subs/content-editor*
+                                         [(case @subs/!content-editor
                                             :goog-editor note-editor-goog/content-editor
                                             :quill-editor note-editor-quill/content-editor
                                             :ck-editor note-editor-ck/content-editor

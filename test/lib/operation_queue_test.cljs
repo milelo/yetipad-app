@@ -5,11 +5,11 @@
    [promesa.core :as p]))
 
 (defn deferred []
-  (let [resolve* (atom nil)
+  (let [!resolve (atom nil)
         promise (js/Promise. (fn [resolve _reject]
-                               (reset! resolve* resolve)))]
+                               (reset! !resolve resolve)))]
     {:promise promise
-     :resolve! (fn [value] (@resolve* value))}))
+     :resolve! (fn [value] (@!resolve value))}))
 
 (defn test-context [state]
   {:tail (queue/create) :state (atom state)})
