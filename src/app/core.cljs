@@ -44,10 +44,13 @@
 (defn initialize-drive-connectivity! []
   ;Configure synchronously so an early focus/click can already bootstrap Drive.
   (drive/configure! app.credentials/yetipad-credentials)
-  (-> (p/let [{:keys [sign-in-email]} (store/$read-persist-device)
+  (-> (p/let [{:keys [sign-in-email reduce-drive-popup-flash?]}
+              (store/$read-persist-device)
+              _ (drive/set-preferences!
+                 {:reduce-drive-popup-flash? (boolean reduce-drive-popup-flash?)})
               _ (drive/configure!
                  (into app.credentials/yetipad-credentials
-                       [(when sign-in-email [:hint sign-in-email])]))]
+                       [(when sign-in-email [:login_hint sign-in-email])]))]
         (when (not= false (.-onLine js/navigator))
           (events/reconnect-and-sync!! {:authorization :automatic :src ::startup})))
       (p/catch (fn [e]

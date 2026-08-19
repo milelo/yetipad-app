@@ -84,6 +84,21 @@
       (warn log 'get-data-sync-unavailable e)
       nil)))
 
+(defn remove-data-sync!
+  "Synchronously remove a Web Storage entry. Returns true when the removal
+   succeeds and false when Web Storage is unavailable."
+  [k]
+  (assert (or (string? k) (keyword? k)))
+  (try
+    (if-let [storage (.-localStorage js/globalThis)]
+      (do
+        (.removeItem storage (name k))
+        true)
+      false)
+    (catch :default e
+      (warn log 'remove-data-sync!-unavailable e)
+      false)))
+
 (defn put-session-data-sync!
   "Synchronously persist small tab-scoped data in sessionStorage."
   [k cljs]

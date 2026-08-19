@@ -2,6 +2,7 @@
   (:require
    [lib.log :as log :refer-macros [trace stack debug info warn fatal] :refer [pprintl]]
    [lib.debug :as debug :refer [we wd]]
+   [lib.localstore :as ls]
    [promesa.core :as p]
    [cljs.reader :as reader]
    [cljs-bean.core :refer [bean ->clj ->js]]
@@ -11,6 +12,117 @@
 
 (def ydn-mime "application/vnd.google.drive.ext-type.ydn")
 (def text-mime "text/plain")
+(def drive-scope "https://www.googleapis.com/auth/drive.file")
+(def token-storage-key :yetipad-drive-access-token)
+(def token-expiry-margin-ms 60000)
+(def popup-reveal-delay-ms 1000)
+
+(defonce !preferences (atom {:reduce-drive-popup-flash? false}))
+(defonce !conceal-next-popup? (atom false))
+(defonce !popup-reveal-timer (atom nil))
+(defonce !popup-wrapper (atom nil))
+
+(defn- clear-popup-reveal! []
+  (when-let [timer @!popup-reveal-timer]
+    (js/clearTimeout timer)
+    (reset! !popup-reveal-timer nil)))
+
+(defn- popup-open? [popup]
+  (try
+    (and popup (not (.-closed popup)))
+    (catch :default _ false)))
+
+(defn- background-popup! [popup]
+  (when (popup-open? popup)
+    (try (.blur popup) (catch :default _ nil))
+    (try (.focus js/globalThis) (catch :default _ nil))))
+
+(defn conceal-popup!
+  "Best-effort popup focus choreography. Public for focused unit testing."
+  ([popup delay-ms]
+   (clear-popup-reveal!)
+   (background-popup! popup)
+   (js/setTimeout #(background-popup! popup) 0)
+   (reset! !popup-reveal-timer
+           (js/setTimeout
+            (fn []
+              (reset! !popup-reveal-timer nil)
+              (when (popup-open? popup)
+                (try (.focus popup) (catch :default _ nil))))
+            delay-ms))
+   popup)
+  ([popup] (conceal-popup! popup popup-reveal-delay-ms)))
+
+(defn- ensure-popup-wrapper! []
+  (when (and (nil? @!popup-wrapper) (fn? (.-open js/globalThis)))
+    (let [original-open (.-open js/globalThis)
+          wrapped-open (fn [& args]
+                         (this-as this
+                           (let [popup (.apply original-open this (to-array args))]
+                             (when (and @!conceal-next-popup?
+                                        (:reduce-drive-popup-flash? @!preferences))
+                               (conceal-popup! popup))
+                             popup)))]
+      (reset! !popup-wrapper {:original original-open :wrapped wrapped-open})
+      (set! (.-open js/globalThis) wrapped-open))))
+
+(defn set-preferences!
+  "Updates Drive UI preferences without mixing them into OAuth credentials."
+  [preferences]
+  (swap! !preferences merge
+         (select-keys preferences [:reduce-drive-popup-flash?]))
+  (ensure-popup-wrapper!)
+  @!preferences)
+
+(defn- now-ms [] (.now js/Date))
+
+(defn- scope-granted? [scope]
+  (and (string? scope)
+       (contains? (set (str/split scope #"\\s+")) drive-scope)))
+
+(defn- valid-token-record? [{:keys [access-token scope expires-at]}]
+  (and (string? access-token)
+       (not-empty access-token)
+       (scope-granted? scope)
+       (number? expires-at)
+       (> expires-at (+ (now-ms) token-expiry-margin-ms))))
+
+(defn- clear-cached-token! []
+  (ls/remove-data-sync! token-storage-key))
+
+(defn- token-record [response]
+  (let [{:keys [access_token scope token_type expires_in]} response]
+    (when (and (string? access_token)
+               (scope-granted? scope)
+               (number? expires_in)
+               (pos? expires_in))
+      {:access-token access_token
+       :scope scope
+       :token-type (or token_type "Bearer")
+       :expires-at (+ (now-ms) (* expires_in 1000))})))
+
+(defn- persist-token-response! [response]
+  (if-let [record (token-record response)]
+    (ls/put-data-sync! token-storage-key record)
+    (clear-cached-token!)))
+
+(defn- restore-cached-token! []
+  (let [record (ls/get-data-sync token-storage-key)]
+    (if (valid-token-record? record)
+      (do
+        (js/gapi.client.setToken
+         (->js {:access_token (:access-token record)
+                :scope (:scope record)
+                :token_type (:token-type record)}))
+        true)
+      (do
+        (when record (clear-cached-token!))
+        false))))
+
+(defn- clear-access-token! []
+  (clear-cached-token!)
+  (when (and (exists? js/gapi) js/gapi.client)
+    (js/gapi.client.setToken nil)))
 
 (defn $fix-promise [p]
   ;https://github.com/funcool/promesa/issues/149
@@ -137,7 +249,7 @@
                                (cond
                                  (= code 401)
                                  (do
-                                   (js/gapi.client.setToken nil)
+                                   (clear-access-token!)
                                    (get-status)
                                    (if reauthorize?
                                      (-> ($ensure-authorized? :automatic)
@@ -283,7 +395,8 @@
 (defn configure!
   "Configures the retryable Drive bootstrap before loading either Google SDK."
   [credentials]
-  (swap! !token-client assoc :credentials credentials))
+  (swap! !token-client assoc :credentials credentials)
+  (ensure-popup-wrapper!))
 
 (defn- remove-script! [id]
   (when-let [script (.getElementById js/document id)]
@@ -334,6 +447,7 @@
                               "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"))
                             'drive-discovery-load)
                   (swap! !token-client assoc :gapi? true)
+                  (restore-cached-token!)
                   true)
                 (p/then resolve)
                 (p/catch reject))))
@@ -347,7 +461,7 @@
       (swap! !token-client assoc
              :token-client
              (js/google.accounts.oauth2.initTokenClient
-              (->js (select-keys credentials [:client_id :scope :hint]))))))
+              (->js (select-keys credentials [:client_id :scope :login_hint]))))))
   true)
 
 (defn $ensure-sdk-ready!
@@ -425,7 +539,9 @@
      (set! (.-callback token-client)
            (fn [response]
              (try
-               (let [response (->clj response)]
+               (let [response-js response
+                     response (->clj response-js)]
+                 (clear-popup-reveal!)
                  (if (:error response)
                    (do
                      (swap! !online-status assoc :online? true)
@@ -433,11 +549,14 @@
                      (reject {:response response :message (:error response)}))
                    (do
                      (swap! !online-status assoc :online? true)
+                     (js/gapi.client.setToken response-js)
+                     (persist-token-response! response)
                      (resolve (js/gapi.client.getToken)))))
                (catch :default e
                  (reject (-> e bean))))))
      (set! (.-error_callback token-client)
            (fn [err]
+             (clear-popup-reveal!)
              (let [err (->clj err)]
                (swap! !token-client assoc :aborted-sign-in? true)
                (reject err))))
@@ -447,7 +566,11 @@
                                (:automatic-authorization-failed? @!token-client)))
                     "consent"
                     "")]
-       (.requestAccessToken token-client #js {:prompt prompt}))))
+       (reset! !conceal-next-popup? (= authorization :automatic))
+       (try
+         (.requestAccessToken token-client #js {:prompt prompt})
+         (finally
+           (reset! !conceal-next-popup? false))))))
    'drive-authorization))
 
 (defn $ensure-authorized?
@@ -535,10 +658,11 @@
                                                          ;currently doesn't report an error
                                                          ;so can't update !offline-status
                                                           )))
-       (js/gapi.client.setToken nil)
-       (trace log "token revoked")
-       (get-status);update-status
-       nil)))
+       (trace log "token revoked"))
+     (clear-popup-reveal!)
+     (clear-access-token!)
+     (get-status);update-status
+     nil))
   ([] (sign-out! true)))
 
 (comment

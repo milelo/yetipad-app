@@ -84,7 +84,9 @@
                                 [table title options editing? !values])
       :component-will-unmount (fn [_this]
                                 (let [doc-options (select-keys @!values [:doc-title :doc-subtitle])
-                                      device-options (select-keys @!values [:sign-in-email :content-editor :sticky-editor-tags?])]
+                                      device-options (select-keys @!values [:sign-in-email :content-editor
+                                                                           :sticky-editor-tags?
+                                                                           :reduce-drive-popup-flash?])]
                                   (trace log 'device-options device-options)
                                   (events/doc-options! doc-options)
                                   (events/device-options! device-options)))})))
@@ -125,6 +127,11 @@
                                       {:id    :sticky-editor-tags?
                                        :name  "Sticky editor tag bar"
                                        :value @subs/!sticky-editor-tags?
+                                       :editor checkbox-editor
+                                       :viewer checkbox-viewer}
+                                      {:id    :reduce-drive-popup-flash?
+                                       :name  "Reduce Drive sign-in popup flash (experimental)"
+                                       :value @subs/!reduce-drive-popup-flash?
                                        :editor checkbox-editor
                                        :viewer checkbox-viewer}]
       editing?]]))

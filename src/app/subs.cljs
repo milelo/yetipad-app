@@ -259,6 +259,10 @@
                             (fn [db]
                               (get-in db [:persist-device :sticky-editor-tags?] true))))
 
+(def !reduce-drive-popup-flash? (db/atom
+                                 (fn [db]
+                                   (get-in db [:persist-device :reduce-drive-popup-flash?] false))))
+
 (def log-level (db/atomfn
                 (fn [db]
                   (:logger-config db))

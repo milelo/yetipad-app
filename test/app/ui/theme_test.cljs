@@ -2,7 +2,8 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [app.ui.theme :as theme :refer [theme]]
-   [app.subs :as subs]))
+   [app.subs :as subs]
+   [lib.db :as db]))
 
 (deftest sticky-pane-toolbar-markup-test
   (testing "pane toolbars expose the reusable sticky toolbar contract"
@@ -25,6 +26,15 @@
 (deftest sticky-editor-tags-option-test
   (testing "the editor tag-bar setting defaults to enabled"
     (is (true? @subs/!sticky-editor-tags?))))
+
+(deftest drive-popup-flash-option-test
+  (testing "the experimental Drive popup setting defaults to disabled"
+    (let [old-db @db/!db]
+      (try
+        (swap! db/!db assoc :persist-device nil)
+        (is (false? @subs/!reduce-drive-popup-flash?))
+        (finally
+          (reset! db/!db old-db))))))
 
 (deftest sticky-editor-toolbar-markup-test
   (testing "editor toolbars share the below-pane-toolbar contract"

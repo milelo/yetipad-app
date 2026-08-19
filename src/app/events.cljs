@@ -909,6 +909,8 @@
                   db))))
 
 (defn device-options! [options-update]
+  (drive/set-preferences!
+   (select-keys options-update [:reduce-drive-popup-flash?]))
   (update-db! 'device-options!
               (fn [db]
                 (update db :persist-device merge options-update))))

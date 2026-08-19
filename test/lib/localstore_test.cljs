@@ -7,7 +7,8 @@
   (let [!values (atom {})
         previous-descriptor (.getOwnPropertyDescriptor js/Object js/globalThis "localStorage")
         storage #js {:setItem (fn [k v] (swap! !values assoc k v))
-                     :getItem (fn [k] (get @!values k))}]
+                     :getItem (fn [k] (get @!values k))
+                     :removeItem (fn [k] (swap! !values dissoc k))}]
     (try
       (.defineProperty js/Object js/globalThis "localStorage"
                        #js {:value storage :configurable true})
@@ -18,6 +19,9 @@
                (localstore/get-data-sync :session))))
       (testing "a missing key returns nil"
         (is (nil? (localstore/get-data-sync :missing))))
+      (testing "stored data can be removed synchronously"
+        (is (true? (localstore/remove-data-sync! :session)))
+        (is (nil? (localstore/get-data-sync :session))))
       (finally
         (if previous-descriptor
           (.defineProperty js/Object js/globalThis "localStorage" previous-descriptor)

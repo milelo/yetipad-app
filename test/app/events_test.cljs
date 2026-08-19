@@ -2,7 +2,8 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [app.events :as events]
-   [lib.db :as db]))
+   [lib.db :as db]
+   [lib.goog-drive :as drive]))
 
 (def tag {:id "a"
           :kind :tag
@@ -47,3 +48,10 @@
     (is (= :downloading (#'events/sync-progress-status :overwrite-from-file)))
     (is (= :uploading (#'events/sync-progress-status :overwrite-file)))
     (is (= :syncing (#'events/sync-progress-status :resolve-conflicts)))))
+
+(deftest drive-popup-preference-propagation-test
+  (events/initialize-db!)
+  (reset! drive/!preferences {:reduce-drive-popup-flash? false})
+  (events/device-options! {:reduce-drive-popup-flash? true})
+  (is (true? (:reduce-drive-popup-flash? @drive/!preferences)))
+  (is (true? (get-in @db/!db [:persist-device :reduce-drive-popup-flash?]))))
