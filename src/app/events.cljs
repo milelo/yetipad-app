@@ -877,11 +877,12 @@
                  (fn [db]
      ;potentially saves to new-id if original has external change.
                    (if-let [item-id (get-in db [:editing item-id :accept-as])]
-                     (update-in db [:doc item-id] (fn [{old-title :title :as item}]
+                     (update-in db [:doc item-id] (fn [{:keys [mchange] old-title :title :as item}]
                                                     (let [title (not-empty title)]
                                                       (if (= old-title title)
                                                         item
-                                                        (assoc item :title title)))))
+                                                        (assoc item :change mchange
+                                                                   :title title)))))
                      db))))
 
 (defn rename-file!! [params]

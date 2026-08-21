@@ -1,9 +1,10 @@
 (ns app.events-test
   (:require
-   [cljs.test :refer [deftest is testing]]
+   [cljs.test :refer [async deftest is testing]]
    [app.events :as events]
    [lib.db :as db]
-   [lib.goog-drive :as drive]))
+   [lib.goog-drive :as drive]
+   [promesa.core :as p]))
 
 (def tag {:id "a"
           :kind :tag
@@ -55,3 +56,42 @@
   (events/device-options! {:reduce-drive-popup-flash? true})
   (is (true? (:reduce-drive-popup-flash? @drive/!preferences)))
   (is (true? (get-in @db/!db [:persist-device :reduce-drive-popup-flash?]))))
+
+(deftest metadata-edits-preserve-history-timestamp-test
+  (async done
+    (let [history-time "2026-08-20T10:00:00.000Z"
+          base-item {:id "item"
+                     :kind :note
+                     :title "Original"
+                     :content [[:p "Original"]]
+                     :tags ["old-tag"]
+                     :change "2026-08-19T10:00:00.000Z"
+                     :mchange history-time}
+          base-db {::db/db? true
+                   :doc {:doc-id "doc" "item" base-item}
+                   :editing {"item" {:accept-as "item"}}}]
+      (reset! db/!db base-db)
+      (events/new-title! "item" "Renamed")
+      (-> (db/$queue-idle)
+          (p/then (fn [_]
+                    (testing "title edits preserve the history timestamp"
+                      (is (= "Renamed" (get-in @db/!db [:doc "item" :title])))
+                      (is (= history-time (get-in @db/!db [:doc "item" :change]))))
+                    (reset! db/!db base-db)
+                    (events/new-content! "item" [[:p "Updated"]])
+                    (db/$queue-idle)))
+          (p/then (fn [_]
+                    (testing "content edits retain the existing timestamp behavior"
+                      (is (= [[:p "Updated"]] (get-in @db/!db [:doc "item" :content])))
+                      (is (= history-time (get-in @db/!db [:doc "item" :change]))))
+                    (reset! db/!db base-db)
+                    (events/new-tags! "item" ["new-tag"] nil)
+                    (db/$queue-idle)))
+          (p/then (fn [_]
+                    (testing "tag assignment preserves the parent history timestamp"
+                      (is (= ["new-tag"] (get-in @db/!db [:doc "item" :tags])))
+                      (is (= history-time (get-in @db/!db [:doc "item" :change]))))
+                    (done)))
+          (p/catch (fn [e]
+                     (is false (str e))
+                     (done)))))))
